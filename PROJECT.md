@@ -3,7 +3,7 @@
 > 这是给「新窗口」看的入口文件。豆包会话之间的上下文不互通，所以上一轮对话的结论、改了什么、
 > 怎么跑、坑在哪，全部写在这里。项目自带 Python 环境，整个目录可以整体搬走或复制。
 
-- 版本号：`2.9.4`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
+- 版本号：`2.9.5`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
 - 平台：Windows 10/11，Python 3.14.7
 - 远端仓库：https://github.com/cnbrd/WhaleGirlPet （`git remote -v` 可查，SSH 443 通道已配好）
 - 发布产物：CI 的 `release-assets.yml` 现在从 `app/paths.py` 读版本号，Release 不存在会自动创建，
@@ -42,7 +42,19 @@ cd F:\WhaleGirlPet
 
 `养成` / `打工` / `番茄钟-提醒` / `聊天` / `设置` / `语音人格` / `模型库` / `安全体检` / `账号形态` / `定时`
 
-上一轮（2026-11-24）的四项改造，已经生效：
+### v2.9.5（2026-11-25）的三项
+
+1. **启动屏**：`app/splash.py` 的 `LoadingSplash` —— 无边框浮层，圆角卡片 + 鲸鱼娘立绘浮动 +
+   「鲸鱼娘加载中」+ 三个呼吸点 + 细进度条；`main()` 里先显示它，`Controller(defer_show=True)`
+   分三步初始化，最少驻留 2 秒后淡出，`show_pet()` 才把桌宠一次性露出来。`PetWindow.__init__`
+   新增 `show_now` 参数，构造时不再自动 `show()`。
+2. **启动不再弹更新框**：自动检查更新 6 秒 → 20 秒；`_on_update_result` 的 `silent` 分支只发托盘
+   通知并把 `pending_update` 写进 config，不再 `QMessageBox.exec()`。手动点「检查更新」仍会弹。
+3. **对话气泡式安装向导**：`installer/whale_pet.iss` 重写 [Code] —— 三张自定义页（装哪 / 桌面图标 /
+   装完叫醒），左侧白色气泡提问 + 右侧立绘 + 两个选项按钮；美术在 `installer/art/`
+   （`whale.png` 立绘、`bubble.png` 气泡、`small.png` 右上角小图，全部透明底）。
+
+### 上一轮（2026-11-24）的四项改造，仍然生效
 
 1. **音频库页已移除**（动作音效与音量仍留在「设置」页，那不是音频库）。
 2. **记忆知识页已移除**；查看方式改为托盘右键 →「打开数据目录（记忆 / 知识库 / 音色缓存）」，
@@ -77,6 +89,12 @@ cd F:\WhaleGirlPet
    不要再试网页路径，改走 `.github\workflows\release-assets.yml`（runner 上打包 + `gh release upload`）。
 5. **`gh auth login --web` 在 device flow 第一跳超时**（家宽对 github.com 阻断；`api.github.com` 与 SSH 443 正常）。
 6. **离屏渲染截图里的中文会显示成方块**（offscreen 平台没有中文字体），结构可核对但字体效果必须看真实桌面。
+7. **Inno 的 `TBitmapImage.Bitmap.LoadFromFile` 只认 BMP**：直接读 PNG 会在 InitializeWizard 抛
+   `Bitmap image is not valid`；必须 `TPngImage.Create → LoadFromFile → Bitmap.Assign`（v2.9.5 已改）。
+8. **PyInstaller onefile 启动有 1~1.5 秒空白**（63MB 自解压），之后才轮到 Python 层的启动屏；
+   想更快只能改 onedir 或加 `splash` 原生启动图。
+9. **Inno 自定义页的类型名是 `TWizardPage`**（不是 `TCustomPage`），`CreateCustomPage` 返回它；
+   运行时 `WizardForm.DirBrowseButton` 即使 `DisableDirPage=yes` 仍可借用来自已弹目录选择框。
 
 ## 六、自检脚本怎么用
 
@@ -93,9 +111,9 @@ $env:QT_QPA_PLATFORM="offscreen"
 
 ## 七、下一步待办
 
-- [ ] 真实桌面开一次面板目检（中文渲染、两段分区的视觉间距）
+- [x] 真实桌面开一次面板目检（中文渲染、两段分区的视觉间距）
 - [ ] 模型库「联网添加」跑一次真实大文件下载（目前只验证了地址解析与线程接线）
-- [x] 版本号升到 `2.9.4`（`app/paths.py` + `installer/whale_pet.iss` 四处；CI 已改为从 `paths.py` 读版本）
+- [x] 版本号升到 `2.9.5`（`app/paths.py` + `installer/whale_pet.iss` 四处 + README；CI 自动读版本）
 - [ ] 各皮肤立绘的脸部一致性继续统一（`docs\CHARACTER.md` 是母版）
 - [ ] 果冻过渡动画（形态/换装/动作切换的插值回弹）仍未实现
 - [x] C 盘旧副本已删：`whale-girl-pet`（17.03 GB）与旧 `.venv`（839 MB）内容已核对一致后删除，

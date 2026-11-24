@@ -2,6 +2,17 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v2.9.5（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 启动加载动画 | 新增 `app/splash.py`：无边框浮层画圆角卡片——鲸鱼娘立绘轻微上下浮动、标题「鲸鱼娘加载中」+ 三个呼吸点、细进度条、右下角版本号；`main()` 改为先显示它，Controller 分三步初始化（读取配置 → 加载形象与语音 → 露出桌宠），最短驻留 2 秒再淡出 | 真实桌面连拍：约 0.6 秒出现「鲸鱼娘加载中 v2.9.5 / 正在叫醒鲸鱼娘…」，约 1.3 秒开始淡出时桌宠已就位；截图 `assets\_matting\boot_1.png`、`boot_4.png` |
+| 启动不再弹更新框 | 自动检查更新从 6 秒延到 20 秒，避开启动屏；`silent` 检查发现新版本时**不再弹 QMessageBox**，改发一条托盘通知，并把 `pending_update` 记进配置，装不装由用户在面板里决定 | `_on_update_result` 的 silent 分支只调 `tray.showMessage`；手动点「检查更新」仍保留对话框 |
+| 对话气泡式安装向导 | 重写 `installer/whale_pet.iss`：禁用欢迎/选择目录/任务/准备四页，改成三张自定页——左侧白色气泡提问、右侧大肥鱼立绘、气泡内两个选项按钮。位置页选「就用默认位置」或「我自己挑一个」（复用被隐藏的浏览按钮，取消则原地不动）；桌面快捷方式由 `WantDesktopIcon` 控制；装完是否立刻启动由 `WantWake` 在 `ssPostInstall` 决定 | 真实运行安装包逐页点击：612×471 窗口，三页按钮都能推进到安装进度；日志 `runtime\setup_log3.txt` 记录 Installing 与用户取消回滚 |
+| 右上角图标去掉圆底 | 新增 `installer/art/small.png`（Q 版鲸鱼娘、透明底），并设 `WizardSmallImageFile`，替换 Inno 由 `SetupIconFile` 派生出的圆形徽章 | 实拍：右上角只剩 Q 版角色，无圆形背景 |
+| 安装页图片加载修正 | `TBitmapImage.Bitmap.LoadFromFile` 只认 BMP，直接读 PNG 会抛 `Bitmap image is not valid`；改用 `TPngImage` 加载后 `Bitmap.Assign` | 首版运行即在 `InitializeWizard` 报错（`runtime\setup_log.txt`）；改后三页立绘/气泡正常渲染 |
+| 版本号 2.9.5 | `app/paths.py` 与 `installer/whale_pet.iss`（AppVersion / AppVerName / UninstallDisplayName / OutputBaseFilename）同步到 2.9.5，README 当前版本同步 | 编译产物 `dist\WhaleGirlPet-Setup-2.9.5.exe`；窗口标题 `Setup: 鲸鱼娘桌宠 2.9.5` |
+
 ## v2.9.4（2026-11-24）
 
 | 项 | 改动 | 实测 |

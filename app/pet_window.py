@@ -39,7 +39,7 @@ def action_label(key: str) -> str:
 
 
 class PetWindow(QWidget):
-    def __init__(self, controller):
+    def __init__(self, controller, show_now: bool = True):
         self._controller = controller
         flags = Qt.FramelessWindowHint | Qt.Tool
         self._topmost = True
@@ -117,7 +117,9 @@ class PetWindow(QWidget):
         self._update_pix()
         self._load_position()
         self._clamp_to_screen()
-        self.show()
+        # v2.9.5：启动屏需要先盖住这一帧，等 Controller 初始化完再 show_pet()
+        if show_now:
+            self.show()
 
     # ================= 素材 =================
     def _load_pix(self, rel: str) -> QPixmap:

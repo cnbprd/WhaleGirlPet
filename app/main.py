@@ -28,6 +28,7 @@ import model_dl
 import models_catalog
 import paths
 import persona as pers
+import splash as splash_mod
 import theme
 import websearch
 from ai import ChatWorker, build_system_prompt, read_zhipu_key
@@ -107,8 +108,10 @@ DEFAULT_CONFIG = {
 
 
 class Controller:
-    def __init__(self, app: QApplication):
+    def __init__(self, app: QApplication, defer_show: bool = False):
         self.app = app
+        # v2.9.5 启动屏：defer_show=True 时桌宠先不露脸，等初始化完由 show_pet() 统一显示
+        self.defer_show = defer_show
         # 先定位当前账号，后面的配置/记忆/知识库才落在正确目录
         self.accounts = accounts.init_store()
         self.config = self._load_config()
@@ -156,7 +159,7 @@ class Controller:
         self.scheduler.fire.connect(self._on_schedule_fire)
         self.scheduler.night_remind.connect(self._on_night_remind)
 
-        self.pet = PetWindow(self)
+        self.pet = PetWindow(self, show_now=not defer_show)
 
         # ---- 定时器 ----
         self.decay_timer = QTimer()
@@ -258,7 +261,8 @@ class Controller:
         self.guard_timer.start()
 
         QTimer.singleShot(1200, self._maybe_boot_report)
-        QTimer.singleShot(6000, self._auto_check_update)
+        # v2.9.5：自动检查更新从 6 秒延到 20 秒，避开启动屏和"刚开就弹框"的观感
+        QTimer.singleShot(20000, self._auto_check_update)
         if self.config.get("llm_autostart"):
             QTimer.singleShot(2000, self._warm_local_llm)
 
@@ -573,10 +577,25 @@ class Controller:
             self.panel and self.panel.set_update_status(msg)
             return
         if info.get("newer"):
-            self.pet.bubble.show_text(f"有新版本 v{info['latest']} 啦！", 4200)
+            latest, current = info["latest"], info["current"]
+            self.pet.bubble.show_text(f"有新版本 v{latest} 啦！", 4200)
             self.pet.set_expression("happy", 3000)
-            self.panel and self.panel.set_update_status(
-                f"发现新版本 v{info['latest']}（当前 v{info['current']}）。")
+            brief = f"有新版本 v{latest}（当前 v{current}）。"
+            self.panel and self.panel.set_update_status(brief)
+            # v2.9.5 静默检查不再弹对话框：只发一条托盘通知，装不装由用户在面板里决定
+            if silent:
+                self.config["pending_update"] = {
+                    "latest": latest, "notes": (info.get("notes") or "")[:600],
+                    "setup": info.get("setup") or "", "url": info.get("url") or "",
+                    "size": int(info.get("size") or 0), "sha": info.get("sha") or "",
+                }
+                try:
+                    self.tray.showMessage(
+                        APP_NAME, brief + "\n面板「设置 → 检查更新」里可以下载安装。",
+                        QSystemTrayIcon.MessageIcon.Information, 6000)
+                except Exception:  # noqa: BLE001
+                    pass
+                return
             box = QMessageBox(self.panel)
             box.setIcon(QMessageBox.Information)
             box.setWindowTitle("发现新版本")
@@ -2092,6 +2111,11 @@ class Controller:
         scv.setContext(Qt.ApplicationShortcut)
         scv.activated.connect(self.voice_listen)
 
+    def show_pet(self):
+        """启动屏结束后统一露脸（v2.9.5）：位置在构造时已 clamp，直接 show 再置顶。"""
+        self.pet.show()
+        self.pet.raise_()
+
     def toggle_visibility(self):
         if self.pet.isVisible():
             self._user_hidden = True
@@ -2145,7 +2169,26 @@ def main():
         QMessageBox.information(None, APP_NAME, "桌宠已经在运行啦～")
         return 0
 
-    controller = Controller(app)
+    # v2.9.5 启动屏：先把「鲸鱼娘加载中」画出来，初始化完再一次性露桌宠。
+    # 以前是 PetWindow 构造里直接 show()，接着各组件陆续初始化、6 秒后还可能弹更新框。
+    keep = {"splash": splash_mod.LoadingSplash(), "controller": None}
+    keep["splash"].show()
+    app.processEvents()
+
+    def _boot_step2():
+        keep["splash"].set_step("正在读取配置与记忆…")
+        keep["controller"] = Controller(app, defer_show=True)
+        QTimer.singleShot(320, _boot_step3)
+
+    def _boot_step3():
+        keep["splash"].set_step("正在加载形象与语音…")
+        QTimer.singleShot(280, _boot_step4)
+
+    def _boot_step4():
+        keep["controller"].show_pet()
+        keep["splash"].finish()
+
+    QTimer.singleShot(260, _boot_step2)
     return app.exec()
 
 

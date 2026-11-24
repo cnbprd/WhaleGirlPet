@@ -163,7 +163,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.4**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.5**。
 
 ---
 
@@ -186,3 +186,4 @@ WhaleGirlPet/
 - 本项目与 DeepSeek 官方无隶属关系。
 
 如果这个项目对你有用，点个 Star 就是最实在的支持。
+
