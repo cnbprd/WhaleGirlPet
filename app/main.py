@@ -1,0 +1,2107 @@
+# -*- coding: utf-8 -*-
+"""
+鲸鱼娘桌宠（DeepSeek 鲸鱼娘 · 大肥鱼）
+PySide6 透明无边框置顶桌宠：养成 / 投喂 / 换装 / 表情 / 番茄钟 / 提醒 / 联网对话 /
+改名 / 多后端管理 / 打工任务 / 自主行动 / 满屏跑 / 本地音频。
+"""
+import json
+import os
+import random
+import sys
+import threading
+import time
+
+from PySide6.QtCore import QProcess, QSharedMemory, QTimer, Qt, QUrl
+from PySide6.QtGui import (QAction, QDesktopServices, QIcon, QKeySequence,
+                           QShortcut)
+from PySide6.QtWidgets import (QApplication, QMenu, QMessageBox, QSystemTrayIcon)
+
+import accounts
+import ambient
+import awareness
+import emotion as emo
+import knowledge
+import lines
+import local_llm
+import memory as mem
+import model_dl
+import models_catalog
+import paths
+import persona as pers
+import theme
+import websearch
+from ai import ChatWorker, build_system_prompt, read_zhipu_key
+from audio_manager import AudioManager
+from cleanup import CleanWorker
+from desktop_icons import IconLayout
+from paths import (APP_KEY, APP_NAME, APP_VERSION, DEFAULT_NAME, FORM_DEFAULT_SKIN,
+                   FORM_LABELS, SKINS, SKIN_FORM, SIZE_LEVELS, asset_path, config_file)
+from pet_window import ALL_ACTIONS, PetWindow
+from panel import ControlPanel
+from scheduler import Scheduler
+from state import PetState, SNACKS
+from tasks import TASK_DEFS, KNOWLEDGE_PROMPT_TOPIC, TASK_ACTION_GAP
+from tts import TTSService
+from updater import DEFAULT_REPO, DownloadWorker, UpdateWorker
+from usage import UsageTracker
+
+try:
+    import winsound
+    _HAS_WINSOUND = True
+except ImportError:
+    _HAS_WINSOUND = False
+
+
+DEFAULT_CONFIG = {
+    "x": None, "y": None, "scale": 1.0, "topmost": True,
+    "skin": "default", "size_label": "中", "form": "mature",
+    "name": DEFAULT_NAME,
+    "water_on": True, "sedentary_on": True, "sound_on": True,
+    "auto_on": True, "chatter_on": True,
+    # v2.9.3 静音模式：没任务时（闲聊/播报/自主台词）只出气泡不出声
+    "mute_idle": True,
+    "update_url": "",
+    # v2.9.1 联网更新：GitHub Releases（"owner/repo"）
+    "update_repo": DEFAULT_REPO, "auto_update_check": True,
+    # v2.9.2 去蒙版：透明合成实测无黑框，蒙版会带来锯齿与动起来被裁边，默认关闭
+    "alpha_mask": False,
+    # v2.9.2 主题：auto / light / dark（面板原来固定深色，浅色桌面上数值看不清）
+    "theme": "auto",
+    # v2.9.2 只喊唤醒词（大肥鱼/名字）时，自动接着听下一句
+    "wake_then_listen": True,
+    "water_interval": 45 * 60, "sedentary_interval": 60 * 60,
+    "ai_profiles": [{"name": "智谱默认", "endpoint": "", "model": "", "api_key": ""}],
+    "active_profile": 0,
+    "ai": {"endpoint": "", "model": "", "api_key": ""},
+    "audio": {"on": True, "volume": 80, "mappings": {}},
+    "tasks": {"done_count": {}},
+    "save": {},
+    # v2.0.0 新增
+    "persona": pers.DEFAULT_PERSONA,
+    "tts_on": False, "tts_online": True,
+    # v2.9.2 真人音色提炼：linluo（温柔少女）/ jingjing（元气少女）/ off
+    "voice_profile": "linluo",
+    "llm_on": True, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
+    "llm_model_file": "",
+    "llm_backend": "auto",                      # auto / ollama / llama_cpp
+    "gpu_when_idle": True,                      # 没在跑游戏时用 GPU（Ollama），跑游戏退 CPU
+    "ollama_host": local_llm.OLLAMA_HOST,
+    "ollama_model": local_llm.OLLAMA_DEFAULT_MODEL,
+    "llm_autostart": False,
+    "memory_on": True, "websearch_on": True, "kb_on": True,
+    "boot_report_on": True, "boot_report_day": "",
+    # v2.2.0 安全防御
+    "av_on": True, "av_autoupdate": True, "av_check_day": "",
+    "av_last_update": "", "skills_mock": True,
+    "av_slots_done": "", "fw_check_day": "",
+    "voice_on": True,
+    "emotion": {},
+    "schedule": {"tasks": [], "night_on": True},
+    # v2.9.0 环境播报 + 体贴行为
+    "weather_on": True, "weather_city": "郑州", "news_on": True,
+    "ambient_interval": 90 * 60,      # 天气/新闻拉取间隔（秒），默认 90 分钟
+    "fs_hide_on": True,               # 全屏应用时自动躲起来
+    "power_saver_on": True,           # 拔电时暂停本地大模型
+    "ambient_geo": {},                # {"lat","lon","name"} 城市坐标缓存
+}
+
+
+class Controller:
+    def __init__(self, app: QApplication):
+        self.app = app
+        # 先定位当前账号，后面的配置/记忆/知识库才落在正确目录
+        self.accounts = accounts.init_store()
+        self.config = self._load_config()
+        # 旧人格键（大马华语）自动迁移到韩语人格，避免存档里留下不存在的键
+        if self.config.get("persona") in pers.LEGACY_ALIASES:
+            self.config["persona"] = pers.LEGACY_ALIASES[self.config["persona"]]
+        self.state = PetState()
+        self.state.from_dict(self.config.get("save", {}))
+
+        self.panel = None
+        self.worker = None
+        self.know_worker = None
+        self.clean_worker = None
+        self.update_worker = None
+        self.update_dl = None
+        self.llm_worker = None
+        self.scan_worker = None
+        self.icon_layout = None
+        self.collision_timer = None
+        self.history = []
+
+        self.audio = AudioManager(self.config)
+
+        # ---- v2.0.0 组件 ----
+        self.emotion = emo.EmotionState()
+        try:
+            self.emotion.from_dict(self.config.get("emotion") or {})
+        except Exception:  # noqa: BLE001
+            pass
+        self.memory = mem.MemoryStore()
+        self.kb = knowledge.KnowledgeBase()
+        self.usage = UsageTracker()
+        self.tts = TTSService(self.config, self.audio)
+        self.llm = local_llm.ServerManager(self.config)
+        self.dl_worker = None
+        self.dl_speed = 0.0
+        self.sec_worker = None
+        self.sign_worker = None
+        self.skill_worker = None
+        self._last_skill = {}
+        self._security_line = ""
+        self.scheduler = Scheduler(self.config)
+        self.scheduler.fire.connect(self._on_schedule_fire)
+        self.scheduler.night_remind.connect(self._on_night_remind)
+
+        self.pet = PetWindow(self)
+
+        # ---- 定时器 ----
+        self.decay_timer = QTimer()
+        self.decay_timer.setInterval(30_000)
+        self.decay_timer.timeout.connect(self._on_decay)
+        self.decay_timer.start()
+
+        self.coin_timer = QTimer()
+        self.coin_timer.setInterval(60_000)
+        self.coin_timer.timeout.connect(self._on_coin)
+        self.coin_timer.start()
+
+        self.idle_timer = QTimer()
+        self.idle_timer.setInterval(90_000)
+        self.idle_timer.timeout.connect(self._on_idle_talk)
+        self.idle_timer.start()
+
+        # 自主行动
+        self.auto_timer = QTimer()
+        self.auto_timer.setInterval(20_000)
+        self.auto_timer.timeout.connect(self._on_auto)
+        self.auto_timer.start()
+
+        self.water_timer = QTimer()
+        self.water_timer.setInterval(self.config.get("water_interval", 45 * 60) * 1000)
+        self.water_timer.timeout.connect(self._on_water)
+        if self.config.get("water_on", True):
+            self.water_timer.start()
+
+        self.sedentary_timer = QTimer()
+        self.sedentary_timer.setInterval(self.config.get("sedentary_interval", 60 * 60) * 1000)
+        self.sedentary_timer.timeout.connect(self._on_sedentary)
+        if self.config.get("sedentary_on", True):
+            self.sedentary_timer.start()
+
+        # 打工任务
+        self.task_active = None  # {"key", "left", "total", "fact"}
+        self.task_timer = QTimer()
+        self.task_timer.setInterval(1000)
+        self.task_timer.timeout.connect(self._on_task_tick)
+
+        # v2.3.0 分钟级定时：病毒库 9/12/21 点更新、防火墙每周体检
+        self.minute_timer = QTimer()
+        self.minute_timer.setInterval(60 * 1000)
+        self.minute_timer.timeout.connect(self._on_minute)
+        self.minute_timer.start()
+        self.voice_worker = None
+        self._last_voice = {}
+
+        # 番茄钟
+        self.tomato_left = 0
+        self.tomato_timer = QTimer()
+        self.tomato_timer.setInterval(1000)
+        self.tomato_timer.timeout.connect(self._on_tomato_tick)
+
+        self._build_tray()
+        self._build_hotkey()
+        self._save_timer = QTimer()
+        self._save_timer.setInterval(60_000)
+        self._save_timer.timeout.connect(self.save_config)
+        self._save_timer.start()
+
+        # 使用统计采样（只记进程名与时长，不记窗口标题）
+        self.usage_timer = QTimer()
+        self.usage_timer.setInterval(self.usage.sample_sec * 1000)
+        self.usage_timer.timeout.connect(self._on_usage_tick)
+        self.usage_timer.start()
+
+        # 定时任务 / 22:00 休息提醒
+        self.sched_timer = QTimer()
+        self.sched_timer.setInterval(30_000)
+        self.sched_timer.timeout.connect(self.scheduler.tick)
+        self.sched_timer.start()
+
+        # 情绪自然衰减
+        self.emotion_timer = QTimer()
+        self.emotion_timer.setInterval(5 * 60_000)
+        self.emotion_timer.timeout.connect(self._on_emotion_decay)
+        self.emotion_timer.start()
+
+        # ---- v2.9.0 环境播报（天气/新闻）----
+        self.ambient_worker = None
+        self._ambient_last = 0.0        # 上次成功拉取的时间戳
+        self._ambient_cache = {}        # {"weather":{}, "news":[...], "city":""}
+        self._ambient_rot = 0            # 交替说天气/新闻
+        self.ambient_timer = QTimer()
+        self.ambient_timer.setInterval(5 * 60_000)
+        self.ambient_timer.timeout.connect(self._on_ambient_tick)
+        self.ambient_timer.start()
+        QTimer.singleShot(25_000, self._on_ambient_tick)
+
+        # ---- v2.9.0 体贴行为（全屏躲避 / 拔电省电）----
+        self._fs_hidden = False          # 当前是否因为全屏被自动藏起来
+        self._user_hidden = False        # 用户自己点了隐藏
+        self._was_battery = None         # None=还没测过
+        self.guard_timer = QTimer()
+        self.guard_timer.setInterval(4_000)
+        self.guard_timer.timeout.connect(self._on_guard)
+        self.guard_timer.start()
+
+        QTimer.singleShot(1200, self._maybe_boot_report)
+        QTimer.singleShot(6000, self._auto_check_update)
+        if self.config.get("llm_autostart"):
+            QTimer.singleShot(2000, self._warm_local_llm)
+
+    # ================= 配置 =================
+    def _load_config(self):
+        cfg = dict(DEFAULT_CONFIG)
+        try:
+            with open(config_file(), "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                cfg.update(saved)
+                cfg["ai"] = {**DEFAULT_CONFIG["ai"], **saved.get("ai", {})}
+                cfg["audio"] = {**DEFAULT_CONFIG["audio"], **saved.get("audio", {})}
+                cfg["tasks"] = {**DEFAULT_CONFIG["tasks"], **saved.get("tasks", {})}
+                # 旧版单组配置迁移为第一套后端
+                if not saved.get("ai_profiles") and saved.get("ai"):
+                    cfg["ai_profiles"] = [{
+                        "name": "默认",
+                        "endpoint": saved["ai"].get("endpoint", ""),
+                        "model": saved["ai"].get("model", ""),
+                        "api_key": saved["ai"].get("api_key", ""),
+                    }]
+        except (OSError, ValueError):
+            pass
+        if not cfg["ai_profiles"]:
+            cfg["ai_profiles"] = [{"name": "智谱默认", "endpoint": "", "model": "", "api_key": ""}]
+        return cfg
+
+    def save_config(self):
+        self.pet.save_position()
+        self.config["save"] = self.state.to_dict()
+        try:
+            self.config["emotion"] = self.emotion.to_dict()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            with open(config_file(), "w", encoding="utf-8") as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+        except OSError:
+            pass
+
+    # ================= 角色名 =================
+    def get_name(self) -> str:
+        return (self.config.get("name") or DEFAULT_NAME).strip() or DEFAULT_NAME
+
+    def set_name(self, name: str):
+        self.config["name"] = name.strip() or DEFAULT_NAME
+        self.save_config()
+        self.tray.setToolTip(APP_NAME)
+        self.refresh_panel()
+
+    # ================= 后端配置 =================
+    def profiles(self) -> list:
+        return self.config.setdefault("ai_profiles", [])
+
+    def active_profile(self) -> dict:
+        ps = self.profiles()
+        if not ps:
+            ps.append({"name": "智谱默认", "endpoint": "", "model": "", "api_key": ""})
+        i = self.config.get("active_profile", 0)
+        i = max(0, min(i, len(ps) - 1))
+        self.config["active_profile"] = i
+        return ps[i]
+
+    def switch_profile(self, idx: int):
+        if 0 <= idx < len(self.profiles()):
+            self.config["active_profile"] = idx
+            self.save_config()
+
+    def save_profile_fields(self, name: str, endpoint: str, model: str, api_key: str):
+        prof = self.active_profile()
+        prof["name"] = name.strip() or "未命名后端"
+        prof["endpoint"] = endpoint.strip()
+        prof["model"] = model.strip()
+        prof["api_key"] = api_key.strip()
+        self.save_config()
+
+    def new_profile(self):
+        self.profiles().append({"name": f"后端 {len(self.profiles()) + 1}", "endpoint": "", "model": "", "api_key": ""})
+        self.config["active_profile"] = len(self.profiles()) - 1
+        self.save_config()
+
+    def delete_active_profile(self):
+        ps = self.profiles()
+        if len(ps) <= 1:
+            return False
+        idx = self.config.get("active_profile", 0)
+        ps.pop(idx)
+        self.config["active_profile"] = max(0, min(idx, len(ps) - 1))
+        self.save_config()
+        return True
+
+    # ================= 音频 =================
+    def play_audio(self, action: str) -> bool:
+        return self.audio.play(action)
+
+    # ================= 音效（本地音频优先，失败回退蜂鸣） =================
+    def beep(self, kind: str):
+        if self.play_audio(kind):
+            return
+        if not self.config.get("sound_on", True) or not _HAS_WINSOUND:
+            return
+        try:
+            if kind == "pat":
+                winsound.Beep(880, 80)
+            elif kind == "feed":
+                winsound.Beep(660, 90); winsound.Beep(880, 120)
+            elif kind == "error":
+                winsound.Beep(220, 180)
+            elif kind == "coin":
+                winsound.Beep(1320, 60)
+            elif kind == "done":
+                winsound.Beep(880, 100); winsound.Beep(1175, 160)
+        except RuntimeError:
+            pass
+
+    # ================= 语音 / 情绪 =================
+    def _speak(self, text: str, ms: int = 2400, priority: int = 0):
+        """气泡 + 可选方言语音（TTS 只合成短句，长段只显示）。
+        priority：喂食/拍拍 2 > 对话回复 1 > 闲聊/自主/播报 0。
+        v2.9.3 静音模式：priority 0 一律只出字不出声（没任务时不吵），
+        真正有事要说（对话回复、投喂、拍拍）照常发声。"""
+        self.pet.bubble.show_text(text, ms)
+        if priority <= 0 and self.config.get("mute_idle", True):
+            return
+        if not (self.config.get("tts_on") and self.config.get("tts_online")):
+            return
+        if len(text) > 60:
+            return
+        try:
+            key = self.config.get("persona", pers.DEFAULT_PERSONA)
+            p = pers.get(key) or {}
+            self.tts.say(pers.dialectize(text, key), p, self.emotion.voice_hint(),
+                         priority=priority)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def set_persona(self, key: str):
+        if key not in pers.PERSONAS:
+            return
+        self.config["persona"] = key
+        self.save_config()
+        self._speak(f"好哒，以后就用「{pers.label(key)}」这个腔调跟你说话。", 3000)
+        self.refresh_panel()
+
+    def set_tts(self, on: bool, online: bool = True):
+        self.config["tts_on"] = bool(on)
+        self.config["tts_online"] = bool(online)
+        self.tts.set_enabled(bool(on))
+        self.save_config()
+
+    def _on_emotion_decay(self):
+        try:
+            self.emotion.decay()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ================= 互动回调（桌宠 → 主控） =================
+    def snacks(self):
+        return SNACKS
+
+    def on_pat(self):
+        # v2.8：1 秒内被戳 ≥7 次就抗议一句，不再每戳都涨好感
+        now = time.time()
+        self._pat_ts = [t for t in getattr(self, "_pat_ts", []) if now - t < 1.0] + [now]
+        if len(self._pat_ts) >= 7:
+            self._pat_ts = []
+            self.pet.set_expression("angry", 2600)
+            self._speak("别戳了别戳了，戳坏了你赔不起。", 2600, priority=2)
+            return
+        self.state.pat()
+        self.emotion.apply("pat", 1.2)
+        self.beep("pat")
+        # 40% 概率说点别的，避免每次戳都是同一句
+        if random.random() < 0.4:
+            self._speak(lines.pick(lines.CHAT_IDLE), 2600, priority=2)
+        else:
+            self._speak(lines.pick(lines.PAT), 2200, priority=2)
+        self.refresh_panel()
+
+    def on_feed(self, snack_key: str):
+        ok, msg = self.state.feed(snack_key)
+        if ok:
+            self.emotion.apply("feed_like", 1.0)
+            self.beep("feed")
+            self._speak(lines.pick(lines.FEED.get(snack_key, lines.HAPPY)), 2600)
+            self.pet.set_expression("happy", 2600)
+        else:
+            self.emotion.apply("feed_hate", 0.8)
+            self.beep("error")
+            self._speak(msg, 2400)
+            self.pet.set_expression("angry", 2000)
+        self.refresh_panel()
+
+    def feed_snack(self, key: str):
+        self.pet.do_feed(key)
+
+    def on_walk(self):
+        self.beep("walk")
+        self.pet.bubble.show_text(lines.pick(lines.WALK), 2000)
+
+    def on_run(self):
+        self.emotion.apply("run", 1.0)
+        self.beep("walk")
+        self._speak("跑起来咯——满屏溜达！", 2000)
+
+    def on_sleep(self):
+        self.beep("sleep")
+        self.pet.bubble.show_text(lines.pick(lines.SLEEP), 2500)
+
+    def on_wake(self):
+        self.beep("wake")
+        self.pet.bubble.show_text(lines.pick(lines.WAKE), 2000)
+
+    def on_jump(self):
+        self.pet.bubble.show_text(lines.pick(["嘿咻！", "跳高高～", "飞咯！"]), 1600)
+
+    def on_squish(self):
+        self.pet.bubble.show_text(lines.pick(["呜哇，被压扁啦！", "弹弹弹～", "噗叽～"]), 1600)
+
+    def on_shake(self):
+        self.pet.bubble.show_text(lines.pick(["抖一抖，精神抖擞！", "摇摇晃晃～"]), 1500)
+
+    # ================= 动作体系 =================
+    # v2.9.3 切换类动作不出声：换装/换形态只是"换个样子"，配一句台词反而吵
+    SILENT_ACTIONS = {"change"}
+
+    def on_action(self, key: str):
+        ev = {"run": "run", "brawl": "run", "tumble": "collide",
+              "eatrice": "feed_like", "hop": "run"}.get(key)
+        if ev:
+            self.emotion.apply(ev, 0.8)
+        self.beep(key)
+        if key in self.SILENT_ACTIONS:
+            return
+        self._speak(lines.pick(lines.ACTION_LINES.get(key, lines.HAPPY)), 2200)
+
+    def on_panic(self):
+        self.beep("panic")
+
+    def perform_random(self):
+        self.pet.do_action(random.choice(ALL_ACTIONS))
+
+    def toggle_chatter(self, on: bool):
+        self.config["chatter_on"] = bool(on)
+        self.save_config()
+
+    # ================= 满屏跑撞图标 =================
+    def begin_run(self, duration_ms: int = 60000):
+        self.icon_layout = IconLayout()
+        self.icon_layout.reload()
+        self._collided = False
+        self.pet.do_run(duration_ms)
+        self._schedule_collision()
+
+    def _schedule_collision(self):
+        if self.collision_timer is not None:
+            self.collision_timer.stop()
+        self.collision_timer = QTimer()
+        self.collision_timer.setSingleShot(True)
+        self.collision_timer.timeout.connect(self._on_collision_timer)
+        self.collision_timer.start(random.randint(3000, 6000))
+
+    def _on_collision_timer(self):
+        if self.pet.state != "run":
+            self.icon_layout = None
+            return
+        center = self.pet.geometry().center()
+        moved = 0
+        if self.icon_layout is not None:
+            moved = self.icon_layout.scatter_near(center.x(), center.y(), n=3)
+        self._collided = moved > 0
+        self.pet.do_panic(2600)
+        self.beep("panic")
+        self.pet.bubble.show_text(
+            lines.pick(lines.PANIC_HIT if moved else lines.PANIC), 2400)
+        QTimer.singleShot(2600, self._restore_icons)
+
+    def _restore_icons(self):
+        if self.icon_layout is not None:
+            self.icon_layout.restore()
+            self.icon_layout = None
+        if getattr(self, "_collided", False):
+            self.pet.bubble.show_text(lines.pick(lines.PANIC_DONE), 2200)
+            self._collided = False
+
+    # ================= 检查更新 =================
+    def _auto_check_update(self):
+        if self.config.get("auto_update_check", True):
+            self.check_update(silent=True)
+
+    def check_update(self, silent: bool = False):
+        repo = str(self.config.get("update_repo", "") or "").strip()
+        url = str(self.config.get("update_url", "") or "").strip()
+        if not silent:
+            self.panel and self.panel.set_update_status("正在检查更新……")
+        self.update_worker = UpdateWorker(repo, url)
+        self.update_worker.result.connect(
+            lambda info, s=silent: self._on_update_result(info, s))
+        self.update_worker.start()
+
+    def _on_update_result(self, info: dict, silent: bool = False):
+        status = info.get("status")
+        if status != "ok":
+            if silent:
+                return
+            msg = {"no_url": "未配置更新地址，先在设置页填写仓库或清单地址。",
+                   "offline": "网络不可用，检查更新失败。",
+                   "parse": "更新信息解析失败，请检查地址。",
+                   "http_404": "仓库或 Release 不存在（404）。",
+                   }.get(status, f"检查更新失败（{status}）。")
+            self.panel and self.panel.set_update_status(msg)
+            return
+        if info.get("newer"):
+            self.pet.bubble.show_text(f"有新版本 v{info['latest']} 啦！", 4200)
+            self.pet.set_expression("happy", 3000)
+            self.panel and self.panel.set_update_status(
+                f"发现新版本 v{info['latest']}（当前 v{info['current']}）。")
+            box = QMessageBox(self.panel)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle("发现新版本")
+            box.setText(f"有新版本 v{info['latest']}（当前 v{info['current']}）。")
+            box.setInformativeText((info.get("notes") or "暂无更新说明。")[:1200])
+            dl_btn = None
+            if info.get("setup") or info.get("exe"):
+                size = int(info.get("size") or 0)
+                label = "下载并安装" + (f"（{size / 1048576:.0f}MB）" if size else "")
+                dl_btn = box.addButton(label, QMessageBox.AcceptRole)
+            if info.get("url"):
+                page_btn = box.addButton("打开发布页", QMessageBox.ActionRole)
+                page_btn.clicked.connect(
+                    lambda _=False, u=info["url"]: QDesktopServices.openUrl(QUrl(u)))
+            box.addButton("以后再说", QMessageBox.RejectRole)
+            box.exec()
+            if dl_btn is not None and box.clickedButton() is dl_btn:
+                self.start_update_download(info)
+        else:
+            msg = f"当前已是最新版本 v{info['current']}。"
+            if not silent:
+                self.pet.bubble.show_text("已经是最新版本啦。", 2600)
+            self.panel and self.panel.set_update_status(msg)
+
+    def start_update_download(self, info: dict):
+        url = info.get("setup") or info.get("exe") or ""
+        name = url.split("/")[-1].split("?")[0] or "WhaleGirlPet-Setup.exe"
+        if not name.lower().endswith(".exe"):
+            name = "WhaleGirlPet-Setup.exe"
+        self.update_dl = DownloadWorker(url, name, info.get("sha", ""))
+        self.update_dl.progress.connect(self._on_update_progress)
+        self.update_dl.done.connect(self._on_update_done)
+        self.update_dl.failed.connect(self._on_update_failed)
+        self.update_dl.start()
+        self.pet.bubble.show_text("开始下载新版本，别急着关我。", 3000)
+
+    def _on_update_progress(self, pct: int, got: int, total: int):
+        mb = got / 1048576
+        msg = (f"下载中 {pct}%（{mb:.1f}/{total / 1048576:.1f}MB）" if total
+               else f"下载中 {mb:.1f}MB")
+        self.panel and self.panel.set_update_status(msg)
+
+    def _on_update_done(self, path: str):
+        self.panel and self.panel.set_update_status("下载完成，准备安装。")
+        box = QMessageBox(self.panel)
+        box.setWindowTitle("安装新版本")
+        box.setText("新版本已下载并校验通过。现在安装吗？（安装时桌宠会退出，装好后自动启动）")
+        box.setInformativeText(path)
+        ok = box.addButton("现在安装", QMessageBox.AcceptRole)
+        box.addButton("稍后", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is not ok:
+            return
+        self._launch_installer(path)
+
+    def _on_update_failed(self, why: str):
+        self.panel and self.panel.set_update_status(f"下载失败：{why}")
+        self.pet.bubble.show_text("下载没成功，等会儿再试试。", 2800)
+
+    def _launch_installer(self, path: str):
+        try:
+            if os.path.basename(path).lower().endswith(".exe"):
+                QProcess.startDetached(path, ["/SILENT", "/CLOSEAPPLICATIONS",
+                                             "/RESTARTAPPLICATIONS"])
+            else:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+        except Exception:  # noqa: BLE001
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+            return
+        # 安装器需要覆盖正在运行的 exe，先退场
+        QTimer.singleShot(1200, self.quit_app)
+
+    # ================= 外观 =================
+    def set_skin(self, key: str):
+        if key in SKINS:
+            self.pet.set_skin(key)
+            self.refresh_panel()
+
+    def set_size(self, label: str):
+        s = SIZE_LEVELS.get(label, 1.0)
+        self.config["size_label"] = label
+        self.pet.set_pet_scale(s)
+        self.refresh_panel()
+
+    # ================= 面板 =================
+    def open_panel(self):
+        if self.panel is None:
+            self.panel = ControlPanel(self)
+        self.panel.refresh()
+        self.panel.show()
+        self.panel.raise_()
+        self.panel.activateWindow()
+
+    def open_panel_chat(self):
+        self.open_panel()
+        self.panel.chat_input.setFocus()
+
+    def refresh_panel(self):
+        if self.panel is not None:
+            self.panel.refresh()
+
+    def hide_pet(self):
+        self._user_hidden = True
+        self.pet.hide()
+        self.tray.showMessage(APP_NAME, "桌宠已隐藏，从托盘菜单或快捷键 Alt+Shift+F 唤回。")
+
+    # ================= 聊天（本地模型优先，云端兜底） =================
+    def _chat_busy(self) -> bool:
+        return bool((self.worker is not None and self.worker.isRunning()) or
+                    (self.llm_worker is not None and self.llm_worker.isRunning()) or
+                    (self.skill_worker is not None and self.skill_worker.isRunning()))
+
+    def _system_text(self, user_text: str, no_think: bool = True) -> str:
+        key = self.config.get("persona", pers.DEFAULT_PERSONA)
+        p = pers.get(key) or {}
+        parts = [p.get("system", "").strip()]
+        parts.append(f"你在跟你的主人聊天。你的名字是「{self.get_name()}」。")
+        parts.append(self.emotion.to_prompt())
+        if self.config.get("memory_on", True):
+            ctx = self.memory.context_block(user_text, n_recent=4, n_facts=6)
+            if ctx:
+                parts.append(ctx)
+        if self.config.get("kb_on", True):
+            ctx = self.kb.context_block(user_text, k=2)
+            if ctx:
+                parts.append(ctx)
+        if self.config.get("websearch_on", True) and websearch.looks_like_query(user_text):
+            ctx = websearch.context_block(user_text, k=4)
+            if ctx:
+                parts.append(ctx)
+        parts.append("用口语回答，2 到 4 句，不要分点罗列，不要用书面腔；不确定就说不确定。")
+        if no_think:
+            parts.append("/no_think")
+        return "\n\n".join([x for x in parts if x])
+
+    def _build_messages(self, user_text: str) -> list:
+        msgs = [{"role": "system", "content": self._system_text(user_text, True)}]
+        if self.config.get("memory_on", True):
+            msgs.extend(self.memory.recent(6))
+        msgs.append({"role": "user", "content": user_text})
+        return msgs
+
+    def send_chat(self, text: str):
+        text = (text or "").strip()
+        if not text:
+            return
+        if self._chat_busy():
+            self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
+            return
+        self.history.append({"role": "user", "content": text})
+        self.panel and self.panel.append_chat("user", text)
+        self.panel and self.panel.set_chat_status("思考中……")
+        self.pet.set_expression("curious", 4000)
+        if self.config.get("memory_on", True):
+            try:
+                self.memory.add_message("user", text)
+                for k, v in mem.extract_facts(text):
+                    self.memory.add_fact(k, v)
+            except Exception:  # noqa: BLE001
+                pass
+        self.emotion.apply("chat", 1.0)
+
+        import skills as sk
+        blocked, why = sk.guard(text)
+        if blocked:
+            self._finish_reply("这个操作要删东西或者动磁盘，我不做。要不要我帮你把文件挪到回收站？",
+                               "安全前置拦截")
+            return
+        if (self.config.get("llm_on", True) and local_llm.available()
+                and sk.looks_like_command(text)):
+            try:
+                self.skill_worker = local_llm.LocalChatWorker(
+                    self.llm, self._router_messages(text), max_tokens=180,
+                    temperature=0.1, fmt="json")
+                self.skill_worker.reply_ready.connect(
+                    lambda raw: self._on_skill_route(raw, text))
+                self.skill_worker.failed.connect(lambda r: self._chat_plain(text))
+                self.skill_worker.start()
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        self._chat_plain(text)
+
+    def _router_messages(self, text: str) -> list:
+        sys = ("你是指令解析器，只输出一个 JSON 对象，不要任何解释文字。\n"
+               "可用 skill 只有这 4 个：\n"
+               "1 set_reminder：设提醒，必填 time、content；可选 repeat、priority。\n"
+               "2 check_weather：查天气，必填 city；可选 date。\n"
+               "3 open_file：打开文件，必填 path；可选 mode（只读 或 编辑）。\n"
+               "4 chat：普通闲聊，必填 reply（一句话回复）。\n"
+               '输出格式：{"skill":"set_reminder","parameters":{"time":"...","content":"..."}}\n'
+               "用户的话没有明确要办的事，就用 chat。不要编造不存在的 skill。\n"
+               "时间原样保留用户说法（例如「明天七点」），不要改年份。")
+        return [{"role": "system", "content": sys},
+                {"role": "user", "content": text}]
+
+    def _on_skill_route(self, raw: str, text: str):
+        import skills as sk
+        try:
+            res = sk.handle(raw, text, mock=bool(self.config.get("skills_mock", True)))
+        except Exception:  # noqa: BLE001
+            res = {"ok": False, "reason": "handler_crash", "say": ""}
+        self._last_skill = res
+        if res.get("ok"):
+            self.panel and self.panel.set_chat_status(
+                "能力层：" + str(res.get("skill")))
+            self._finish_reply(res.get("say") or "记下了。",
+                               "能力层·" + str(res.get("skill")))
+            return
+        # 拦截/不合法 → 退回普通对话，不硬顶
+        self.panel and self.panel.set_chat_status(
+            "能力层拒了（%s），回普通对话" % res.get("reason", ""))
+        self._chat_plain(text)
+
+    def _chat_plain(self, text: str):
+        if self.config.get("llm_on", True) and local_llm.available():
+            try:
+                self.llm_worker = local_llm.LocalChatWorker(
+                    self.llm, self._build_messages(text), max_tokens=260, temperature=0.8)
+                self.llm_worker.reply_ready.connect(self._on_local_reply)
+                self.llm_worker.failed.connect(self._on_local_failed)
+                self.llm_worker.start()
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        self._chat_cloud(text)
+
+    def _chat_cloud(self, text: str):
+        prof = self.active_profile()
+        if not (prof.get("api_key") or read_zhipu_key()):
+            self._on_ai_failed("no_key")
+            return
+        self.worker = ChatWorker(
+            endpoint=prof.get("endpoint", ""), model=prof.get("model", ""),
+            api_key=prof.get("api_key", ""), history=self.history, user_text=text,
+            system_prompt=self._system_text(text, False))
+        self.worker.reply_ready.connect(self._on_ai_reply)
+        self.worker.failed.connect(self._on_ai_failed)
+        self.worker.start()
+
+    def _on_local_reply(self, content: str):
+        self._finish_reply(content, "本地 Qwen3")
+
+    def _on_local_failed(self, reason: str):
+        self.panel and self.panel.set_chat_status(f"本地模型没答上来（{reason}），换云端试试……")
+        text = self.history[-1]["content"] if self.history else ""
+        prof = self.active_profile()
+        if prof.get("api_key") or read_zhipu_key():
+            self._chat_cloud(text)
+        else:
+            self._on_ai_failed(f"local_{reason}")
+
+    def _finish_reply(self, content: str, source: str = ""):
+        content = (content or "").strip()
+        if not content:
+            self._on_ai_failed("empty")
+            return
+        self.history.append({"role": "assistant", "content": content})
+        if self.config.get("memory_on", True):
+            try:
+                self.memory.add_message("assistant", content)
+            except Exception:  # noqa: BLE001
+                pass
+        self.state.chat_bonus()
+        self.emotion.apply("chat", 1.0)
+        self.panel and self.panel.append_chat("assistant", content)
+        self.panel and self.panel.set_chat_status(source)
+        self._speak(content, 4200)
+        self.pet.set_expression("happy", 3000)
+        self.beep("chat")
+        self.refresh_panel()
+
+    def _on_ai_reply(self, content: str):
+        self._finish_reply(content, "云端")
+
+    def _on_ai_failed(self, reason: str):
+        fallback = {
+            "no_key": lines.pick(lines.NO_KEY),
+            "offline": lines.pick(lines.OFFLINE),
+            "http_401": "密钥好像不对，去设置页检查一下 API Key。",
+            "http_429": "问的人太多啦，本鱼被限流了，稍后再试。",
+        }.get(reason, "本鱼没接上话，先陪你扯两句。")
+        self.history.append({"role": "assistant", "content": fallback})
+        if self.config.get("memory_on", True):
+            try:
+                self.memory.add_message("assistant", fallback)
+            except Exception:  # noqa: BLE001
+                pass
+        self.emotion.apply("task_fail", 0.6)
+        self.panel and self.panel.append_chat("assistant", fallback)
+        self.panel and self.panel.set_chat_status(f"没连上（{reason}），已用本地台词。")
+        self._speak(fallback, 3000)
+        self.pet.set_expression("sleepy", 3000)
+        self.beep("error")
+
+    def save_ai_settings(self):
+        if self.panel is None:
+            return
+        self.save_profile_fields(
+            self.panel.ed_profile_name.text(),
+            self.panel.ed_endpoint.text(),
+            self.panel.ed_model.text(),
+            self.panel.ed_key.text())
+        self.panel.lbl_ai_status.setText("已保存当前后端。")
+
+    def test_ai_connection(self):
+        self.save_ai_settings()
+        prof = self.active_profile()
+        if not (prof.get("api_key") or read_zhipu_key()):
+            self.panel.lbl_ai_status.setText("未检测到 API Key。")
+            return
+        self.panel.lbl_ai_status.setText("正在测试连接……")
+        self.worker = ChatWorker(prof.get("endpoint", ""), prof.get("model", ""),
+                                 prof.get("api_key", ""), [], "只回复两个字：连通",
+                                 system_prompt=build_system_prompt(self.get_name()))
+        self.worker.reply_ready.connect(
+            lambda c: self.panel and self.panel.lbl_ai_status.setText(f"连接成功：{c[:20]}"))
+        self.worker.failed.connect(
+            lambda r: self.panel and self.panel.lbl_ai_status.setText(f"连接失败：{r}"))
+        self.worker.start()
+
+    # ================= 形态切换 =================
+    def set_form(self, form: str):
+        self.pet.set_form(form)
+
+    def on_form_change(self, form: str, skin: str):
+        # v2.9.2 形态切换不再语音播报：切换频繁时太吵，也会打断正在说的话
+        self.save_config()
+        self.refresh_panel()
+
+    # ================= 账号（本地多档案） =================
+    def account_list(self) -> list:
+        return self.accounts.all()
+
+    def account_name(self) -> str:
+        try:
+            return self.accounts.current().get("name", "默认")
+        except Exception:  # noqa: BLE001
+            return "默认"
+
+    def new_account(self, name: str, copy_current: bool = False) -> bool:
+        try:
+            info = self.accounts.create(name, self.accounts.current_slug() if copy_current else "")
+        except Exception:  # noqa: BLE001
+            return False
+        self.refresh_panel()
+        return bool(info)
+
+    def rename_account(self, slug: str, name: str) -> bool:
+        ok = self.accounts.rename(slug, name)
+        self.refresh_panel()
+        return ok
+
+    def delete_account(self, slug: str) -> bool:
+        ok = self.accounts.delete(slug)
+        self.refresh_panel()
+        return ok
+
+    def switch_account(self, slug: str) -> bool:
+        if slug == self.accounts.current_slug():
+            return True
+        self.save_config()                    # 先把旧账号存盘
+        if not self.accounts.activate(slug):
+            return False
+        try:
+            self.memory.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.config = self._load_config()
+        self.state = PetState()
+        self.state.from_dict(self.config.get("save", {}))
+        self.emotion = emo.EmotionState()
+        try:
+            self.emotion.from_dict(self.config.get("emotion") or {})
+        except Exception:  # noqa: BLE001
+            pass
+        self.memory = mem.MemoryStore()
+        self.kb = knowledge.KnowledgeBase()
+        self.usage = UsageTracker()
+        self.audio = AudioManager(self.config)
+        self.tts = TTSService(self.config, self.audio)
+        self.llm.config = self.config
+        self.scheduler.config = self.config
+        self.history = []
+        self.pet.base = self.pet._load_skin(self.config.get("skin", "default"))
+        self.pet.restore_base_expression()
+        self.pet._update_pix()
+        self.refresh_panel()
+        self._speak(f"切到「{self.account_name()}」啦。", 2600)
+        return True
+
+    # ================= 使用统计 / 开机播报 =================
+    def _on_usage_tick(self):
+        try:
+            self.usage.tick()
+            self.usage.save()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def yesterday_report(self) -> str:
+        try:
+            return self.usage.report_text(self.usage.yesterday_key())
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _maybe_boot_report(self):
+        # 每天一次病毒库过期检查：独立于早报是否已播
+        self._maybe_update_signatures()
+        if not self.config.get("boot_report_on", True):
+            return
+        try:
+            today = self.usage.today
+            if self.config.get("boot_report_day") == today:
+                return
+            text = self.usage.report_text(self.usage.yesterday_key())
+            self.config["boot_report_day"] = today
+            self.save_config()
+        except Exception:  # noqa: BLE001
+            return
+        if text:
+            self.pet.bubble.show_text("昨天你的电脑是这么用的：\n" + text, 9000)
+            self.pet.set_expression("curious", 4000)
+        # 病毒防御与拦截信息：异步取，避免卡开机
+        if self.config.get("av_on", True):
+            try:
+                import secscan
+                self.sec_worker = secscan.SummaryWorker()
+                self.sec_worker.done.connect(self._on_boot_security)
+                self.sec_worker.start()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_boot_security(self, summary: str):
+        if not summary:
+            return
+        self._security_line = summary
+        try:
+            log = os.path.join(paths.runtime_dir(), "boot.log")
+            os.makedirs(os.path.dirname(log), exist_ok=True)
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                    "security": summary}, ensure_ascii=False) + "\n")
+        except Exception:  # noqa: BLE001
+            pass
+        self.pet.bubble.show_text("病毒防御：" + summary, 8000)
+        self.pet.set_expression("happy", 3000)
+        self.refresh_panel()
+
+    def security_line(self) -> str:
+        return getattr(self, "_security_line", "")
+
+    def _maybe_update_signatures(self):
+        if not self.config.get("av_autoupdate", True):
+            return
+        try:
+            import secscan
+            today = self.usage.today
+            if self.config.get("av_check_day") == today:
+                return
+            av = secscan.av_health()
+            self.config["av_check_day"] = today
+            self.save_config()
+            if not av.get("ok") or av.get("stale"):
+                self.update_signatures(silent=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def update_signatures(self, silent: bool = False) -> bool:
+        if self.sign_worker is not None and self.sign_worker.isRunning():
+            return False
+        try:
+            import secscan
+            self.sign_worker = secscan.UpdateWorker()
+            self.sign_worker.done.connect(
+                lambda ok, msg: self._on_sign_done(ok, msg, silent))
+            self.sign_worker.start()
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _on_sign_done(self, ok: bool, msg: str, silent: bool):
+        self.config["av_last_update"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.save_config()
+        if ok:
+            text = "病毒库已更新到最新。"
+        else:
+            text = "病毒库更新没成功：" + (msg[:60] or "未知原因")
+        if not silent:
+            self.pet.bubble.show_text(text, 5000)
+            self.refresh_panel()
+
+    # ---------- v2.3.0 定时：病毒库 9/12/21 点、防火墙每周 ----------
+    AV_SLOTS = ("09:00", "12:00", "21:00")
+    FW_NAMES = {"Domain": "域网络", "Private": "专用网络", "Public": "公用网络"}
+
+    def _on_minute(self):
+        now = time.strftime("%H:%M")
+        today = time.strftime("%Y-%m-%d")
+        if now in self.AV_SLOTS:
+            stamp = f"{today} {now}"
+            if self.config.get("av_slots_done") != stamp:
+                self.config["av_slots_done"] = stamp
+                self.save_config()
+                self.pet.bubble.show_text(f"到 {now} 了，我去更新一次病毒库。", 4000)
+                self.update_signatures(silent=True)
+        self._maybe_firewall_weekly()
+
+    def _maybe_firewall_weekly(self):
+        """每 7 天体检一次防火墙（只读，不改任何开关）。"""
+        if not self.config.get("av_on", True):
+            return
+        today = time.strftime("%Y-%m-%d")
+        last = str(self.config.get("fw_check_day") or "")
+        if last:
+            try:
+                import datetime as dt
+                if (dt.date.fromisoformat(today) - dt.date.fromisoformat(last)).days < 7:
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            import secscan
+            self.config["fw_check_day"] = today
+            self.save_config()
+            self.fw_worker = secscan.FirewallWorker()
+            self.fw_worker.done.connect(self._on_firewall_week)
+            self.fw_worker.start()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_firewall_week(self, rows: list):
+        if not rows:
+            return
+        off = [self.FW_NAMES.get(r.get("name", ""), r.get("name", ""))
+               for r in rows if not r.get("enabled")]
+        if off:
+            self.pet.bubble.show_text(
+                "⚠ 每周防火墙体检：" + "、".join(off) + " 是关着的，我建议你打开。", 7000)
+            self.pet.set_expression("angry", 4000)
+        else:
+            self.pet.bubble.show_text("每周防火墙体检：三档都开着，很好。", 4000)
+
+    # ---------- v2.3.0 语音命令 ----------
+    def voice_listen(self):
+        if self.voice_worker is not None and self.voice_worker.isRunning():
+            return
+        if self._chat_busy():
+            self.pet.bubble.show_text("等我把这句说完再听你说。", 2500)
+            return
+        self.pet.bubble.show_text("我在听，说一句吧（说完停一下）……", 5000)
+        self.pet.set_expression("curious", 6000)
+        try:
+            import voice_cmd
+            self.voice_worker = voice_cmd.VoiceWorker(wait_s=4, timeout_s=14)
+            self.voice_worker.done.connect(self._on_voice)
+            self.voice_worker.start()
+        except Exception as e:  # noqa: BLE001
+            self.pet.bubble.show_text("语音模块起不来：" + str(e)[:40], 3500)
+
+    def _on_voice(self, res: dict):
+        self._last_voice = res or {}
+        text = str((res or {}).get("text") or "").strip()
+        self.panel and self.panel.set_chat_status(("听到：" + text) if text else "没听清")
+        if not text:
+            reason = str((res or {}).get("reason") or "")
+            tip = {"no_mic": "没找到麦克风，检查一下设备。",
+                   "no_speech": "没听到声音，再说一次？",
+                   "timeout": "听的时间到了，没抓到语音。",
+                   "empty_text": "听到了，但没识别出字。"}.get(
+                       reason, "没听清（" + reason[:30] + "）")
+            self.pet.bubble.show_text(tip, 3200)
+            return
+        self.pet.bubble.show_text("听到：" + text, 2500)
+        # v2.9.2 唤醒词：大肥鱼 / 你好，大肥鱼 / 改名后的名字（含「你好，名字」）
+        wake = self._match_wake_word(text)
+        if wake:
+            rest = text.strip()[len(wake):].strip(" ，,。.!！?？、")
+            self.pet.bubble.show_text("在呢，说吧。", 2200)
+            self.pet.set_expression("happy", 2500)
+            self.panel and self.panel.append_chat("user", text)
+            if not rest:
+                # 只喊了名字：接着听下一句，不用再按快捷键
+                if self.config.get("wake_then_listen", True) and not self._chat_busy():
+                    QTimer.singleShot(700, self.voice_listen)
+                return
+            text = rest
+        # 先当本地命令执行（打开面板、换装、动作、打工、安全体检…）；没命中再走对话
+        if self._dispatch_voice(text):
+            return
+        self.send_chat(text)
+
+    def wake_words(self) -> list:
+        """唤醒词候选：固定「大肥鱼」+ 当前角色名，各自带「你好」说法。"""
+        name = str(self.config.get("name") or DEFAULT_NAME).strip()
+        bases = ["大肥鱼"]
+        if name and name not in bases:
+            bases.append(name)
+        out = []
+        for w in bases:
+            for form in (w, "你好" + w, "你好，" + w):
+                if form not in out:
+                    out.append(form)
+        return out
+
+    def _match_wake_word(self, text: str) -> str:
+        """只有整句或以唤醒词开头才算唤醒，避免「大肥鱼好看吗」这类闲聊被拦截。"""
+        t = (text or "").strip()
+        for w in sorted(self.wake_words(), key=len, reverse=True):
+            if t == w or t.startswith(w):
+                return w
+        return ""
+
+    def _dispatch_voice(self, text: str) -> bool:
+        """语音 → 本地功能。命中就执行，并把这一句回灌到面板聊天记录。"""
+        low = (text or "").strip()
+        if not low:
+            return False
+        for keys, label, fn in self._voice_commands():
+            if any(k in low for k in keys):
+                try:
+                    fn()
+                except Exception as e:  # noqa: BLE001
+                    self.pet.bubble.show_text(f"{label}没做成：{str(e)[:30]}", 3000)
+                    return True
+                self.pet.bubble.show_text(f"好，{label}。", 2200)
+                self.panel and self.panel.append_chat("user", text)
+                self.panel and self.panel.append_chat("assistant", f"（语音）好，{label}。")
+                return True
+        return False
+
+    def _voice_commands(self) -> list:
+        """(关键词, 说法, 动作)。先具体后笼统，避免"打开"吃掉"打开面板"。"""
+        def _skin_next():
+            skins = ["default", "jk", "hanfu", "longmaid", "blackgown", "blackgreen", "blackred"]
+            cur = self.config.get("skin", "default")
+            nxt = skins[(skins.index(cur) + 1) % len(skins)] if cur in skins else skins[0]
+            self.set_skin(nxt)
+
+        def _close_panel():
+            if self.panel is not None:
+                self.panel.close()
+
+        def _feed():
+            snacks = self.snacks()
+            self.feed_snack(snacks[0]["key"] if snacks else "fish")
+
+        def _set_topmost(on):
+            self.pet.set_topmost(bool(on))
+            self.save_config()
+
+        def _set_scale(step):
+            self.pet.set_pet_scale(self.pet.scale + step)
+            self.save_config()
+
+        def _size(label):
+            self.set_size(label)
+
+        return [
+            (("更新病毒库", "升级病毒库", "更新杀毒"), "病毒库更新了",
+             lambda: self.update_signatures()),
+            (("安全体检", "检查电脑安全", "体检"), "开始安全体检", self.run_scan),
+            (("清理垃圾", "清理电脑垃圾", "清垃圾"), "开始清理垃圾",
+             lambda: self.start_task("cleanup")),
+            (("擦桌面", "擦一下桌面"), "开始擦桌面", lambda: self.start_task("wipe")),
+            (("做家务", "收拾房间"), "开始做家务", lambda: self.start_task("chores")),
+            (("联网学习", "去上课", "学习"), "去联网上课", lambda: self.start_task("study")),
+            (("满屏跑", "跑一圈"), "开始满屏跑", lambda: self.begin_run(15000)),
+            (("跑步", "跑起来"), "跑起来", lambda: self.pet.do_run(15000)),
+            (("散步", "走两步", "走走"), "散步去", self.pet.do_walk),
+            (("跳舞", "跳个舞"), "跳舞", lambda: self.pet.do_action("dance")),
+            (("蹦一下", "跳一下"), "跳一下", self.pet.do_jump),
+            (("摇一摇", "抖一下"), "晃一晃", self.pet.do_shake),
+            (("表演", "来个表演", "随便做点啥"), "表演一个", self.perform_random),
+            (("摸头", "摸摸头"), "摸摸头", self.pet.do_pat),
+            (("喂零食", "喂点吃的", "吃点东西"), "喂你了", _feed),
+            (("睡觉", "休息一下"), "去睡觉", self.pet.do_sleep),
+            (("起床", "醒醒", "醒来"), "醒过来了", self.pet.wake),
+            (("换装", "换衣服", "换一套"), "换装了", _skin_next),
+            (("萝莉", "小形态"), "换成萝莉形态", lambda: self.set_form("loli")),
+            (("成熟", "大形态"), "换成成熟形态", lambda: self.set_form("mature")),
+            (("静音", "别出声", "闭嘴"), "静音了", lambda: self.toggle_sound(False)),
+            (("开声音", "出声", "取消静音"), "声音打开了", lambda: self.toggle_sound(True)),
+            (("番茄钟", "计时二十五分钟"), "番茄钟开始", lambda: self.start_tomato(25)),
+            (("停止计时", "关掉计时器", "结束番茄钟"), "计时停了", self.stop_tomato),
+            (("喝水提醒", "提醒我喝水"), "喝水提醒开着", lambda: self.toggle_water(True)),
+            (("不用喝水提醒", "关掉喝水提醒"), "喝水提醒关了", lambda: self.toggle_water(False)),
+            (("久坐提醒", "提醒我站起来"), "久坐提醒开着", lambda: self.toggle_sedentary(True)),
+            (("不用久坐提醒", "关掉久坐提醒"), "久坐提醒关了", lambda: self.toggle_sedentary(False)),
+            (("跟着我", "跟着鼠标"), "跟着你跑", lambda: self.pet.set_follow(True)),
+            (("别跟着我", "别跟了"), "不跟了", lambda: self.pet.set_follow(False)),
+            (("碎碎念", "多说点话", "陪我聊会"), "开始碎碎念", lambda: self.toggle_chatter(True)),
+            (("别碎碎念", "安静点"), "不念叨了", lambda: self.toggle_chatter(False)),
+            (("自主行动", "自己动起来"), "自主行动开了", lambda: self.set_auto(True)),
+            (("别自己动了", "停止自主行动"), "自主行动关了", lambda: self.set_auto(False)),
+            (("置顶", "一直在上面"), "置顶打开", lambda: _set_topmost(True)),
+            (("取消置顶", "别置顶"), "置顶取消", lambda: _set_topmost(False)),
+            (("变大", "大一点", "放大"), "变大了", lambda: _set_scale(0.1)),
+            (("变小", "小一点", "缩小"), "变小了", lambda: _set_scale(-0.1)),
+            (("大号", "大尺寸"), "换成大号", lambda: _size("大")),
+            (("中号", "中尺寸"), "换成中号", lambda: _size("中")),
+            (("小号", "小尺寸"), "换成小号", lambda: _size("小")),
+            (("检查更新", "有没有新版本", "更新版本"), "去检查更新了", self.check_update),
+            (("停下", "停止", "别跑了"), "停下了", self._voice_stop),
+            (("关掉面板", "关闭面板"), "关掉面板", _close_panel),
+            (("打开面板", "控制面板", "打开设置"), "打开面板", self.open_panel),
+            (("躲起来", "隐藏"), "隐藏起来", self.pet.hide),
+            (("出来", "显示"), "出来了", self.pet.show),
+        ]
+
+    def _voice_stop(self):
+        try:
+            self.cancel_task()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.pet.finish_action()
+            self.pet.finish_state()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ================= 定时 / 22:00 休息 =================
+    def _on_schedule_fire(self, task: dict):
+        text = (task.get("text") or "时间到啦").strip()
+        self._speak(f"叮——{text}", 6000)
+        self.pet.set_expression("curious", 3000)
+        self.beep("done")
+        self.refresh_panel()
+
+    def _on_night_remind(self, n: int):
+        if n <= 0:
+            msg = random.choice([
+                "十点啦，今天的活儿收个尾，早点去睡吧。",
+                "到十点了哦，剩下的明天再弄，别熬。",
+            ])
+            expr = "sleepy"
+        else:
+            msg = random.choice([
+                f"第 {n} 次催你了——电脑关不关？",
+                f"还不睡？（{n}/4）我可盯着呢。",
+                f"再刷一会儿我可要一直喊了，{n} 次了。",
+            ])
+            expr = "angry"
+        self._speak(msg, 6000)
+        self.pet.set_expression(expr, 4000)
+        self.beep("done")
+
+    def night_on(self) -> bool:
+        return bool(self.config.setdefault("schedule", {}).get("night_on", True))
+
+    def set_night_on(self, on: bool):
+        self.config.setdefault("schedule", {})["night_on"] = bool(on)
+        self.scheduler.reset_night()
+        self.save_config()
+
+    def schedule_tasks(self) -> list:
+        try:
+            return self.scheduler.tasks()
+        except Exception:  # noqa: BLE001
+            return []
+
+    def add_schedule(self, kind: str, when: str, text: str, weekday: int = -1):
+        return self.scheduler.add(kind, when, text, weekday)
+
+    def remove_schedule(self, tid):
+        self.scheduler.remove(tid)
+
+    def toggle_schedule(self, tid, on: bool):
+        self.scheduler.toggle(tid, on)
+
+    # ================= 安全体检 =================
+    def run_scan(self):
+        if self.scan_worker is not None and self.scan_worker.isRunning():
+            return
+        import secscan
+        self.scan_worker = secscan.ScanWorker()
+        self.scan_worker.done.connect(self._on_scan_done)
+        self.scan_worker.start()
+
+    def _on_scan_done(self, report: dict):
+        self._scan_report = report
+        self.panel and self.panel.refresh_scan(report)
+
+    def last_scan(self) -> dict:
+        return getattr(self, "_scan_report", None) or {}
+
+    # ================= 知识库 / 记忆 =================
+    def import_knowledge(self, path: str) -> dict:
+        res = self.kb.import_file(path)
+        self.refresh_panel()
+        return res
+
+    def kb_stats(self) -> dict:
+        try:
+            return self.kb.stats()
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def kb_docs(self) -> list:
+        try:
+            return self.kb.docs()
+        except Exception:  # noqa: BLE001
+            return []
+
+    def remove_kb_doc(self, doc_id):
+        self.kb.remove(doc_id)
+        self.refresh_panel()
+
+    def memory_facts(self) -> list:
+        try:
+            return self.memory.facts(20)
+        except Exception:  # noqa: BLE001
+            return []
+
+    def memory_count(self) -> int:
+        try:
+            return self.memory.count()
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def forget_memory(self) -> int:
+        n = 0
+        try:
+            n = self.memory.forget_all()
+        except Exception:  # noqa: BLE001
+            pass
+        self.refresh_panel()
+        return n
+
+    # ================= 本地模型 =================
+    def local_llm_ready(self) -> bool:
+        try:
+            return self.llm.is_running() or self.llm.health()
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _warm_local_llm(self):
+        if not local_llm.available():
+            return
+        threading.Thread(target=self.llm.start, daemon=True).start()
+
+    def start_local_llm(self):
+        self._warm_local_llm()
+
+    def stop_local_llm(self):
+        try:
+            self.llm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def local_llm_info(self) -> dict:
+        m = self.llm.model()
+        backend = ""
+        ollama = []
+        try:
+            backend = self.llm.backend
+            if backend == "ollama":
+                ollama = local_llm.ollama_models(self.llm.ollama_host)
+        except Exception:  # noqa: BLE001
+            backend = backend or "llama_cpp"
+        use = ""
+        if backend == "ollama":
+            use = self.llm.ollama_model
+            if not any(x["name"] == use for x in ollama):
+                use = self.llm._pick_ollama_model()
+        return {
+            "available": local_llm.available(),
+            "running": self.local_llm_ready(),
+            "model": os.path.basename(m) if (m and backend == "llama_cpp") else use,
+            "port": self.llm.port,
+            "backend": backend,
+            "ollama": ollama,
+            "ollama_host": self.llm.ollama_host,
+            "loaded": local_llm.ollama_loaded(self.llm.ollama_host) if backend == "ollama" else [],
+        }
+
+    # ================= 模型库 =================
+    def local_models(self):
+        return model_dl.local_models()
+
+    def download_model(self, item_id: str) -> bool:
+        it = models_catalog.by_id(item_id)
+        if not it or not models_catalog.can_download(it):
+            return False
+        w = self.dl_worker
+        if w is not None and w.isRunning():
+            return False
+        dest = os.path.join(paths.runtime_dir(), "models", it["file"])
+        self.dl_worker = model_dl.ModelDownloader(item_id, it["url"], dest)
+        self.dl_worker.progress.connect(self._on_dl_progress)
+        self.dl_worker.done.connect(self._on_dl_done)
+        self.dl_worker.failed.connect(self._on_dl_failed)
+        self.dl_worker.start()
+        return True
+
+    def cancel_download(self) -> bool:
+        w = self.dl_worker
+        if w is not None and w.isRunning():
+            w.stop()
+            return True
+        return False
+
+    def _on_dl_progress(self, item_id: str, got: int, total: int):
+        try:
+            self.dl_speed = self.dl_worker.speed if self.dl_worker else 0.0
+        except Exception:  # noqa: BLE001
+            self.dl_speed = 0.0
+        if self.panel is not None:
+            try:
+                self.panel.on_model_progress(item_id, got, total)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_dl_done(self, item_id: str, path: str):
+        self.dl_speed = 0.0
+        it = models_catalog.by_id(item_id) or {}
+        name = it.get("file", "")
+        self.config["llm_model_file"] = name
+        self.save_config()
+        self.dl_worker = None
+        if self.panel is not None:
+            try:
+                self.panel.pbar_model.setVisible(False)
+                self.panel.lbl_dl.setText(f"下载完成：{os.path.basename(path)}，已设为当前模型（重启生效）。")
+                self.panel._refresh_v2()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_dl_failed(self, item_id: str, why: str):
+        self.dl_speed = 0.0
+        self.dl_worker = None
+        if self.panel is not None:
+            try:
+                self.panel.pbar_model.setVisible(False)
+                self.panel.lbl_dl.setText(f"下载未完成：{why}")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def use_model(self, file_name: str) -> bool:
+        p = local_llm.model_path(file_name)
+        if not p or os.path.basename(p) != file_name:
+            return False
+        self.config["llm_model_file"] = file_name
+        self.save_config()
+        try:
+            if self.local_llm_ready():
+                self.llm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    def delete_model(self, file_name: str) -> float:
+        p = os.path.join(paths.runtime_dir(), "models", file_name)
+        if not os.path.exists(p):
+            return 0.0
+        size = os.path.getsize(p) / 1048576
+        os.remove(p)
+        part = p + ".part"
+        if os.path.exists(part):
+            os.remove(part)
+        if str(self.config.get("llm_model_file", "")) == file_name:
+            self.config["llm_model_file"] = ""
+            self.save_config()
+        return size
+
+    # ================= 打工任务 =================
+    def task_state(self):
+        return self.task_active
+
+    def start_task(self, key: str):
+        if self.task_active is not None:
+            return
+        defn = TASK_DEFS.get(key)
+        if not defn:
+            return
+        self.task_active = {"key": key, "left": defn["duration"], "total": defn["duration"],
+                            "fact": "", "last_action": -999}
+        kind = defn["kind"]
+        self._play_task_action(defn)
+        if kind == "run":
+            self.begin_run(defn["duration"] * 1000)
+        elif kind == "clean":
+            self.pet.set_expression("curious", 0)
+            self._start_cleanup()
+        elif kind in ("rest", "wipe", "chore"):
+            self.pet.set_expression("sleepy", 0)
+            if kind == "wipe":
+                self.pet.bubble.show_text(lines.pick(lines.WIPE), 2600)
+            elif kind == "chore":
+                self.pet.bubble.show_text(lines.pick(lines.CHORE), 2600)
+        else:
+            self.pet.set_expression("curious", 0)
+            self._fetch_knowledge()
+        self.task_timer.start()
+        self.panel and self.panel.refresh_tasks()
+
+    def _fetch_knowledge(self):
+        prof = self.active_profile()
+        self.know_worker = ChatWorker(
+            endpoint=prof.get("endpoint", ""), model=prof.get("model", ""),
+            api_key=prof.get("api_key", ""), history=[], user_text=KNOWLEDGE_PROMPT_TOPIC,
+            system_prompt=KNOWLEDGE_PROMPT_TOPIC, max_tokens=200, temperature=0.7)
+        self.know_worker.reply_ready.connect(self._on_knowledge)
+        self.know_worker.failed.connect(self._on_knowledge_failed)
+        self.know_worker.start()
+
+    def _on_knowledge(self, fact: str):
+        if self.task_active:
+            self.task_active["fact"] = fact
+        self.panel and self.panel.set_task_fact(fact)
+
+    def _start_cleanup(self):
+        self.clean_worker = CleanWorker()
+        self.clean_worker.done.connect(self._on_clean_done)
+        self.clean_worker.start()
+
+    def _on_clean_done(self, res: dict):
+        mb = res.get("bytes", 0) / 1048576
+        fact = (f"清理出 {mb:.1f} MB：删除 {res.get('removed', 0)} 个临时文件，"
+                f"{res.get('skipped', 0)} 个被占用已跳过。")
+        if self.task_active:
+            self.task_active["fact"] = fact
+        self.panel and self.panel.set_task_fact(fact)
+
+    def _on_knowledge_failed(self, reason: str):
+        fact = "联网没接上，本鱼先凭记忆讲一句：鲸鱼是用肺呼吸的哺乳动物，不是鱼哦。"
+        if self.task_active:
+            self.task_active["fact"] = fact
+        self.panel and self.panel.set_task_fact(fact)
+
+    def _on_task_tick(self):
+        if not self.task_active:
+            return
+        self.task_active["left"] -= 1
+        if self.task_active["left"] <= 0:
+            self._finish_task()
+            return
+        # 任务期间循环播动作：干活时身子一直在动，而不是只转个表情
+        elapsed = self.task_active["total"] - self.task_active["left"]
+        if elapsed - self.task_active.get("last_action", 0) >= TASK_ACTION_GAP:
+            self.task_active["last_action"] = elapsed
+            defn = TASK_DEFS.get(self.task_active["key"]) or {}
+            if defn.get("kind") != "run":
+                self._play_task_action(defn)
+        self.panel and self.panel.refresh_tasks()
+
+    def _play_task_action(self, defn: dict):
+        """按任务类型播一个动作（sleep 走 do_sleep，其余走动作表）。"""
+        act = str((defn or {}).get("action") or "")
+        if not act:
+            return
+        try:
+            if act == "sleep":
+                self.pet.do_sleep()
+            else:
+                self.pet.do_action(act, 4200)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _finish_task(self):
+        active = self.task_active
+        if not active:
+            return
+        defn = TASK_DEFS[active["key"]]
+        leveled = self.state.reward(exp=defn["exp"], coins=defn["coins"], mood=defn["mood"])
+        done = self.config.setdefault("tasks", {}).setdefault("done_count", {})
+        done[active["key"]] = done.get(active["key"], 0) + 1
+        self.task_active = None
+        self.task_timer.stop()
+        self.pet.restore_base_expression()
+        self.beep("done")
+        msg = f"完工！拿到 {defn['coins']} 金币、{defn['exp']} 经验。"
+        if leveled:
+            msg += f"\n升到 Lv.{self.state.level}！"
+        self.pet.bubble.show_text(msg, 3200)
+        self.pet.set_expression("happy", 3000)
+        self.save_config()
+        self.panel and self.panel.refresh_tasks()
+        self.refresh_panel()
+
+    def cancel_task(self):
+        if self.task_active is None:
+            return
+        self.task_active = None
+        self.task_timer.stop()
+        self.pet.restore_base_expression()
+        self.panel and self.panel.refresh_tasks()
+
+    # ================= 自主行动 =================
+    def set_auto(self, on: bool):
+        self.config["auto_on"] = bool(on)
+        self.save_config()
+
+    def is_night(self) -> bool:
+        """夜间窗口：默认 23:00–07:00，可在 config.schedule.night_range 改。"""
+        if not self.night_on():
+            return False
+        rng = self.config.setdefault("schedule", {}).get("night_range", [23, 7])
+        try:
+            a, b = int(rng[0]), int(rng[1])
+        except (TypeError, IndexError, ValueError):
+            a, b = 23, 7
+        h = time.localtime().tm_hour
+        return h >= a or h < b
+
+    def auto_weights(self) -> dict:
+        """v2.8 自主行动权重表：按心情分档，夜间切到休息池（可被 config["auto_weights"] 覆盖）。"""
+        w = self.config.get("auto_weights")
+        if isinstance(w, dict) and w:
+            return {k: max(0.0, float(v)) for k, v in w.items()}
+        mood = int(getattr(self.state, "mood", 60))
+        pool = {"chatter": 30, "walk": 25, "random_action": 15,
+                "expression": 15, "run": 10, "sleep": 5}
+        if mood < 30:
+            pool.update(chatter=12, walk=12, random_action=8, expression=8, run=2, sleep=58)
+        elif mood > 70:
+            pool.update(chatter=28, walk=30, random_action=22, expression=12, run=20, sleep=2)
+        if self.is_night():
+            pool = {"chatter": 6, "walk": 6, "random_action": 6,
+                    "expression": 8, "run": 0, "sleep": 74}
+        return pool
+
+    def _on_auto(self):
+        if not self.config.get("auto_on", True):
+            return
+        if self.task_active is not None:
+            return
+        if self.pet.state in ("sleep", "drag", "run"):
+            return
+        self.pet.night = self.is_night()
+        pool = self.auto_weights()
+        total = sum(pool.values()) or 1.0
+        r = random.uniform(0, total)
+        acc, pick = 0.0, "sleep"
+        for k, v in pool.items():
+            acc += v
+            if r <= acc:
+                pick = k
+                break
+        if pick == "chatter" and self.config.get("chatter_on", True):
+            self.pet.bubble.show_text(lines.pick(lines.CHAT_IDLE), 3000)
+        elif pick == "walk":
+            self.pet.do_walk()
+        elif pick == "random_action":
+            self.pet.trigger_random()
+        elif pick == "expression":
+            expr = random.choice(["happy", "shy", "curious", "sleepy"])
+            self.pet.set_expression(expr, 2500)
+        elif pick == "run":
+            self.begin_run(6000)
+        else:
+            self.pet.set_expression("sleep", 6000)
+
+    # ================= v2.9.0 环境播报（天气 / 新闻） =================
+    def set_weather_city(self, city: str):
+        city = (city or "").strip()
+        if not city:
+            return
+        self.config["weather_city"] = city
+        self.config["ambient_geo"] = {}
+        self.save_config()
+        self._ambient_last = 0.0
+        self._on_ambient_tick(force=True)
+
+    def _ambient_busy(self) -> bool:
+        return self.ambient_worker is not None and self.ambient_worker.isRunning()
+
+    def _on_ambient_tick(self, force: bool = False):
+        if self._ambient_busy():
+            return
+        if not (self.config.get("weather_on", True) or self.config.get("news_on", True)):
+            return
+        gap = max(600, int(self.config.get("ambient_interval", 90 * 60)))
+        if not force and time.time() - self._ambient_last < gap:
+            return
+        self.ambient_worker = ambient.AmbientWorker(
+            self.config.get("weather_city", "郑州"),
+            want_news=bool(self.config.get("news_on", True)))
+        self.ambient_worker.done.connect(self._on_ambient_done)
+        self.ambient_worker.failed.connect(self._on_ambient_failed)
+        self.ambient_worker.start()
+
+    def _on_ambient_done(self, data: dict):
+        self.ambient_worker = None
+        self._ambient_last = time.time()
+        self._ambient_cache = data or {}
+        geo = (data or {}).get("geo") or {}
+        if geo:
+            self.config["ambient_geo"] = geo
+            self.save_config()
+        if not getattr(self, "_ambient_greeted", False):
+            # 启动后第一份数据：先报天气，让"会看天气"这件事一眼可见
+            self._ambient_greeted = True
+            self.speak_weather()
+        else:
+            self.speak_ambient()
+
+    def _on_ambient_failed(self, why: str):
+        self.ambient_worker = None
+        self._ambient_last = time.time()   # 失败也记时，避免每 5 分钟重试刷网络
+
+    def speak_weather(self) -> bool:
+        w = (self._ambient_cache or {}).get("weather") or {}
+        if not w:
+            self.pet.bubble.show_text("天气还没拿到，等我会联网再说。", 2400)
+            return False
+        city = (self._ambient_cache or {}).get("city") or self.config.get("weather_city", "")
+        line = ambient.weather_line(w, city)
+        if not line:
+            return False
+        self._speak(line, 5200, priority=0)
+        self.pet.set_expression("curious", 3000)
+        return True
+
+    def speak_news(self) -> bool:
+        news = (self._ambient_cache or {}).get("news") or []
+        if not news:
+            self.pet.bubble.show_text("新闻还没拉到，稍等。", 2200)
+            return False
+        self._speak(ambient.news_line(random.choice(news)), 5200, priority=0)
+        return True
+
+    def speak_ambient(self):
+        """天气与新闻交替，避免每次都报同一类。"""
+        self._ambient_rot = (self._ambient_rot + 1) % 2
+        if self._ambient_rot == 1:
+            if not self.speak_weather():
+                self.speak_news()
+        else:
+            if not self.speak_news():
+                self.speak_weather()
+
+    # ================= v2.9.0 体贴行为（全屏躲避 / 拔电省电） =================
+    def _on_guard(self):
+        if self.config.get("fs_hide_on", True):
+            try:
+                fs = awareness.foreground_fullscreen(int(self.pet.winId()))
+            except Exception:  # noqa: BLE001
+                fs = False
+            if fs and not self._fs_hidden and not self._user_hidden:
+                self._fs_hidden = True
+                self.pet.hide()
+            elif not fs and self._fs_hidden:
+                self._fs_hidden = False
+                if not self._user_hidden:
+                    self.pet.show()
+        if self.config.get("power_saver_on", True):
+            bat = awareness.on_battery()
+            if self._was_battery is None:
+                self._was_battery = bat
+            elif bat != self._was_battery:
+                self._was_battery = bat
+                if bat:
+                    self.stop_local_llm()
+                    self.pet.bubble.show_text("拔电了，我把本地大模型歇了，先省点电。", 4200)
+                else:
+                    if self.config.get("llm_autostart"):
+                        QTimer.singleShot(1500, self._warm_local_llm)
+                    self.pet.bubble.show_text("接上电了，大模型叫醒了。", 3000)
+
+    # ================= 番茄钟 =================
+    def start_tomato(self, minutes: int):
+        self.tomato_left = minutes * 60
+        self.tomato_timer.start()
+        self.panel and self.panel.set_tomato(self._fmt_tomato())
+        self.pet.bubble.show_text(f"好，专注 {minutes} 分钟，本鱼盯着你。", 2200)
+
+    def stop_tomato(self):
+        self.tomato_timer.stop()
+        self.tomato_left = 0
+        self.panel and self.panel.set_tomato("未开始")
+
+    def _on_tomato_tick(self):
+        self.tomato_left -= 1
+        if self.tomato_left <= 0:
+            self.tomato_timer.stop()
+            self.state.add_exp(20)
+            self.state.mood = min(100, self.state.mood + 10)
+            self.beep("done")
+            self.pet.bubble.show_text(lines.pick(lines.TOMATO_DONE), 3500)
+            self.pet.set_expression("happy", 3000)
+            self.panel and self.panel.set_tomato("已完成！")
+            self.refresh_panel()
+        else:
+            self.panel and self.panel.set_tomato(self._fmt_tomato())
+
+    def _fmt_tomato(self):
+        m, s = divmod(self.tomato_left, 60)
+        return f"{m:02d}:{s:02d}"
+
+    # ================= 提醒开关 =================
+    def toggle_water(self, on: bool):
+        self.config["water_on"] = on
+        if on:
+            self.water_timer.start()
+        else:
+            self.water_timer.stop()
+        self.save_config()
+
+    def toggle_sedentary(self, on: bool):
+        self.config["sedentary_on"] = on
+        if on:
+            self.sedentary_timer.start()
+        else:
+            self.sedentary_timer.stop()
+        self.save_config()
+
+    def toggle_sound(self, on: bool):
+        self.config["sound_on"] = on
+        self.audio.set_enabled(on)
+        self.save_config()
+
+    def set_theme(self, mode: str):
+        """主题：auto / light / dark。面板和内联配色一起换，不用重开。"""
+        if mode not in ("auto", "light", "dark"):
+            return
+        self.config["theme"] = mode
+        self.save_config()
+        if self.panel is not None:
+            try:
+                self.panel.apply_theme()
+            except Exception:
+                pass
+
+    def set_voice_profile(self, key: str):
+        """切换真人音色提炼档位（只调 Edge TTS 的音调参数，不做克隆）。"""
+        self.config["voice_profile"] = key
+        self.save_config()
+        try:
+            import voice_profile as vp
+            if key == "off":
+                text = "音色回到原生 TTS，不再往真人样本靠。"
+            else:
+                persona_key = self.config.get("persona", pers.DEFAULT_PERSONA)
+                voice = (pers.PERSONAS.get(persona_key) or {}).get("voice", "zh-CN-XiaoxiaoNeural")
+                text = vp.describe(voice, key)
+            self.pet.bubble.show_text(text, 5200)
+        except Exception:
+            pass
+        self.pet.set_expression("happy", 2500)
+
+    def _on_water(self):
+        self.pet.bubble.show_text(lines.pick(lines.WATER), 4000)
+        self.pet.set_expression("curious", 3000)
+        self.beep("water")
+        self.water_timer.start()
+
+    def _on_sedentary(self):
+        self.pet.bubble.show_text(lines.pick(lines.SEDENTARY), 4000)
+        self.pet.set_expression("shy", 3000)
+        self.beep("sedentary")
+        self.sedentary_timer.start()
+
+    # ================= 周期衰减 / 金币 / 闲聊 =================
+    def _on_decay(self):
+        low = self.state.decay()
+        if low and random.random() < 0.5:
+            self.pet.set_expression("sleepy", 3000)
+            self.pet.bubble.show_text(lines.pick(lines.SLEEPY), 2600)
+        self.refresh_panel()
+
+    def _on_coin(self):
+        self.state.earn(2)
+        if random.random() < 0.3:
+            self.pet.bubble.show_text(lines.pick(lines.COIN_DROP), 2200)
+            self.beep("coin")
+        self.refresh_panel()
+
+    def _on_idle_talk(self):
+        if self.config.get("chatter_on", True) and self.pet.state not in ("sleep", "drag"):
+            self.pet.bubble.show_text(lines.pick(lines.CHAT_IDLE), 3000)
+
+    # ================= 托盘 / 快捷键 =================
+    def _build_tray(self):
+        self.tray = QSystemTrayIcon(self.app)
+        # 优先用经典形象做的 ico（小尺寸更清楚），没有才退回当前皮肤立绘
+        icon_path = asset_path(os.path.join("ui", "pet.ico"))
+        if not os.path.exists(icon_path):
+            icon_path = asset_path(SKINS[self.config.get("skin", "default")][1])
+        icon = QIcon(icon_path)
+        self.app.setWindowIcon(icon)
+        self.tray.setIcon(icon)
+        self.tray.setToolTip(APP_NAME)
+        menu = QMenu()
+        act_panel = QAction("打开控制面板", menu)
+        act_panel.triggered.connect(self.open_panel)
+        # v2.9.3 外部浏览器：把当前剪贴板的内容丢进 Tabbit 搜索
+        act_search = QAction("用 Tabbit 搜索剪贴板", menu)
+        act_search.triggered.connect(self.search_in_browser)
+        act_show = QAction("显示 / 隐藏桌宠（Alt+Shift+F）", menu)
+        act_show.triggered.connect(self.toggle_visibility)
+        act_hide = QAction("隐藏桌宠", menu)
+        act_hide.triggered.connect(self.hide_pet)
+        act_auto = QAction("自主行动", menu)
+        act_auto.setCheckable(True)
+        act_auto.setChecked(self.config.get("auto_on", True))
+        act_auto.toggled.connect(self.set_auto)
+        # v2.9.3 静音模式：没任务时的闲聊/播报只出字不出声
+        act_mute = QAction("静音模式（闲聊不发声）", menu)
+        act_mute.setCheckable(True)
+        act_mute.setChecked(self.config.get("mute_idle", True))
+        act_mute.toggled.connect(self.set_mute_idle)
+        act_quit = QAction("退出程序", menu)
+        act_quit.triggered.connect(self.quit_app)
+        theme_menu = menu.addMenu("主题")
+        cur_theme = self.config.get("theme", theme.DEFAULT)
+        for key, label in theme.MODES:
+            act_theme = theme_menu.addAction(("✓ " if key == cur_theme else "　") + label)
+            act_theme.triggered.connect(lambda _=False, k=key: self.set_theme(k))
+        menu.addAction(act_panel)
+        menu.addAction(act_search)
+        menu.addSeparator()
+        menu.addAction(act_show)
+        menu.addAction(act_hide)
+        menu.addSeparator()
+        menu.addAction(act_auto)
+        menu.addAction(act_mute)
+        theme_menu.setTitle("主题")
+        menu.addSeparator()
+        menu.addAction(act_quit)
+        self.tray.setContextMenu(menu)
+        # v2.9.3 修 bug：activated 会连右键(Context)一起触发，原先右键托盘图标就顺手把桌宠藏了
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        """只有左键单击才切换显示；右键只弹菜单，不碰桌宠。"""
+        try:
+            trigger = QSystemTrayIcon.ActivationReason.Trigger
+        except AttributeError:
+            trigger = QSystemTrayIcon.Trigger
+        if reason == trigger:
+            self.toggle_visibility()
+
+    def set_mute_idle(self, on: bool):
+        self.config["mute_idle"] = bool(on)
+        self.save_config()
+
+    def search_in_browser(self):
+        """把剪贴板内容丢给 Tabbit 浏览器做搜索；没装 Tabbit 就退回默认浏览器。"""
+        import urllib.parse
+        from PySide6.QtGui import QGuiApplication
+
+        text = (QGuiApplication.clipboard().text() or "").strip()
+        if not text:
+            self.pet.bubble.show_text("先复制一段要查的东西，我再帮你搜～", 1800)
+            return
+        text = " ".join(text.split())[:180]
+        url = "https://www.bing.com/search?q=" + urllib.parse.quote(text)
+        exe = paths.find_browser()
+        if exe:
+            # 实测：不带 --new-window 时 URL 会被并进旧标签，用户看不到；
+            # 加上后新窗口标题即为搜索页，确认参数生效
+            if QProcess.startDetached(exe, ["--new-window", url]):
+                self.pet.bubble.show_text("丢进 Tabbit 帮你查了～", 1600)
+            else:
+                QDesktopServices.openUrl(QUrl(url))
+                self.pet.bubble.show_text("Tabbit 没启动成功，改用默认浏览器", 1600)
+        else:
+            QDesktopServices.openUrl(QUrl(url))
+            self.pet.bubble.show_text("没找到 Tabbit，先用默认浏览器打开", 1600)
+
+    def _build_hotkey(self):
+        sc = QShortcut(QKeySequence("Alt+Shift+F"), self.app)
+        sc.setContext(Qt.ApplicationShortcut)
+        sc.activated.connect(self.toggle_visibility)
+
+        # Ctrl+Alt+V：语音说一句
+        scv = QShortcut(QKeySequence("Ctrl+Alt+V"), self.app)
+        scv.setContext(Qt.ApplicationShortcut)
+        scv.activated.connect(self.voice_listen)
+
+    def toggle_visibility(self):
+        if self.pet.isVisible():
+            self._user_hidden = True
+            self.pet.hide()
+        else:
+            self._user_hidden = False
+            self._fs_hidden = False
+            self.pet.show()
+            self.pet.raise_()
+
+    def quit_app(self):
+        for w in (self.worker, self.know_worker, self.clean_worker, self.update_worker,
+                  self.llm_worker, self.scan_worker, self.ambient_worker, self.update_dl):
+            if w is not None and w.isRunning():
+                try:
+                    w.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                if not w.wait(2000) and w.isRunning():
+                    # 联网请求仍阻塞在 socket 上时，兜底强停线程，避免程序退不掉
+                    w.terminate()
+                    w.wait(1000)
+        if self.icon_layout is not None:
+            self.icon_layout.restore()
+            self.icon_layout = None
+        try:
+            self.usage.save(force=True)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.llm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        self.save_config()
+        try:
+            self.memory.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.tray.hide()
+        self.app.quit()
+
+
+def main():
+    QApplication.setApplicationName(APP_NAME)
+    QApplication.setOrganizationName("WhaleGirlPet")
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
+    shm = QSharedMemory(APP_KEY)
+    if not shm.create(1):
+        QMessageBox.information(None, APP_NAME, "桌宠已经在运行啦～")
+        return 0
+
+    controller = Controller(app)
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

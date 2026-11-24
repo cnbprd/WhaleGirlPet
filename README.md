@@ -3,6 +3,10 @@
 > 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
 
 <p align="center">
+  <img src="assets/ui/pet.ico" alt="WhaleGirlPet" width="96" />
+</p>
+
+<p align="center">
   <strong>PySide6 桌面宠物 · 养成 / 打工 / 语音对话 / 安全体检</strong>
 </p>
 
@@ -97,7 +101,7 @@ WhaleGirlPet/
 │   ├── panel.py         # 控制面板：12 个页面 + 侧边栏
 │   ├── panel_v2.py      # 音频库 / 语音人格 / 模型库 / 记忆 / 安全 / 账号 / 定时
 │   ├── tts.py           # Edge TTS 封装 + 音色档位
-│   ├── voice_profile.py # 真人音色提炼映射（基频 → pitch 反查）
+│   ├── voice_profile.py  # 真人音色提炼映射（基频 → pitch 反查）
 │   ├── updater.py       # GitHub Releases 检查与下载校验
 │   ├── theme.py         # auto / light / dark 解析
 │   └── …                # 养成、任务、记忆、安全、天气、图标等模块
@@ -108,7 +112,7 @@ WhaleGirlPet/
 └── WhaleGirlPet.spec    # PyInstaller 配置
 ```
 
-架构与模块边界见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，功能手册见 [`docs/FEATURES.md`](docs/FEATURES.md)。
+架构与模块边界见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ---
 

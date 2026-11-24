@@ -2,24 +2,31 @@
 
 ## 一句话
 
-单进程 PySide6 应用：一个 `Controller` 管全局状态与定时器，一个 `PetWindow` 负责透明窗口与绘制，一个 `ControlPanel` 负责配置界面，重活（联网、TTS、下载、清理）都丢进 QThread，主线程只跑 UI 与 60ms 的动画循环。
+单进程 PySide6 应用：一个 `Controller` 管全局状态与定时器，一个 `PetWindow` 负责透明窗口与绘制，一个 `ControlPanel` 负责配置界面，重活（联网、TTS、下载、清理）都丢进 QThread，主线程只跑 UI 与 60fps 的动画循环。
 
 ## 分层
 
 ```
-界面层  PetWindow（透明置顶窗口 / 气泡 / 右键菜单）
-        ControlPanel（12 页侧边栏面板）· panel_v2（细分页面）
-   ▲ Qt 信号 / 直接调用
-控制层  Controller (app/main.py)
-        托盘 · 快捷键 · 语音唤醒 · 自主行动 · 定时器 · 情绪 · 养成
-   ▲
-能力层（可独立替换，全部无 UI 依赖）
-  ai / local_llm / websearch / knowledge / memory
-  ambient（天气新闻）/ awareness（全屏）/ secscan（体检）
-  cleanup / desktop_icons / sysvol / hwinfo
-  tts / voice_profile / voice_cmd / audio_manager
-  state（养成数值）/ tasks / scheduler / accounts
-  updater（GitHub Release）/ theme / paths
+┌──────────────────────────────────────────────────────────┐
+│  界面层                                                   │
+│  PetWindow（透明置顶窗口 / 气泡 / 右键菜单）              │
+│  ControlPanel（12 页侧边栏面板） · panel_v2（细分页面）    │
+└───────────────▲──────────────────────────────────────────┘
+                │ Qt 信号 / 直接调用
+┌───────────────┴──────────────────────────────────────────┐
+│  控制层 Controller (app/main.py)                          │
+│  托盘 · 快捷键 · 语音唤醒 · 自主行动 · 定时器 · 情绪 · 养成 │
+└───────────────▲──────────────────────────────────────────┘
+                │
+┌───────────────┴──────────────────────────────────────────┐
+│  能力层（可独立替换，全部无 UI 依赖）                      │
+│  ai / local_llm / websearch / knowledge / memory          │
+│  ambient（天气新闻）/ awareness（全屏）/ secscan（体检）   │
+│  cleanup / desktop_icons / sysvol / hwinfo                │
+│  tts / voice_profile / voice_cmd / audio_manager          │
+│  state（养成数值）/ tasks / scheduler / accounts          │
+│  updater（GitHub Release）/ theme / paths                 │
+└──────────────────────────────────────────────────────────┘
 ```
 
 约束：能力层不 import `main.py`，只吃参数；需要回调的地方用返回值或信号。这样任何能力都能在无 UI 环境下被测试脚本直接调用（`test_v29_voice.py`、`test_v292.py`、`test_v293.py` 就是这么跑的）。

@@ -1,0 +1,88 @@
+{
+  "updated": "2026-11-24",
+  "method": "跨平台声学统计：40ms 帧 / 10ms 跳，能量阈值取 60 分位，自相关取 70~500Hz 峰值；不保存原始音频、不做声纹建模、不训练克隆模型",
+  "disclaimer": "样本取自 B 站公开视频，仅用于统计基频/起伏/亮度等参数，用于把 Edge TTS 的音调往参考音色靠；不涉及音色克隆，也不分发原音频。",
+  "samples": [
+    {
+      "id": "jingjing",
+      "bv": "BV1LUHN6hEhS",
+      "desc": "《晶晶的表情包做好了，配音也是自己的》真人自配",
+      "duration_s": 26.54,
+      "f0_median_hz": 363.6,
+      "f0_p10_hz": 266.7,
+      "f0_p90_hz": 432.4,
+      "f0_std_hz": 63.5,
+      "centroid_hz": 1608,
+      "peak_db": -17.2
+    },
+    {
+      "id": "linluo",
+      "bv": "BV1FVPQzgEM3",
+      "desc": "有声书《青山》小满「小儿语」纯享版（CV 泠落）",
+      "duration_s": 35.41,
+      "f0_median_hz": 285.7,
+      "f0_p10_hz": 205.1,
+      "f0_p90_hz": 390.2,
+      "f0_std_hz": 77.0,
+      "centroid_hz": 1349,
+      "peak_db": -5.2
+    }
+  ],
+  "base_f0": {
+    "zh-CN-XiaoxiaoNeural": 238.8,
+    "zh-CN-XiaoyiNeural": 296.3
+  },
+  "measured_curve": {
+    "zh-CN-XiaoxiaoNeural": [
+      {"nominal": 0, "f0": 238.8},
+      {"nominal": 20, "f0": 271.2},
+      {"nominal": 40, "f0": 301.9},
+      {"nominal": 60, "f0": 333.3},
+      {"nominal": 90, "f0": 355.6},
+      {"nominal": 120, "f0": 355.6},
+      {"nominal": 160, "f0": 355.6},
+      {"nominal": 200, "f0": 355.6}
+    ],
+    "zh-CN-XiaoyiNeural": [
+      {"nominal": 0, "f0": 296.3},
+      {"nominal": 20, "f0": 340.4},
+      {"nominal": 40, "f0": 376.5},
+      {"nominal": 60, "f0": 410.3},
+      {"nominal": 90, "f0": 405.1},
+      {"nominal": 120, "f0": 405.1}
+    ]
+  },
+  "rate_curve": {
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "text_len": 45,
+    "samples": [
+      {"rate": -30, "dur_s": 17.14},
+      {"rate": -20, "dur_s": 14.98},
+      {"rate": -10, "dur_s": 13.32},
+      {"rate": 0, "dur_s": 12.00},
+      {"rate": 10, "dur_s": 10.92},
+      {"rate": 20, "dur_s": 10.01},
+      {"rate": 30, "dur_s": 9.24}
+    ]
+  },
+  "profiles": {
+    "jingjing": {
+      "title": "元气少女",
+      "f0": 363.6,
+      "f0_p10": 266.7,
+      "f0_p90": 432.4,
+      "f0_std": 63.5,
+      "source": "B站 BV1LUHN6hEhS，真人自配 26.5s",
+      "note": "音区偏高、起伏大，适合元气/傲娇短句"
+    },
+    "linluo": {
+      "title": "温柔少女",
+      "f0": 285.7,
+      "f0_p10": 205.1,
+      "f0_p90": 390.2,
+      "f0_std": 77.0,
+      "source": "B站 BV1FVPQzgEM3，CV 泠落 35.4s",
+      "note": "音区偏低、气声多，适合低声安抚、夜里说话"
+    }
+  }
+}
