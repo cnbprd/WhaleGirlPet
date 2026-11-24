@@ -68,12 +68,22 @@ OLLAMA_HOST = "http://127.0.0.1:11434"
 OLLAMA_DEFAULT_MODEL = "qwen3.5:4b"
 
 
+_HTTP_CACHE = {}
+_HTTP_TTL = 4.0      # v2.9.9：打开面板会连着问十几次 Ollama 状态，同 URL 4 秒内只发一次
+
+
 def _http_json(url: str, timeout: float = 3.0):
+    now = time.monotonic()
+    hit = _HTTP_CACHE.get(url)
+    if hit is not None and now - hit[0] < _HTTP_TTL:
+        return hit[1]
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8"))
+            data = json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
-        return None
+        data = None
+    _HTTP_CACHE[url] = (now, data)
+    return data
 
 
 def ollama_alive(host: str = OLLAMA_HOST) -> bool:

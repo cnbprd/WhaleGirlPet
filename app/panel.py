@@ -128,8 +128,15 @@ class ControlPanel(QWidget):
             pass
 
     def apply_theme(self):
-        """按 config["theme"]（auto/light/dark）套整套配色，包括写死颜色的聊天区。"""
+        """按 config["theme"]（auto/light/dark）套整套配色，包括写死颜色的聊天区。
+
+        v2.9.9：同一套主题不重复套。全局 setStyleSheet 会递归 re-polish 上百个控件，
+        实测一次 0.29s；打开面板时如果主题没变就跳过，省掉这段。
+        """
         mode = self.ctl.config.get("theme", theme.DEFAULT)
+        if getattr(self, "_theme_mode", None) == mode:
+            return
+        self._theme_mode = mode
         self.setStyleSheet(theme.load_qss(mode))
         pal = theme.palette(mode)
         for name, style in (
