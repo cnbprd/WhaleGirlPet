@@ -270,16 +270,11 @@ def tab_account(panel) -> QWidget:
     ctl = panel.ctl
     w = QWidget()
     lay = QVBoxLayout(w)
-    lay.addWidget(QLabel("形态（萝莉保留为第二形态）"))
-    panel.cmb_form = QComboBox()
-    for fk, flabel in (("mature", "成熟形态"), ("loli", "萝莉形态")):
-        panel.cmb_form.addItem(flabel, fk)
-    cur = ctl.config.get("form", "mature")
-    i = panel.cmb_form.findData(cur)
-    if i >= 0:
-        panel.cmb_form.setCurrentIndex(i)
-    panel.cmb_form.currentIndexChanged.connect(panel._on_form_change)
-    lay.addWidget(panel.cmb_form)
+    # v2.9.7：形态选择搬到「设置 → 桌宠行为」，这页只管账号
+    tip_form = QLabel("形态（成熟 / 萝莉）已经搬到「设置 → 桌宠行为」，这页只留账号。")
+    tip_form.setWordWrap(True)
+    tip_form.setStyleSheet("color:#888;font-size:11px;")
+    lay.addWidget(tip_form)
 
     lay.addWidget(QLabel("本地档案账号（数据各存各的，全部在本机）"))
     panel.lbl_acct = QLabel("")

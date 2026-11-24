@@ -38,4 +38,4 @@ if (-not (Test-Path $venvPy)) { $venvPy = "python" }
     (Join-Path $root "app\main.py")
 
 Write-Host "build done -> dist\WhaleGirlPet.exe"
-Write-Host "runtime folder (llama + gguf) must sit next to the exe, not packed."
+Write-Host "runtime folder (dafeiyu engine + gguf) must sit next to the exe, not packed."

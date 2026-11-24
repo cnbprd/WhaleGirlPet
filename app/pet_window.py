@@ -792,69 +792,18 @@ class PetWindow(QWidget):
         menu.addAction("摸摸头", self.do_pat)
 
         menu.addAction("表演一个", ctl.perform_random)
-        act_menu = menu.addMenu("做个动作")
-        for key in ALL_ACTIONS:
-            act = act_menu.addAction(action_label(key))
-            act.triggered.connect(lambda _=False, k=key: self.do_action(k))
+        # v2.9.7：动作清单与喂零食不再摆菜单（动作她自己随机来；饿了会自己讨）
+        menu.addAction("打开背包", ctl.open_backpack)
+        menu.addAction("零食商城", ctl.open_shop)
+        menu.addAction("去打工", ctl.offer_work)
 
-        feed_menu = menu.addMenu("喂点零食")
-        for key, snack in ctl.snacks().items():
-            act = feed_menu.addAction(f"{snack['emoji']} {snack['name']}（{snack['cost']} 金币）")
-            act.triggered.connect(lambda _=False, k=key: self.do_feed(k))
         menu.addSeparator()
         menu.addAction("散步一会儿", self.do_walk)
         menu.addAction("满屏跑一圈", lambda: ctl.begin_run(8000))
         menu.addAction("让她睡觉", self.do_sleep)
-
-        follow_act = QAction("跟随鼠标", self)
-        follow_act.setCheckable(True)
-        follow_act.setChecked(self.follow)
-        follow_act.toggled.connect(self.set_follow)
-        menu.addAction(follow_act)
-
-        form_menu = menu.addMenu("形态")
-        cur_form = self.current_form()
-        for fk, flabel in FORM_LABELS.items():
-            act = form_menu.addAction(("✓ " if fk == cur_form else "　") + flabel)
-            act.triggered.connect(lambda _=False, f=fk: self.set_form(f))
-
-        skin_menu = menu.addMenu("换装")
-        for key, (label, _) in SKINS.items():
-            if SKIN_FORM.get(key) != cur_form:
-                continue
-            act = skin_menu.addAction(label)
-            act.triggered.connect(lambda _=False, k=key: self.set_skin(k))
-
-        size_menu = menu.addMenu("大小")
-        for label, s in {"小": 0.7, "中": 1.0, "大": 1.35}.items():
-            act = size_menu.addAction(label)
-            act.triggered.connect(lambda _=False, v=s: self.set_pet_scale(v))
-
-        voice_menu = menu.addMenu("音色")
-        cur_prof = str(ctl.config.get("voice_profile", "") or "")
-        for key, title in voice_profile_names():
-            act = voice_menu.addAction(("✓ " if key == cur_prof else "　") + title)
-            act.triggered.connect(lambda _=False, k=key: ctl.set_voice_profile(k))
-        act = voice_menu.addAction(("✓ " if (not cur_prof or cur_prof == "off") else "　") + "关（原生音色）")
-        act.triggered.connect(lambda _=False: ctl.set_voice_profile("off"))
-
-        top_act = QAction("始终置顶", self)
-        top_act.setCheckable(True)
-        top_act.setChecked(self.is_topmost())
-        top_act.toggled.connect(self.set_topmost)
-        menu.addAction(top_act)
-
-        sound_act = QAction("点击音效", self)
-        sound_act.setCheckable(True)
-        sound_act.setChecked(self._controller.config.get("sound_on", True))
-        sound_act.toggled.connect(self._controller.toggle_sound)
-        menu.addAction(sound_act)
-
-        chatter_act = QAction("碎碎念", self)
-        chatter_act.setCheckable(True)
-        chatter_act.setChecked(self._controller.config.get("chatter_on", True))
-        chatter_act.toggled.connect(self._controller.toggle_chatter)
-        menu.addAction(chatter_act)
+        menu.addSeparator()
+        # v2.9.7：跟随 / 形态 / 换装 / 大小 / 音色 / 置顶 / 碎碎念 统一收进「设置 → 桌宠行为」
+        menu.addAction("桌宠行为设置…", ctl.open_theme_settings)
 
         menu.addSeparator()
         # v2.9.2 打开控制面板/隐藏桌宠/退出 已合并到任务栏图标右键菜单，这里不再重复

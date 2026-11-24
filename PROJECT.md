@@ -3,7 +3,7 @@
 > 这是给「新窗口」看的入口文件。豆包会话之间的上下文不互通，所以上一轮对话的结论、改了什么、
 > 怎么跑、坑在哪，全部写在这里。项目自带 Python 环境，整个目录可以整体搬走或复制。
 
-- 版本号：`2.9.6`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
+- 版本号：`2.9.7`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
 - 平台：Windows 10/11，Python 3.14.7
 - 远端仓库：https://github.com/cnbrd/WhaleGirlPet （`git remote -v` 可查，SSH 443 通道已配好）
 - 发布产物：CI 的 `release-assets.yml` 现在从 `app/paths.py` 读版本号，Release 不存在会自动创建，
@@ -28,11 +28,11 @@ cd F:\WhaleGirlPet
 
 | 路径 | 内容 | 体积 |
 |---|---|---|
-| `app\` | 全部源码（40 个 py）：`main.py` 主控、`panel.py` 面板、`panel_v2.py` 五个分页、`pet_window.py` 窗口与动作、`tts.py` 语音、`persona.py` 人格、`audio_manager.py` 播放、`model_dl.py` 模型下载、`voice_tweak.py` 音色指令解析 | 数百 KB |
+| `app\` | 全部源码（45 个 py）：`main.py` 主控、`panel.py` 面板、`panel_v2.py` 分页、`pet_window.py` 窗口与动作、`tts.py` 语音、`persona.py` 人格、`audio_manager.py` 播放、`model_dl.py` 模型下载、`voice_tweak.py` 音色指令解析；v2.9.7 新增 `care_ui.py`（背包/商城/状态栏/选项气泡）、`companion.py`（撒娇与动作台词）、`snacks.py`（零食目录与定价）、`hardware.py`（硬件检测与推荐）、`maker.py`（做小软件） | 数百 KB |
 | `assets\` | 皮肤 `skins/`、表情 `expressions/`、动作帧 `actions/`、萝莉形态 `loli/`、图标 `ui/`；`_raw` 是历史原图备份，`_matting` 是抠图/对比/录屏抽帧的工作区 | 0.43 GB |
 | `runtime\models\` | 4 个 gguf：Qwen3-4B-Q4_K_M、qwen35-4b-Q4_K_M、gemma4-e2b-it、deepseek-coder-6.7b-instruct | 11.8 GB |
-| `runtime\dafeiyu\` | 本地 llama.cpp 服务端（`dafeiyu-server.exe` + DLL） | 3.7 GB |
-| `dist\` | 历史安装包（2.6.0 → 2.9.3 的 exe/zip/sha256） | 16.47 GB |
+| `runtime\dafeiyu\` | 本地 dafeiyu.cpp 服务端（`dafeiyu-server.exe` + DLL） | 3.7 GB |
+| `dist\` | 当前版本安装包与 portable（约 150~250 MB；2.6.0–2.9.3 的历史包已清掉） | ~150 MB+ |
 | `docs\` | `ARCHITECTURE.md` / `FEATURES.md` / `CHARACTER.md`（角色母版规范）/ `github-桌宠参考.md` | 26 KB |
 | `tools\` | 抠图、批量派生、录屏分析、去底等一次性工具脚本 | 40+ 个 |
 | 根目录 `test_*.py` | 59 个历史自检脚本，按版本命名（`test_v293.py`、`test_v294.py` 等） | 几十 KB |
@@ -41,6 +41,24 @@ cd F:\WhaleGirlPet
 ## 三、面板现状（10 页）
 
 `养成` / `打工` / `番茄钟-提醒` / `聊天` / `设置` / `音频库` / `自定义模型` / `安全体检` / `账号形态` / `定时任务`
+
+### v2.9.7（2026-11-25）的改造（14 条）
+
+1. **一键发版**：`tools\release.ps1`（打包 + 安装包 + `git add/commit/push`），`-Bump` 自动升末位。
+2. **换装白眼修复**：`blackgown` / `blackgreen` / `blackred` 三套原图无瞳孔，已重绘；备份 `assets\_matting\v297\backup_*.png`。
+3. **旧引擎名清理**：可执行入口全部 `dafeiyu-*`；日志/下载缓存/测试脚本/文档已改名。**10 个 `llama-*.dll` 不能改**
+   （实测改名后 `0xC0000135 STATUS_DLL_NOT_FOUND`，Windows 导入表写死）。
+4. **「设置 → 桌宠行为」**：碎碎念、点击音效、始终置顶、跟随鼠标、换装、大小、形态、主题 八项集中；主题从托盘迁入。
+5. **动作与投喂撤出面板**：养成页只留 背包 / 零食商城 / 去打工；动作每 60 秒自判，12~20 分钟偶发两选项气泡（12 秒自随机）。
+6. **背包**：`state.bag`；饿了吃、投喂不饿就存包、背包窗口点一下即吃。
+7. **零食商城**：`app\snacks.py` 七类、4~45 金币；联网补货；语音「零食商城」呼出；入口在打工页底部。
+8. **打工语音指令**：3 个活、10 秒不选自随机开工；状态栏带「去打工」。
+9. **状态栏大气泡**：饥饿/口渴/心情差/金币<20% 触发；打工/投喂/喝水；40 秒自收、10 分钟冷却。
+10. **硬件推荐**：`app\hardware.py` 读显卡/显存/内存/线程，`best()` 给推荐与理由。
+11. **换硬件提醒**：启动 30 秒 + 每小时 `check_and_update`，比对显存/内存/线程。
+12. **换硬件自动适配**：写 `llm_model_recommend` / `llm_model_file`，未下载则提示去下载。
+13. **做小软件**：`app\maker.py`；语音/聊天「做个小软件」→ 模型出码 → 10 类风险拦截 → 存 `数据目录\scripts` → 用户点头才跑（20 秒超时）。
+14. **主题迁入设置**：`_tab_prefs` 内下拉，切换即重刷 QSS。
 
 ### v2.9.6（2026-11-25）的改造
 

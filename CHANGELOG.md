@@ -2,6 +2,28 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v2.9.7（2026-11-25）
+
+本轮是用户 14 条改造清单的落地。基准来自用户原话，逐条对账见下表。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 每次更新及时进 git | 新增 `tools\release.ps1`：一条命令完成「版本号校验 → PyInstaller 打包 → Inno 编译安装包 → `git add -A`/commit/push origin main → 打印 CI 地址」；`-Bump` 可自动末位 +1，`-SkipBuild` 只推代码 | 本轮用它发布 v2.9.7（提交与 CI 结果见仓库 Releases） |
+| 2 换装后「白眼」 | 逐张目检 8 套皮肤：`blackgown` / `blackgreen` / `blackred` 三套原图眼睛只有眼白、没有瞳孔；已重绘黑瞳（黑红款保留红瞳），原图备份在 `assets\_matting\v297\backup_*.png` | 对比图 `assets\_matting\v297\skins_all.png`（修后）与 `backup_blackred.png`（修前）；其余五套为闭眼设计，不是缺陷 |
+| 3 llama → dafeiyu | 运行目录 20 个可执行入口早已是 `dafeiyu-*`；本轮续改：`runtime\llama-server.log`→`dafeiyu-server.log`、`runtime\_dl\llama-cpu.zip`→`dafeiyu-cpu.zip`、`test_offline_llama.py`→`test_offline_dafeiyu.py`（内部改为 `dafeiyu_cpp`）、`build.ps1` 注释、`README.md`/`PROJECT.md` 的引擎名 | **10 个 `llama-*.dll` 保留**：临时副本里改成 `dafeiyu-*.dll` 后 `dafeiyu-server.exe --version` 返回 `0xC0000135`（STATUS_DLL_NOT_FOUND），Windows 导入表写死名字，改了本地模型就起不来。`bench_ollama.py` 测的是 Ollama（另一款软件），未改名 |
+| 4 桌宠行为集中到设置 | 设置页新增「桌宠行为」组：碎碎念、点击音效、始终置顶、跟随鼠标、换装、大小、形态、主题 八项一屏；音色仍在「音频库」 | 实拍 `assets\_matting\v297-panel-04-设置.png`：八项全在，无裁切 |
+| 5 动作/投喂撤出面板 | 养成页删掉动作按钮与四格零食，只留「背包 / 零食商城 / 去打工」三个入口；动作由 `care_timer` 每 60 秒判断，12~20 分钟偶发一次「现在想做哪个？」两选项气泡（12 秒不选自己随机来一个），也能语音下指令 | 实拍 `v297-panel-00-养成.png`、`v297-win-ask.png`（挥挥手 / 跳个舞 + 「不理我过一会儿自己随便来一个」） |
+| 6 背包 | `state.bag` + `buy()`/`eat()`/`add_to_bag()`；饿了吃、从背包拿、投喂时不饿就存进背包；背包实体窗口点一下即吃 | 逻辑自检 5 项全 PASS：买一份进背包、扣钱、从背包吃、空包不再凭空吃、旧 `feed` 接口兼容 |
+| 7 零食商城 | 新增 `app\snacks.py`：主食/肉鱼/甜点/饮品/水果/高档/新品 七类，价格硬约束 4~45 金币；「联网补货」抓新零食并记 `shop_refreshed_at`；语音「零食商城/买零食」直接呼出；入口挂在打工页底部 | 实拍 `v297-win-shop.png`（金币 120、白米饭 12、面包 7、饭团 12、泡面 15）；自检 20 项物品价格全部落在 4~45。定价基准：打工单次 5~15 金币（学习听课 15、清理 14、家务 12），最贵零食约三四次打工 |
+| 8 打工语音 + 10 秒 | 「去打工/打工」→ 随机 3 个活，气泡给选项，`timeout_ms=10_000`，不点就自己随机开工；状态栏里也有「去打工」 | 代码路径 + 状态栏实拍；10 秒超时未实跑（逻辑与动作气泡同一套） |
+| 9 可显现状态栏 | 饥饿/口渴/心情差/金币低于 20% 任一命中 → 大气泡状态栏：四项数值 + 打工 / 投喂 / 喝水；40 秒不理自动收起，同一需求 10 分钟冷却 | 实拍 `v297-win-status.png`（饱食 30 触发，三按钮齐全） |
+| 10 按本机配置装最搭模型 | `app\hardware.py`：读显卡/显存/内存/CPU 线程，`best()` 给出推荐与理由；面板「按本机配置重新推荐」 | 实拍 `v297-panel-06-自定义模型.png`：GTX 1060 6GB / 31.9GB / 8 线程 → 推荐 DeepSeek-R1-Distill-7B（Q4） |
+| 11 换硬件提醒换模型 | 启动 30 秒查一次、之后每小时一次；`diff()` 比对显存/内存/线程，有变化就在气泡里说「硬件变了：显存 6.0→12.0，我重新配成 X」 | 自检：6→12GB 被识别为「显存(GB)：6.0 → 12.0」；无变化不报 |
+| 12 换硬件自动适配 | 检测到变化即写 `llm_model_recommend`、更新 `llm_model_file`，没下载就提示去「自定义模型」下载 | 同上；未在真实换卡场景验证 |
+| 13 做小软件 | 新增 `app\maker.py`：语音或聊天说「做个小软件/小工具/写个脚本」→ 本地模型出代码 → 抽 ```python 块 → 静态风险检查（shell=True、os.system、格式化、删注册表、关机、反弹连接等 10 类）→ 存到 数据目录\scripts → 用户点「运行」才执行，20 秒超时、输出截断 | 自检 PASS：`os.system('del /f C:\\*')` 被判「直接调 shell」；普通 `os.path.expanduser` 脚本放行；代码块抽取正常 |
+| 14 主题迁进设置 | 主题下拉并入「设置 → 桌宠行为」，切换即 `set_theme` + `apply_theme`，托盘主题子菜单保留 | 设置页实拍可见「主题 深色」下拉 |
+| 版本 2.9.7 | `paths.APP_VERSION`、面板右上角、安装包文件名同步 | `dist\WhaleGirlPet.exe` 与 `dist\WhaleGirlPet-Setup-2.9.7.exe` |
+
 ## v2.9.6（2026-11-25）
 
 本轮是用户 16 条改造清单 + 3 个补充项的落地。

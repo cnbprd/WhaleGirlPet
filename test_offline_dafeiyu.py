@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""脱离 Ollama 验证：强制 llama_cpp 后端，加载 runtime/models/qwen35-4b-Q4_K_M.gguf。"""
+"""脱离 Ollama 验证：强制 dafeiyu_cpp 后端，加载 runtime/models/qwen35-4b-Q4_K_M.gguf。"""
 import os
 import sys
 import time
@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "app
 import local_llm  # noqa: E402
 
 print("model_path:", local_llm.model_path())
-m = local_llm.ServerManager({"llm_backend": "llama_cpp", "llm_ctx": 4096})
+m = local_llm.ServerManager({"llm_backend": "dafeiyu_cpp", "llm_ctx": 4096})
 print("backend:", m.backend, "| port:", m.port)
 
 t0 = time.time()
@@ -33,3 +33,4 @@ import skills  # noqa: E402
 print("handle:", skills.handle(r2[1], "明天七点提醒我交房租", mock=True))
 m.stop()
 print("DONE")
+

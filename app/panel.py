@@ -18,7 +18,7 @@ import persona as pers
 import theme
 import voice_tweak
 from paths import (APP_VERSION, AUDIO_ACTIONS, AUDIO_ACTION_LABELS,
-                   SIZE_LEVELS, SKINS)
+                   FORM_LABELS, SIZE_LEVELS, SKINS)
 from state import SNACKS
 from tasks import TASK_DEFS
 
@@ -159,35 +159,27 @@ class ControlPanel(QWidget):
         lay.addWidget(self.lbl_trait)
 
         self.bar_hunger = self._add_bar(lay, "饱食度")
+        self.bar_thirst = self._add_bar(lay, "水分")
         self.bar_mood = self._add_bar(lay, "心情")
         self.bar_intimacy = self._add_bar(lay, "亲密度")
 
-        lay.addWidget(QLabel("投喂零食："))
-        grid = QGridLayout()
-        self.snack_btns = {}
-        for i, (key, s) in enumerate(SNACKS.items()):
-            btn = QPushButton(f"{s['emoji']} {s['name']}\n{s['cost']} 金币")
-            btn.setMinimumHeight(52)
-            btn.clicked.connect(lambda _=False, k=key: self.ctl.feed_snack(k))
-            self.snack_btns[key] = btn
-            grid.addWidget(btn, i // 2, i % 2)
-        lay.addLayout(grid)
-
-        lay.addWidget(QLabel("换装："))
-        self.skin_combo = QComboBox()
-        for key, (label, _) in SKINS.items():
-            self.skin_combo.addItem(label, key)
-        self.skin_combo.currentIndexChanged.connect(
-            lambda _: self.ctl.set_skin(self.skin_combo.currentData()))
-        lay.addWidget(self.skin_combo)
-
-        lay.addWidget(QLabel("大小："))
-        self.size_combo = QComboBox()
-        for label in SIZE_LEVELS:
-            self.size_combo.addItem(label)
-        self.size_combo.currentIndexChanged.connect(
-            lambda _: self.ctl.set_size(self.size_combo.currentText()))
-        lay.addWidget(self.size_combo)
+        # v2.9.7：动作与投喂从面板上撤掉（她会自己随机动、饿了会讨），只留三个入口
+        tip = QLabel("动作和零食不再摆在面板上：动作她自己随机做，饿了会跟你讨。下面是三个快捷入口。")
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color:#888;font-size:11px;")
+        lay.addWidget(tip)
+        row_entry = QHBoxLayout()
+        row_entry.setSpacing(6)
+        btn_bag = QPushButton("背包")
+        btn_bag.clicked.connect(lambda: self.ctl.open_backpack())
+        row_entry.addWidget(btn_bag)
+        btn_shop = QPushButton("零食商城")
+        btn_shop.clicked.connect(lambda: self.ctl.open_shop())
+        row_entry.addWidget(btn_shop)
+        btn_work = QPushButton("去打工")
+        btn_work.clicked.connect(lambda: self.ctl.open_task_page())
+        row_entry.addWidget(btn_work)
+        lay.addLayout(row_entry)
         lay.addStretch()
         return w
 
@@ -243,8 +235,22 @@ class ControlPanel(QWidget):
         lay.addWidget(QLabel("学习知识点："))
         self.task_fact = QTextEdit()
         self.task_fact.setReadOnly(True)
-        self.task_fact.setMaximumHeight(110)
+        self.task_fact.setMaximumHeight(70)
         lay.addWidget(self.task_fact)
+
+        # v2.9.7：零食商城挂在打工模块里（赚的金币直接能花）
+        row_shop = QHBoxLayout()
+        row_shop.setSpacing(6)
+        btn_shop = QPushButton("零食商城")
+        btn_shop.clicked.connect(lambda: self.ctl.open_shop())
+        row_shop.addWidget(btn_shop)
+        btn_bag = QPushButton("打开背包")
+        btn_bag.clicked.connect(lambda: self.ctl.open_backpack())
+        row_shop.addWidget(btn_bag)
+        tip_shop = QLabel("赚的金币在这里花，价格按打工收入定的，不会乱涨。")
+        tip_shop.setStyleSheet("color:#888;font-size:11px;")
+        row_shop.addWidget(tip_shop, 1)
+        lay.addLayout(row_shop)
         lay.addStretch()
         return w
 
@@ -308,15 +314,13 @@ class ControlPanel(QWidget):
         self.chk_water = QCheckBox("喝水提醒（每 45 分钟）")
         self.chk_sedentary = QCheckBox("久坐提醒（每 60 分钟）")
         self.chk_sound = QCheckBox("音效 / 音频")
-        self.chk_chatter = QCheckBox("碎碎念（无操作时自言自语）")
         self.chk_water.toggled.connect(self.ctl.toggle_water)
         self.chk_sedentary.toggled.connect(self.ctl.toggle_sedentary)
         self.chk_sound.toggled.connect(self.ctl.toggle_sound)
-        self.chk_chatter.toggled.connect(self.ctl.toggle_chatter)
         r2.addWidget(self.chk_water)
         r2.addWidget(self.chk_sedentary)
         r2.addWidget(self.chk_sound)
-        r2.addWidget(self.chk_chatter)
+        # v2.9.7：碎碎念搬进「设置 → 桌宠行为」模块
         lay.addWidget(box2)
         lay.addStretch()
         return w
@@ -500,6 +504,9 @@ class ControlPanel(QWidget):
         # 关于与更新（从原「设置」页整组迁入）
         root.addWidget(self._build_update_box())
 
+        # v2.9.7 桌宠行为：碎碎念 / 点击音效 / 始终置顶 / 大小 / 换装 / 形态 / 跟随鼠标 / 主题
+        root.addWidget(self._build_pet_box())
+
         # 储存位置（含「打开数据目录」）
         box_store = QGroupBox("储存位置")
         sv = QVBoxLayout(box_store)
@@ -619,6 +626,101 @@ class ControlPanel(QWidget):
         return w
 
     # ---------- 设置页动作 ----------
+    def _build_pet_box(self) -> QGroupBox:
+        """v2.9.7「桌宠行为」：把散在养成页/提醒页/托盘里的零碎开关收在一处。"""
+        box = QGroupBox("桌宠行为")
+        pv = QVBoxLayout(box)
+        pv.setSpacing(6)
+
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+        self.chk_chatter = QCheckBox("碎碎念")
+        self.chk_chatter.setToolTip("没在聊天、也不在做事的时候，自己嘟囔两句")
+        self.chk_chatter.toggled.connect(self.ctl.toggle_chatter)
+        row1.addWidget(self.chk_chatter)
+        self.chk_click_sound = QCheckBox("点击音效")
+        self.chk_click_sound.setToolTip("点她（摸头）时那一声「噗叽」")
+        self.chk_click_sound.toggled.connect(self._on_click_sound)
+        row1.addWidget(self.chk_click_sound)
+        row1.addStretch()
+        pv.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+        self.chk_topmost = QCheckBox("始终置顶")
+        self.chk_topmost.toggled.connect(self._on_topmost)
+        row2.addWidget(self.chk_topmost)
+        self.chk_follow = QCheckBox("跟随鼠标")
+        self.chk_follow.toggled.connect(self._on_follow)
+        row2.addWidget(self.chk_follow)
+        row2.addStretch()
+        pv.addLayout(row2)
+
+        row3 = QHBoxLayout()
+        row3.setSpacing(6)
+        row3.addWidget(QLabel("换装"))
+        self.skin_combo = QComboBox()
+        for key, (label, _) in SKINS.items():
+            self.skin_combo.addItem(label, key)
+        self.skin_combo.currentIndexChanged.connect(
+            lambda _: self.ctl.set_skin(self.skin_combo.currentData()))
+        row3.addWidget(self.skin_combo, 1)
+        row3.addSpacing(8)
+        row3.addWidget(QLabel("大小"))
+        self.size_combo = QComboBox()
+        for label in SIZE_LEVELS:
+            self.size_combo.addItem(label)
+        self.size_combo.currentIndexChanged.connect(
+            lambda _: self.ctl.set_size(self.size_combo.currentText()))
+        row3.addWidget(self.size_combo)
+        pv.addLayout(row3)
+
+        row4 = QHBoxLayout()
+        row4.setSpacing(6)
+        row4.addWidget(QLabel("形态"))
+        self.form_combo = QComboBox()
+        for fk in FORM_LABELS:
+            self.form_combo.addItem(FORM_LABELS[fk], fk)
+        self.form_combo.currentIndexChanged.connect(
+            lambda _: self.ctl.set_form(self.form_combo.currentData()))
+        row4.addWidget(self.form_combo)
+        row4.addSpacing(8)
+        row4.addWidget(QLabel("主题"))
+        self.theme_combo = QComboBox()
+        for mode, label in theme.MODES:
+            self.theme_combo.addItem(label, mode)
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_change)
+        row4.addWidget(self.theme_combo)
+        row4.addStretch()
+        pv.addLayout(row4)
+        return box
+
+    def _on_click_sound(self, on: bool):
+        self.ctl.config["click_sound_on"] = bool(on)
+        self.ctl.save_config()
+
+    def _on_topmost(self, on: bool):
+        try:
+            self.ctl.pet.set_topmost(bool(on))
+        except Exception:  # noqa: BLE001
+            pass
+        self.ctl.config["topmost"] = bool(on)
+        self.ctl.save_config()
+
+    def _on_follow(self, on: bool):
+        self.ctl.config["follow_mouse"] = bool(on)
+        try:
+            self.ctl.pet.set_follow(bool(on))
+        except Exception:  # noqa: BLE001
+            pass
+        self.ctl.save_config()
+
+    def _on_theme_change(self, _=None):
+        mode = self.theme_combo.currentData() or theme.DEFAULT
+        self.ctl.set_theme(mode)
+        self.apply_theme()
+
+
     def _pick_store_dir(self):
         d = QFileDialog.getExistingDirectory(self, "选一个盘或文件夹当新的储存位置")
         if d:
@@ -790,7 +892,38 @@ class ControlPanel(QWidget):
         self.chk_llm.setChecked(bool(self.ctl.config.get("llm_on", True)))
         self.chk_llm.toggled.connect(self._on_llm_toggle)
         lv.addWidget(self.chk_llm)
+
+        # v2.9.7 硬件适配：按本机显存/内存选最搭的模型
+        self.lbl_hw = QLabel("")
+        self.lbl_hw.setWordWrap(True)
+        self.lbl_hw.setStyleSheet("color:#888;font-size:11px;")
+        lv.addWidget(self.lbl_hw)
+        row_hw = QHBoxLayout()
+        btn_hw = QPushButton("按本机配置重新推荐")
+        btn_hw.clicked.connect(self._recheck_hardware)
+        row_hw.addWidget(btn_hw)
+        row_hw.addStretch()
+        lv.addLayout(row_hw)
+        self._refresh_hw_label()
         return box_llm
+
+    def _refresh_hw_label(self):
+        try:
+            import hardware
+            fp = hardware.fingerprint()
+            item, why = hardware.best()
+            self.lbl_hw.setText(
+                f"本机：{hardware.describe(fp)}\n"
+                f"推荐：{item['name'] if item else '无'}（{why}）")
+        except Exception:  # noqa: BLE001
+            self.lbl_hw.setText("")
+
+    def _recheck_hardware(self):
+        try:
+            self.ctl._check_hardware(quiet=False)
+            self._refresh_hw_label()
+        except Exception as e:  # noqa: BLE001
+            self.lbl_hw.setText(f"检测失败：{e}")
 
     def _build_audio_box(self) -> QGroupBox:
         """「音频设置（本地导入）」分组：v2.9.6 起挪到「音频库」页，属性名保持不变。"""
@@ -1119,10 +1252,9 @@ class ControlPanel(QWidget):
         except Exception:  # noqa: BLE001
             self.lbl_trait.setText("")
         self._set_bar(self.bar_hunger, "饱食度", st.hunger)
+        self._set_bar(self.bar_thirst, "水分", st.thirst)
         self._set_bar(self.bar_mood, "心情", st.mood)
         self._set_bar(self.bar_intimacy, "亲密度", st.intimacy)
-        for key, s in SNACKS.items():
-            self.snack_btns[key].setEnabled(st.coins >= s["cost"])
         skin = self.ctl.config.get("skin", "default")
         idx = self.skin_combo.findData(skin)
         if idx >= 0 and self.skin_combo.currentIndex() != idx:
@@ -1135,6 +1267,25 @@ class ControlPanel(QWidget):
             self.size_combo.blockSignals(True)
             self.size_combo.setCurrentIndex(idx2)
             self.size_combo.blockSignals(False)
+
+        # v2.9.7 桌宠行为模块
+        for chk, key, default in ((self.chk_click_sound, "click_sound_on", True),
+                                  (self.chk_topmost, "topmost", True),
+                                  (self.chk_follow, "follow_mouse", False)):
+            chk.blockSignals(True)
+            chk.setChecked(bool(self.ctl.config.get(key, default)))
+            chk.blockSignals(False)
+        form = self.ctl.config.get("form", "mature")
+        fi = self.form_combo.findData(form)
+        if fi >= 0 and self.form_combo.currentIndex() != fi:
+            self.form_combo.blockSignals(True)
+            self.form_combo.setCurrentIndex(fi)
+            self.form_combo.blockSignals(False)
+        ti = self.theme_combo.findData(self.ctl.config.get("theme", theme.DEFAULT))
+        if ti >= 0 and self.theme_combo.currentIndex() != ti:
+            self.theme_combo.blockSignals(True)
+            self.theme_combo.setCurrentIndex(ti)
+            self.theme_combo.blockSignals(False)
 
         self.chk_water.setChecked(self.ctl.config.get("water_on", True))
         self.chk_sedentary.setChecked(self.ctl.config.get("sedentary_on", True))
@@ -1379,7 +1530,7 @@ class ControlPanel(QWidget):
                 state = "可启动（还没加载）"
             else:
                 state = "未找到模型或推理程序"
-            backend = {"ollama": "Ollama", "llama_cpp": "dafeiyu.cpp"}.get(
+            backend = {"ollama": "Ollama", "dafeiyu_cpp": "dafeiyu.cpp", "llama_cpp": "dafeiyu.cpp"}.get(
                 info.get("backend", ""), info.get("backend", "") or "未定")
             extra = ""
             if info.get("backend") == "ollama":
@@ -1437,11 +1588,6 @@ class ControlPanel(QWidget):
                 mark = "● " if a["name"] == cur else "○ "
                 self.lst_acct.addItem(mark + a["name"])
                 self.lst_acct.item(self.lst_acct.count() - 1).setData(Qt.UserRole, a["slug"])
-            i = self.cmb_form.findData(ctl.config.get("form", "mature"))
-            if i >= 0 and self.cmb_form.currentIndex() != i:
-                self.cmb_form.blockSignals(True)
-                self.cmb_form.setCurrentIndex(i)
-                self.cmb_form.blockSignals(False)
         except Exception:  # noqa: BLE001
             pass
         # 定时

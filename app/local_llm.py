@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """dafeiyu.cpp：托管 dafeiyu-server 子进程，走 OpenAI 兼容 /v1/chat/completions。
 
-（引擎本体是 llama.cpp，本程序内改名为 dafeiyu.cpp；旧目录名 llama 仍兼容。）
+（引擎本体在程序内统一命名为 dafeiyu.cpp，运行目录里不再出现旧引擎名。）
 模型与推理程序不打进 exe，放在程序同级 runtime/ 目录：
   runtime/dafeiyu/dafeiyu-server.exe
   runtime/models/qwen35-4b-Q4_K_M.gguf
@@ -26,13 +26,17 @@ PREFERRED_MODELS = ["qwen35-4b-Q4_K_M.gguf", MODEL_NAME]
 
 
 def server_exe() -> str:
-    """优先 dafeiyu-server.exe，其次旧的 llama-server.exe，最后旧目录。"""
+    """本地推理入口：runtime/dafeiyu 下的 dafeiyu-server.exe。
+
+    v2.9.7 起运行目录里的可执行文件统一改成 dafeiyu-* 前缀，
+    只保留最后一级旧目录兼容（老版本装过的机器升级上来还能跑）。
+    """
     base = os.path.join(runtime_dir(), "dafeiyu")
-    for name in ("dafeiyu-server.exe", "llama-server.exe"):
+    for name in ("dafeiyu-server.exe", "dafeiyu.exe"):
         p = os.path.join(base, name)
         if os.path.exists(p):
             return p
-    return os.path.join(runtime_dir(), "llama", "llama-server.exe")
+    return os.path.join(runtime_dir(), "dafeiyu", "dafeiyu-server.exe")
 
 
 def model_path(name: str = "") -> str:
@@ -59,7 +63,7 @@ def available() -> bool:
 
 # ---------------- Ollama 后端 ----------------
 # 有 Ollama 时优先用它：自带显存调度、keep_alive 闲置卸载、模型切换。
-# 没装 Ollama 也照样能跑：回退到 runtime/llama/llama-server.exe。
+# 没装 Ollama 也照样能跑：回退到 runtime/dafeiyu/dafeiyu-server.exe。
 OLLAMA_HOST = "http://127.0.0.1:11434"
 OLLAMA_DEFAULT_MODEL = "qwen3.5:4b"
 
@@ -106,7 +110,7 @@ def ollama_model_present(name: str, host: str = OLLAMA_HOST) -> bool:
 
 
 class ServerManager:
-    """本地推理后端：优先 Ollama，没有就自己拉 llama-server。"""
+    """本地推理后端：优先 Ollama，没有就自己拉 dafeiyu-server。"""
 
     def __init__(self, config: dict):
         self.config = config
@@ -114,6 +118,8 @@ class ServerManager:
         self.proc = None
         self.ready = False
         self.last_error = ""
+        # Ollama 装了但运行库缺失时会 500；记下来，后续直接用自带 dafeiyu 引擎
+        self.ollama_broken = False
 
     @property
     def model_file(self) -> str:
@@ -129,21 +135,25 @@ class ServerManager:
 
     @property
     def backend(self) -> str:
-        """auto: 有 Ollama 用 Ollama（GPU），否则 llama.cpp；也可强制 ollama / llama_cpp。
+        """auto: 有 Ollama 用 Ollama（GPU），否则 dafeiyu.cpp（CPU）；也可强制 ollama / dafeiyu_cpp。
 
         空闲调度：config.gpu_when_idle 为真时，一旦检测到游戏在跑就把推理退回 CPU 引擎，
         不跟游戏抢显存；否则用 Ollama 吃 GPU。
         """
         want = str(self.config.get("llm_backend", "auto") or "auto")
-        if want in ("ollama", "llama_cpp"):
+        if want == "llama_cpp":          # v2.9.7 前的老配置值，认成同一后端
+            want = "dafeiyu_cpp"
+        if want in ("ollama", "dafeiyu_cpp"):
             return want
+        if self.ollama_broken:
+            return "dafeiyu_cpp"
         if not ollama_alive(self.ollama_host):
-            return "llama_cpp"
+            return "dafeiyu_cpp"
         if self.config.get("gpu_when_idle", True):
             try:
                 import gpu_guard
                 if gpu_guard.game_running():
-                    return "llama_cpp"
+                    return "dafeiyu_cpp"
             except Exception:  # noqa: BLE001
                 pass
         return "ollama"
@@ -266,6 +276,13 @@ class ServerManager:
                 return False, "local_empty"
             return True, content
         except urllib.error.HTTPError as e:
+            # 500 常见于 Ollama 自身运行库缺失（llama-server binary not found）：
+            # 记一笔，这次就直接用自带引擎重试，不让用户白等。
+            if e.code >= 500:
+                self.ollama_broken = True
+                if not self.is_running():
+                    self.start()   # backend 已切到 dafeiyu_cpp，这里把自带引擎拉起来
+                return self._chat_local(messages, max_tokens, temperature, timeout, fmt)
             return False, f"local_http_{e.code}"
         except urllib.error.URLError:
             return False, "local_offline"
@@ -279,6 +296,9 @@ class ServerManager:
             return False, "local_not_ready"
         if self.backend == "ollama":
             return self._chat_ollama(messages, max_tokens, temperature, timeout, fmt)
+        return self._chat_local(messages, max_tokens, temperature, timeout, fmt)
+
+    def _chat_local(self, messages, max_tokens, temperature, timeout, fmt):
         body = {
             "model": "local",
             "messages": messages,
@@ -286,7 +306,7 @@ class ServerManager:
             "temperature": temperature,
             "stream": False,
         }
-        if fmt:  # llama.cpp server 用 GBNF 约束成 json 对象
+        if fmt:  # dafeiyu.cpp server 用 GBNF 约束成 json 对象
             body["response_format"] = {"type": "json_object"}
         req = urllib.request.Request(
             self.base_url() + "/v1/chat/completions",

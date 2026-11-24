@@ -22,12 +22,16 @@ def main():
     panel = controller.panel
 
     def shot_all():
+        try:
+            panel.refresh()
+        except Exception as e:  # noqa: BLE001
+            print("REFRESH ERROR:", type(e).__name__, e)
         n = panel.tabs.count()
         for i in range(n):
             panel.tabs.setCurrentIndex(i)
             app.processEvents()
             label = panel.side.item(i).text().replace("/", "_")
-            panel.grab().save(os.path.join(OUT, f"v296-panel-{i:02d}-{label}.png"))
+            panel.grab().save(os.path.join(OUT, f"v297-panel-{i:02d}-{label}.png"))
         app.quit()
 
     QTimer.singleShot(900, shot_all)

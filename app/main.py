@@ -7,6 +7,7 @@ PySide6 透明无边框置顶桌宠：养成 / 投喂 / 换装 / 表情 / 番茄
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -19,15 +20,20 @@ from PySide6.QtWidgets import (QApplication, QMenu, QMessageBox, QSystemTrayIcon
 import accounts
 import ambient
 import awareness
+import care_ui
+import companion
 import emotion as emo
+import hardware
 import knowledge
 import lines
 import local_llm
+import maker
 import memory as mem
 import model_dl
 import models_catalog
 import paths
 import persona as pers
+import snacks as snack_catalog
 import splash as splash_mod
 import theme
 import websearch
@@ -84,7 +90,7 @@ DEFAULT_CONFIG = {
     "voice_profile": "linluo",
     "llm_on": True, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
     "llm_model_file": "",
-    "llm_backend": "auto",                      # auto / ollama / llama_cpp
+    "llm_backend": "auto",                      # auto / ollama / dafeiyu_cpp（旧值 llama_cpp 自动认）
     "gpu_when_idle": True,                      # 没在跑游戏时用 GPU（Ollama），跑游戏退 CPU
     "ollama_host": local_llm.OLLAMA_HOST,
     "ollama_model": local_llm.OLLAMA_DEFAULT_MODEL,
@@ -104,6 +110,12 @@ DEFAULT_CONFIG = {
     "fs_hide_on": True,               # 全屏应用时自动躲起来
     "power_saver_on": True,           # 拔电时暂停本地大模型
     "ambient_geo": {},                # {"lat","lon","name"} 城市坐标缓存
+    # v2.9.7 第二批
+    "click_sound_on": True,           # 点击音效（点她时的"噗叽"声）
+    "follow_mouse": False,            # 跟随鼠标（原先只在托盘/语音里能开）
+    "hw_profile": {},                 # 硬件指纹（换显卡/内存时用来提醒）
+    "shop_refreshed_at": 0,           # 商城上次联网补货时间戳
+    "care_quiet_until": 0,            # 状态栏/动作提问冷却到什么时候
 }
 
 
@@ -161,6 +173,16 @@ class Controller:
 
         self.pet = PetWindow(self, show_now=not defer_show)
 
+        # ---- v2.9.7 新增窗口（用到才建，避免拖慢启动）----
+        self.shop_win = None
+        self.bag_win = None
+        self.status_win = None
+        self.ask_win = None
+        self.tool_win = None
+        self._care_last_beg = 0.0
+        self._care_last_ask = 0.0
+        self._status_shown_at = 0.0
+
         # ---- 定时器 ----
         self.decay_timer = QTimer()
         self.decay_timer.setInterval(30_000)
@@ -182,6 +204,19 @@ class Controller:
         self.auto_timer.setInterval(20_000)
         self.auto_timer.timeout.connect(self._on_auto)
         self.auto_timer.start()
+
+        # ---- v2.9.7 关心节奏：状态栏 / 撒娇讨零食 / 随机动作提问 ----
+        self.care_timer = QTimer()
+        self.care_timer.setInterval(60_000)
+        self.care_timer.timeout.connect(self._on_care_tick)
+        self.care_timer.start()
+
+        # ---- v2.9.7 硬件适配：启动 30 秒后查一次，之后每小时一次 ----
+        self.hw_timer = QTimer()
+        self.hw_timer.setInterval(60 * 60_000)
+        self.hw_timer.timeout.connect(lambda: self._check_hardware(quiet=True))
+        self.hw_timer.start()
+        QTimer.singleShot(30_000, lambda: self._check_hardware(quiet=False))
 
         self.water_timer = QTimer()
         self.water_timer.setInterval(self.config.get("water_interval", 45 * 60) * 1000)
@@ -362,6 +397,9 @@ class Controller:
 
     # ================= 音效（本地音频优先，失败回退蜂鸣） =================
     def beep(self, kind: str):
+        # v2.9.7：点击音效单独开关（"噗叽"这一声可以关掉，其他提示音不受影响）
+        if kind == "pat" and not self.config.get("click_sound_on", True):
+            return
         if self.play_audio(kind):
             return
         if not self.config.get("sound_on", True) or not _HAS_WINSOUND:
@@ -421,7 +459,260 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
 
-    # ================= 互动回调（桌宠 → 主控） =================
+    # ================= v2.9.7 零食商城 / 背包 / 状态栏 / 打工入口 =================
+    def open_shop(self):
+        if self.shop_win is None:
+            self.shop_win = care_ui.SnackShopWindow(self)
+        else:
+            self.shop_win.rebuild()
+        self.shop_win.show()
+        self.shop_win.raise_()
+
+    def buy_snack(self, key: str):
+        ok, msg = self.state.buy(key)
+        if ok:
+            self.beep("feed")
+            self.pet.set_expression("happy", 1800)
+        self.save_config()
+        self.refresh_panel()
+        return ok, msg
+
+    def refresh_shop_online(self):
+        """联网淘新零食；返回新增列表（空列表 = 没淘到）。"""
+        try:
+            added = snack_catalog.fetch_online(k=6)
+        except Exception:  # noqa: BLE001
+            return []
+        if added:
+            self.config["shop_refreshed_at"] = time.time()
+            self.save_config()
+        return added
+
+    def open_backpack(self, why: str = ""):
+        if self.bag_win is None:
+            self.bag_win = care_ui.BackpackWindow(self)
+        else:
+            self.bag_win.rebuild()
+        self.bag_win.show()
+        self.bag_win.raise_()
+        if why:
+            self.pet.bubble.show_text(why, 2600)
+
+    def eat_from_bag(self, key: str):
+        ok, msg = self.state.eat(key, auto_buy=False)
+        if ok:
+            self.emotion.apply("feed_like", 1.0)
+            self.beep("feed")
+            self.pet.set_expression("happy", 2200)
+            self._speak(msg, 3200)
+        else:
+            self._speak(msg, 2600)
+            if not self.state.bag_list():
+                self.open_backpack(companion.empty_bag_line())
+        self.save_config()
+        self.refresh_panel()
+        return ok, msg
+
+    def do_drink(self):
+        ok, msg = self.state.drink()
+        if ok:
+            self.emotion.apply("feed_like", 0.6)
+            self.beep("feed")
+            self.pet.set_expression("happy", 2000)
+            self._speak(msg, 3000)
+        else:
+            self._speak(msg, 2200)
+        self.save_config()
+        self.refresh_panel()
+        return ok, msg
+
+    def beg_snack(self):
+        """撒娇讨零食：背包有货就先吃背包里的，没货就开口讨并亮出商城。"""
+        st = self.state
+        bag = st.bag_list()
+        if bag:
+            it, _n = bag[0]
+            self._speak(random.choice([
+                f"背包里还有{it['emoji']}{it['name']}，我先吃一份～",
+                f"翻到{it['emoji']}{it['name']}了，这个归我。",
+            ]), 3000)
+            return self.eat_from_bag(it["key"])
+        affordable = [s for s in snack_catalog.all_items()
+                      if s["cost"] <= st.coins and s["cost"] <= 25]
+        snack = random.choice(affordable) if affordable else None
+        self.pet.set_expression("shy", 2600)
+        self.emotion.apply("pat", 0.8)
+        self._speak(companion.beg_line(st, snack), 4200)
+        self.open_shop()
+        if not affordable:
+            self.pet.bubble.show_text("不过我现在钱包空空的，先去打份工吧。", 3600)
+        return (False, "beg")
+
+    def maybe_status_bar(self, force: bool = False):
+        """需求到了就亮状态栏大气泡；冷却 10 分钟，避免一直弹。"""
+        kind = self.state.need_kind()
+        if not kind:
+            return False
+        now = time.time()
+        if not force and now - self._status_shown_at < 600:
+            return False
+        if self.status_win is None:
+            self.status_win = care_ui.StatusBarWindow(self)
+        self.status_win.show_need(kind)
+        self._status_shown_at = now
+        self._speak(companion.need_line(kind), 3000)
+        return True
+
+    def offer_work(self):
+        """打工指令：给 3 个活，10 秒不点就自己随机挑一个开工。"""
+        keys = random.sample(list(TASK_DEFS.keys()), min(3, len(TASK_DEFS)))
+        pairs = [(k, TASK_DEFS[k]["name"]) for k in keys]
+        self.pet.set_expression("curious", 2400)
+        self._speak("想干哪份活？十秒没动静我就自己挑了。", 3600)
+        self.ask_win = care_ui.ActionAskBubble(
+            self, pairs, timeout_ms=10_000,
+            title="挑一份活", tip="三个选项，10 秒没选我自己开工。",
+            on_pick=self.start_task)
+
+    def open_task_page(self):
+        self.open_panel()
+        try:
+            self.panel.side.setCurrentRow(1)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def open_theme_settings(self):
+        self.open_panel()
+        try:
+            self.panel.side.setCurrentRow(4)   # 设置页
+        except Exception:  # noqa: BLE001
+            pass
+
+    def do_action(self, key: str):
+        self.pet.do_action(key)
+
+    def ask_action_bubble(self):
+        """偶尔冒出来问一句"做哪个动作"，两个选项。"""
+        pool = [a for a in ALL_ACTIONS if a not in ("change", "tumble")]
+        pairs = companion.action_pairs(pool)
+        if len(pairs) < 2:
+            return
+        self.ask_win = care_ui.ActionAskBubble(self, pairs, timeout_ms=12_000)
+
+    def _on_care_tick(self):
+        """每 60 秒看一次她现在缺什么，按情况开口。"""
+        try:
+            if self.panel is not None and self.panel.isVisible():
+                return
+            if self.task_active:
+                return
+            st = self.state
+            now = time.time()
+            if st.need_kind() and now - self._status_shown_at > 600:
+                if self.maybe_status_bar():
+                    return
+            if st.is_hungry(50) and not st.bag_list() and now - self._care_last_beg > 600:
+                if random.random() < 0.5:
+                    self._care_last_beg = now
+                    self.beg_snack()
+                    return
+            if now - self._care_last_ask > random.randint(720, 1200):
+                self._care_last_ask = now
+                if random.random() < 0.6:
+                    self.ask_action_bubble()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ================= v2.9.7 硬件适配 =================
+    def _check_hardware(self, quiet: bool = True):
+        try:
+            info = hardware.check_and_update(self.config)
+            self.save_config()
+        except Exception as e:  # noqa: BLE001
+            if not quiet:
+                self.pet.bubble.show_text(f"硬件检测没成功：{str(e)[:40]}", 4000)
+            return
+        item = info.get("model")
+        if info["changed"]:
+            self.pet.bubble.show_text(
+                "硬件变了：" + "；".join(info["changed"])
+                + (f"。我重新配成 {item['name']}。" if item else "。"), 14_000)
+            self._apply_model_choice(item, announce=False)
+            self.pet.set_expression("curious", 4000)
+        elif info["first_time"] and not quiet:
+            if item:
+                self._apply_model_choice(item, announce=True)
+
+    def _apply_model_choice(self, item: dict, announce: bool = True):
+        """按硬件推荐落地：记下推荐模型，没下载就提示去哪儿下。"""
+        if not item:
+            return
+        self.config["llm_model_recommend"] = item["id"]
+        if not self.config.get("llm_model_file"):
+            self.config["llm_model_file"] = item["file"]
+        self.save_config()
+        path = os.path.join(self.models_dir(), item["file"])
+        if os.path.exists(path):
+            if announce:
+                self.pet.bubble.show_text(f"本机最搭的是 {item['name']}，已经在硬盘里，随时能用。", 6000)
+            return
+        tip = (f"按本机配置推荐 {item['name']}（{item['size_mb'] / 1024:.1f}GB）："
+               f"{item['note']}。要装就在「自定义模型」页点下载。")
+        self.pet.bubble.show_text(tip, 12_000)
+        self.panel and self.panel.append_chat("assistant", "（硬件适配）" + tip)
+
+    # ================= v2.9.7 大肥鱼做小软件 =================
+    def make_tool(self, ask: str):
+        ask = (ask or "").strip()
+        if not ask:
+            self._speak("你要我做什么样的小工具？说一下功能就行。", 3000)
+            return
+        self._speak("行，我写写看——先别急着运行，等我写出来你点头。（本地模型慢的话要一两分钟）", 4200)
+        messages = [{"role": "system", "content": "你是一个严谨的 Windows 小工具工程师。"},
+                    {"role": "user", "content": maker.PROMPT.format(ask=ask)}]
+        worker = local_llm.LocalChatWorker(self.llm, messages, max_tokens=800, temperature=0.25)
+        worker.reply_ready.connect(lambda text: self._on_tool_code(ask, text))
+        worker.failed.connect(lambda err: self._on_tool_failed(err))
+        self.tool_worker = worker
+        worker.start()
+
+    def _on_tool_failed(self, err: str):
+        self.last_tool_error = err
+        self._speak(f"写代码没成（{err}）。先在「自定义模型」把本地模型跑起来再试。", 4200)
+
+    def _on_tool_code(self, ask: str, text: str):
+        code = maker.extract_code(text)
+        if not code:
+            self._speak("模型没给出完整代码，换个说法再试一次？", 3600)
+            return
+        risks = maker.check_code(code)
+        path = maker.save_script(code, ask)
+        if risks:
+            self.pet.bubble.show_text(
+                "代码写好了，但有风险点（" + "、".join(risks) + "），我先不给跑，源码在：" + path, 12_000)
+            self.panel and self.panel.append_chat(
+                "assistant", f"（小软件）已保存 {path}，检测到风险：{'、'.join(risks)}，未运行。")
+            return
+        self.panel and self.panel.append_chat("assistant", f"（小软件）已保存到 {path}")
+        self._ask_run_tool(path, code)
+
+    def _ask_run_tool(self, path: str, code: str):
+        """用户点头才运行；不点就只留文件。"""
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox()
+        box.setWindowTitle("要现在跑一下吗？")
+        box.setText(f"脚本已存到：\n{path}\n\n只在当前目录跑，最长 20 秒。")
+        box.setDetailedText(code)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        if box.exec() == QMessageBox.Yes:
+            ok, out = maker.run_script(path)
+            self.pet.bubble.show_text(("跑完了：" if ok else "运行出错：") + out[:300], 9000)
+            self.panel and self.panel.append_chat("assistant", f"（小软件）{out[:800]}")
+        else:
+            self.pet.bubble.show_text("好，先放着，想跑再说。", 2600)
+
+
     def snacks(self):
         return SNACKS
 
@@ -445,18 +736,38 @@ class Controller:
         self.refresh_panel()
 
     def on_feed(self, snack_key: str):
-        ok, msg = self.state.feed(snack_key)
-        if ok:
-            self.emotion.apply("feed_like", 1.0)
-            self.beep("feed")
-            self._speak(lines.pick(lines.FEED.get(snack_key, lines.HAPPY)), 2600)
-            self.pet.set_expression("happy", 2600)
+        """用户投喂：不饿就先收进背包，饿了才当场吃（v2.9.7）。"""
+        snack = snack_catalog.by_key(snack_key)
+        if not snack:
+            self._speak("这个我这儿没有。", 2200)
+            return
+        st = self.state
+        if st.is_hungry(55):
+            ok, msg = st.eat(snack_key, auto_buy=True)
+            if ok:
+                self.emotion.apply("feed_like", 1.0)
+                self.beep("feed")
+                self._speak(companion.eat_line(snack), 3000)
+                self.pet.set_expression("happy", 2600)
+            else:
+                self.emotion.apply("feed_hate", 0.8)
+                self.beep("error")
+                self._speak(msg, 2600)
+                self.pet.set_expression("angry", 2200)
         else:
-            self.emotion.apply("feed_hate", 0.8)
-            self.beep("error")
-            self._speak(msg, 2400)
-            self.pet.set_expression("angry", 2000)
+            ok, msg = st.buy(snack_key)
+            if ok:
+                self.emotion.apply("feed_like", 0.7)
+                self.beep("feed")
+                self.pet.set_expression("curious", 2200)
+                self._speak(companion.bag_line(snack), 3000)
+                self.open_backpack("（不饿，先收进背包）")
+            else:
+                self.beep("error")
+                self._speak(msg, 2600)
+        self.save_config()
         self.refresh_panel()
+
 
     def feed_snack(self, key: str):
         self.pet.do_feed(key)
@@ -1334,6 +1645,15 @@ class Controller:
         low = (text or "").strip()
         if not low:
             return False
+        # v2.9.7：做小软件的指令要把整句话当需求给模型，先单独接
+        ma = re.search(r"(?:做|写)(?:个|一个|款)?(.{2,40}?)(?:的小?软件|的小?工具|的?脚本|程序)", low)
+        if ma or any(k in low for k in ("做个小软件", "做个小工具", "写个小工具", "写个脚本")):
+            ask = low
+            for w in ("大肥鱼", "帮我", "给我", "做个小软件", "做个小工具", "写个小工具", "写个脚本"):
+                ask = ask.replace(w, "")
+            self.make_tool(ask.strip("，。 ") or low)
+            self.panel and self.panel.append_chat("user", text)
+            return True
         for keys, label, fn in self._voice_commands():
             if any(k in low for k in keys):
                 try:
@@ -1375,6 +1695,11 @@ class Controller:
             self.set_size(label)
 
         return [
+            (("零食商城", "买零食", "零食店", "逛商城", "去购物"), "打开零食商城", self.open_shop),
+            (("打开背包", "看背包", "背包里有什么"), "打开背包", self.open_backpack),
+            (("去打工", "打工", "找份活", "上班"), "看工作选项", self.offer_work),
+            (("喝水", "口渴", "想喝点"), "喝水去了", self.do_drink),
+            (("状态栏", "我还好吗"), "看看状态", lambda: self.maybe_status_bar(force=True)),
             (("更新病毒库", "升级病毒库", "更新杀毒"), "病毒库更新了",
              lambda: self.update_signatures()),
             (("安全体检", "检查电脑安全", "体检"), "开始安全体检", self.run_scan),
@@ -1575,7 +1900,7 @@ class Controller:
             if backend == "ollama":
                 ollama = local_llm.ollama_models(self.llm.ollama_host)
         except Exception:  # noqa: BLE001
-            backend = backend or "llama_cpp"
+            backend = backend or "dafeiyu_cpp"
         use = ""
         if backend == "ollama":
             use = self.llm.ollama_model
@@ -1584,7 +1909,7 @@ class Controller:
         return {
             "available": local_llm.available(),
             "running": self.local_llm_ready(),
-            "model": os.path.basename(m) if (m and backend == "llama_cpp") else use,
+            "model": os.path.basename(m) if (m and backend == "dafeiyu_cpp") else use,
             "port": self.llm.port,
             "backend": backend,
             "ollama": ollama,
@@ -2150,11 +2475,9 @@ class Controller:
         act_mute.toggled.connect(self.set_mute_idle)
         act_quit = QAction("退出程序", menu)
         act_quit.triggered.connect(self.quit_app)
-        theme_menu = menu.addMenu("主题")
-        cur_theme = self.config.get("theme", theme.DEFAULT)
-        for key, label in theme.MODES:
-            act_theme = theme_menu.addAction(("✓ " if key == cur_theme else "　") + label)
-            act_theme.triggered.connect(lambda _=False, k=key: self.set_theme(k))
+        # v2.9.7：主题整体搬进「设置 → 桌宠行为」，托盘只留跳转
+        act_theme_goto = QAction("主题（在设置里改）", menu)
+        act_theme_goto.triggered.connect(self.open_theme_settings)
         menu.addAction(act_panel)
         menu.addAction(act_search)
         menu.addSeparator()
@@ -2163,7 +2486,7 @@ class Controller:
         menu.addSeparator()
         menu.addAction(act_auto)
         menu.addAction(act_mute)
-        theme_menu.setTitle("主题")
+        menu.addAction(act_theme_goto)
         menu.addSeparator()
         menu.addAction(act_quit)
         self.tray.setContextMenu(menu)
@@ -2239,16 +2562,19 @@ class Controller:
         QTimer.singleShot(4000, self._auto_get_local_model)
 
     def _auto_get_local_model(self):
-        item = models_catalog.by_id("qwen3-4b")
+        """安装时选了「装一个」：按本机配置挑最搭的那个，不再固定 4B。"""
+        item, why = hardware.best()
+        if not item:
+            item = models_catalog.by_id("qwen3-4b")
         if not item:
             return
         p = os.path.join(self.models_dir(), item["file"])
         if os.path.exists(p):
-            self.pet.bubble.show_text("本地模型已经在了，能离线聊。", 3200)
+            self.pet.bubble.show_text(f"本地模型已经在了（{item['name']}），能离线聊。", 3200)
             return
-        self.pet.bubble.show_text("开始下本地模型（安装时你选的），几百 MB 到 2GB，慢慢来。", 5000)
+        self.pet.bubble.show_text(f"按你的机器挑了 {item['name']}：{why}", 5000)
         try:
-            self.download_model("qwen3-4b")
+            self.download_model(item["id"])
         except Exception as e:  # noqa: BLE001
             self.pet.bubble.show_text(f"本地模型没下成：{str(e)[:30]}", 4000)
 
