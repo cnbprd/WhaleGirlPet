@@ -217,6 +217,7 @@ class Controller:
 
         self._build_tray()
         self._build_hotkey()
+        self._check_install_model_flag()
         self._save_timer = QTimer()
         self._save_timer.setInterval(60_000)
         self._save_timer.timeout.connect(self.save_config)
@@ -596,6 +597,7 @@ class Controller:
                 except Exception:  # noqa: BLE001
                     pass
                 return
+            self._arm_update_reminder(info)
             box = QMessageBox(self.panel)
             box.setIcon(QMessageBox.Information)
             box.setWindowTitle("发现新版本")
@@ -611,6 +613,8 @@ class Controller:
                 page_btn.clicked.connect(
                     lambda _=False, u=info["url"]: QDesktopServices.openUrl(QUrl(u)))
             box.addButton("以后再说", QMessageBox.RejectRole)
+            # v2.9.6：30 分钟没人管就自动关，之后交给托盘每小时提醒一次
+            QTimer.singleShot(30 * 60 * 1000, box.reject)
             box.exec()
             if dl_btn is not None and box.clickedButton() is dl_btn:
                 self.start_update_download(info)
@@ -619,6 +623,31 @@ class Controller:
             if not silent:
                 self.pet.bubble.show_text("已经是最新版本啦。", 2600)
             self.panel and self.panel.set_update_status(msg)
+
+    def _arm_update_reminder(self, info: dict):
+        """v2.9.6：手动点「检查更新」发现新版本后，只要没装就每小时托盘提醒一次。"""
+        self._pending_info = info
+        if getattr(self, "_update_remind", None) is None:
+            self._update_remind = QTimer(self.app)
+            self._update_remind.setInterval(60 * 60 * 1000)
+            self._update_remind.timeout.connect(self._remind_update)
+        self._update_remind.start()
+
+    def _remind_update(self):
+        info = getattr(self, "_pending_info", None) or self.config.get("pending_update") or {}
+        latest = info.get("latest") or "新版本"
+        try:
+            self.tray.showMessage(
+                APP_NAME, f"还有 v{latest} 没装呢。面板「设置 → 检查更新」里可以更新。",
+                QSystemTrayIcon.MessageIcon.Information, 6000)
+        except Exception:  # noqa: BLE001
+            pass
+        self.pet.bubble.show_text(f"v{latest} 还等着你装呢～", 3000)
+
+    def _disarm_update_reminder(self):
+        t = getattr(self, "_update_remind", None)
+        if t is not None:
+            t.stop()
 
     def start_update_download(self, info: dict):
         url = info.get("setup") or info.get("exe") or ""
@@ -639,6 +668,7 @@ class Controller:
         self.panel and self.panel.set_update_status(msg)
 
     def _on_update_done(self, path: str):
+        self._disarm_update_reminder()
         self.panel and self.panel.set_update_status("下载完成，准备安装。")
         box = QMessageBox(self.panel)
         box.setWindowTitle("安装新版本")
@@ -738,6 +768,8 @@ class Controller:
             ctx = websearch.context_block(user_text, k=4)
             if ctx:
                 parts.append(ctx)
+                parts.append("上面这些资料只能当参考：先自己看懂，再用你自己的话讲出来，"
+                             "不许整段照抄，不许列标题、链接或来源清单。")
         parts.append("用口语回答，2 到 4 句，不要分点罗列，不要用书面腔；不确定就说不确定。")
         if no_think:
             parts.append("/no_think")
@@ -754,6 +786,7 @@ class Controller:
         text = (text or "").strip()
         if not text:
             return
+        self._web_retry_done = False
         if self._chat_busy():
             self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
             return
@@ -768,6 +801,7 @@ class Controller:
                     self.memory.add_fact(k, v)
             except Exception:  # noqa: BLE001
                 pass
+        self.emotion.apply_text(text)      # v2.9.6：聊什么都能让性格慢慢长一点
         self.emotion.apply("chat", 1.0)
 
         import skills as sk
@@ -865,6 +899,11 @@ class Controller:
         if not content:
             self._on_ai_failed("empty")
             return
+        # v2.9.6：答不上来 → 先联网学一遍，再用她自己的话重答（不照搬）
+        if self._needs_web_relearn(content):
+            q = self.history[-1]["content"] if self.history else ""
+            self._web_relearn(q, content)
+            return
         self.history.append({"role": "assistant", "content": content})
         if self.config.get("memory_on", True):
             try:
@@ -882,6 +921,72 @@ class Controller:
 
     def _on_ai_reply(self, content: str):
         self._finish_reply(content, "云端")
+
+    # ---------- v2.9.6 答不上来先联网学 ----------
+    WEB_MISS_HINTS = ("不知道", "不清楚", "不确定", "查不到", "没查到", "没有联网",
+                      "无法获取", "无法回答", "不太了解", "没听说过", "我没法", "我无法")
+
+    def _needs_web_relearn(self, content: str) -> bool:
+        if not self.config.get("websearch_on", True):
+            return False
+        if getattr(self, "_web_retry_done", False):
+            return False
+        q = self.history[-1]["content"] if self.history else ""
+        if not q or len(q) < 2:
+            return False
+        return any(h in (content or "") for h in self.WEB_MISS_HINTS)
+
+    def _web_relearn(self, question: str, draft: str):
+        """上网查一遍，回来后用自己的话重答；查不到就老实说查不到。"""
+        import threading
+
+        self._web_retry_done = True
+        self.panel and self.panel.set_chat_status("这句我答不上来，先上网学一下……")
+        self.pet.set_expression("curious", 4000)
+
+        def work():
+            try:
+                ctx = websearch.context_block(question, k=5, max_chars=1100)
+            except Exception:  # noqa: BLE001
+                ctx = ""
+            QTimer.singleShot(0, lambda: self._after_web_relearn(question, ctx, draft))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_web_relearn(self, question: str, ctx: str, draft: str):
+        if not ctx:
+            self._finish_reply("我上网查了一圈也没找到靠谱说法，这个我真说不准，不瞎编。", "联网学习失败")
+            return
+        sys_prompt = (
+            self._system_text(question, False).replace("/no_think", "").strip()
+            + "\n\n" + ctx
+            + "\n\n注意：上面只是参考资料，必须换成你自己的话、用 2 到 4 句口语讲清楚；"
+              "不许整段照抄，不许罗列标题、链接或来源清单；资料打架时以更新的那条为准。"
+        )
+        prof = self.active_profile()
+        if prof.get("api_key") or read_zhipu_key():
+            self.worker = ChatWorker(
+                endpoint=prof.get("endpoint", ""), model=prof.get("model", ""),
+                api_key=prof.get("api_key", ""), history=self.history, user_text=question,
+                system_prompt=sys_prompt)
+            self.worker.reply_ready.connect(lambda c: self._finish_reply(c, "联网学习后作答"))
+            self.worker.failed.connect(lambda r: self._finish_reply(draft, "本地草稿"))
+            self.worker.start()
+            return
+        if self.config.get("llm_on", True) and local_llm.available():
+            try:
+                self.llm_worker = local_llm.LocalChatWorker(
+                    self.llm,
+                    [{"role": "system", "content": sys_prompt},
+                     {"role": "user", "content": question}],
+                    max_tokens=260, temperature=0.6)
+                self.llm_worker.reply_ready.connect(lambda c: self._finish_reply(c, "联网学习后作答"))
+                self.llm_worker.failed.connect(lambda r: self._finish_reply(draft, "本地草稿"))
+                self.llm_worker.start()
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        self._finish_reply(draft, "本地草稿")
 
     def _on_ai_failed(self, reason: str):
         fallback = {
@@ -1200,11 +1305,15 @@ class Controller:
         self.send_chat(text)
 
     def wake_words(self) -> list:
-        """唤醒词候选：固定「大肥鱼」+ 当前角色名，各自带「你好」说法。"""
+        """唤醒词候选：固定「大肥鱼」+ 当前角色名 + 用户自己加的叫法（各带「你好」说法）。"""
         name = str(self.config.get("name") or DEFAULT_NAME).strip()
         bases = ["大肥鱼"]
         if name and name not in bases:
             bases.append(name)
+        for w in (self.config.get("wake_words_extra") or []):
+            w = str(w).strip()
+            if w and w not in bases:
+                bases.append(w)
         out = []
         for w in bases:
             for form in (w, "你好" + w, "你好，" + w):
@@ -2010,8 +2119,10 @@ class Controller:
     # ================= 托盘 / 快捷键 =================
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self.app)
-        # 优先用经典形象做的 ico（小尺寸更清楚），没有才退回当前皮肤立绘
-        icon_path = asset_path(os.path.join("ui", "pet.ico"))
+        # v2.9.6 托盘统一用透明底 Q 版大肥鱼图标
+        icon_path = asset_path(os.path.join("ui", "pet_flat.ico"))
+        if not os.path.exists(icon_path):
+            icon_path = asset_path(os.path.join("ui", "pet.ico"))
         if not os.path.exists(icon_path):
             icon_path = asset_path(SKINS[self.config.get("skin", "default")][1])
         icon = QIcon(icon_path)
@@ -2019,14 +2130,11 @@ class Controller:
         self.tray.setIcon(icon)
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()
-        act_panel = QAction("打开控制面板", menu)
+        act_panel = QAction(icon, "打开控制面板", menu)
         act_panel.triggered.connect(self.open_panel)
-        # 记忆/知识不在面板展示后，从这里直接打开本地数据目录
-        act_data = QAction("打开数据目录（记忆 / 知识库 / 音色缓存）", menu)
-        act_data.triggered.connect(self.open_data_dir)
-        # v2.9.3 外部浏览器：把当前剪贴板的内容丢进 Tabbit 搜索
-        act_search = QAction("用 Tabbit 搜索剪贴板", menu)
-        act_search.triggered.connect(self.search_in_browser)
+        # v2.9.6 剪贴板不再自动读取：点这一项先弹授权框，同意才读
+        act_search = QAction("搜索剪贴板内容（读取前先问你）", menu)
+        act_search.triggered.connect(self.ask_search_clipboard)
         act_show = QAction("显示 / 隐藏桌宠（Alt+Shift+F）", menu)
         act_show.triggered.connect(self.toggle_visibility)
         act_hide = QAction("隐藏桌宠", menu)
@@ -2048,7 +2156,6 @@ class Controller:
             act_theme = theme_menu.addAction(("✓ " if key == cur_theme else "　") + label)
             act_theme.triggered.connect(lambda _=False, k=key: self.set_theme(k))
         menu.addAction(act_panel)
-        menu.addAction(act_data)
         menu.addAction(act_search)
         menu.addSeparator()
         menu.addAction(act_show)
@@ -2077,8 +2184,24 @@ class Controller:
         self.config["mute_idle"] = bool(on)
         self.save_config()
 
+    def ask_search_clipboard(self):
+        """v2.9.6：读剪贴板前必须先问用户，同意才读；读完不留存。"""
+        box = QMessageBox(self.panel if self.panel is not None else None)
+        box.setWindowTitle("读取剪贴板")
+        box.setIcon(QMessageBox.Question)
+        box.setText("要用我剪贴板里的内容去搜一下吗？\n只会读这一次，读完不保存。")
+        box.setWindowFlag(Qt.WindowStaysOnTopHint, True)   # 桌宠是置顶无边框窗，弹框要压得住
+        ok = box.addButton("同意，去搜", QMessageBox.AcceptRole)
+        box.addButton("不用了", QMessageBox.RejectRole)
+        box.setDefaultButton(box.buttons()[1])
+        box.exec()
+        if box.clickedButton() is not ok:
+            self.pet.bubble.show_text("好，那我不动剪贴板。", 1600)
+            return
+        self.search_in_browser()
+
     def search_in_browser(self):
-        """把剪贴板内容丢给 Tabbit 浏览器做搜索；没装 Tabbit 就退回默认浏览器。"""
+        """把剪贴板内容丢给本机浏览器搜索；没装外部浏览器就退回默认浏览器。"""
         import urllib.parse
         from PySide6.QtGui import QGuiApplication
 
@@ -2093,13 +2216,41 @@ class Controller:
             # 实测：不带 --new-window 时 URL 会被并进旧标签，用户看不到；
             # 加上后新窗口标题即为搜索页，确认参数生效
             if QProcess.startDetached(exe, ["--new-window", url]):
-                self.pet.bubble.show_text("丢进 Tabbit 帮你查了～", 1600)
+                self.pet.bubble.show_text("丢进浏览器帮你查了～", 1600)
             else:
                 QDesktopServices.openUrl(QUrl(url))
-                self.pet.bubble.show_text("Tabbit 没启动成功，改用默认浏览器", 1600)
+                self.pet.bubble.show_text("外部浏览器没启动成功，改用默认浏览器", 1600)
         else:
             QDesktopServices.openUrl(QUrl(url))
-            self.pet.bubble.show_text("没找到 Tabbit，先用默认浏览器打开", 1600)
+            self.pet.bubble.show_text("用默认浏览器打开搜索页了", 1600)
+
+    def _check_install_model_flag(self):
+        """安装时勾了「要，装一个」→ 首次启动自动下默认模型，下完删标记。"""
+        try:
+            flag = os.path.join(os.path.dirname(sys.executable), "want_local_model.flag")
+        except Exception:  # noqa: BLE001
+            return
+        if not os.path.exists(flag):
+            return
+        try:
+            os.remove(flag)
+        except OSError:
+            pass
+        QTimer.singleShot(4000, self._auto_get_local_model)
+
+    def _auto_get_local_model(self):
+        item = models_catalog.by_id("qwen3-4b")
+        if not item:
+            return
+        p = os.path.join(self.models_dir(), item["file"])
+        if os.path.exists(p):
+            self.pet.bubble.show_text("本地模型已经在了，能离线聊。", 3200)
+            return
+        self.pet.bubble.show_text("开始下本地模型（安装时你选的），几百 MB 到 2GB，慢慢来。", 5000)
+        try:
+            self.download_model("qwen3-4b")
+        except Exception as e:  # noqa: BLE001
+            self.pet.bubble.show_text(f"本地模型没下成：{str(e)[:30]}", 4000)
 
     def _build_hotkey(self):
         sc = QShortcut(QKeySequence("Alt+Shift+F"), self.app)
@@ -2168,6 +2319,14 @@ def main():
     if not shm.create(1):
         QMessageBox.information(None, APP_NAME, "桌宠已经在运行啦～")
         return 0
+
+    # v2.9.6 先关掉 PyInstaller 的原生启动图（只在 onefile 打包后存在），
+    # 交给下面自绘的透明启动屏接管，避免两张图叠在一起
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+        pyi_splash.close()
+    except Exception:  # noqa: BLE001
+        pass
 
     # v2.9.5 启动屏：先把「鲸鱼娘加载中」画出来，初始化完再一次性露桌宠。
     # 以前是 PetWindow 构造里直接 show()，接着各组件陆续初始化、6 秒后还可能弹更新框。

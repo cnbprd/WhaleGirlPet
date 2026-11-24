@@ -46,13 +46,12 @@ def tab_voice(panel) -> QWidget:
     ctl = panel.ctl
     w = QWidget()
     lay = QVBoxLayout(w)
-    lay.addWidget(QLabel("输入方式（说一句就行，走的是同一个能力层）"))
+    lay.addWidget(QLabel("音频库：音色、语速、音量、本地音效都在这里。换音色只换语气和口音，不动她的性格。"))
     panel.lbl_voice = QLabel("")
     panel.lbl_voice.setWordWrap(True)
     panel.lbl_voice.setStyleSheet("color:#666;font-size:12px;")
     lay.addWidget(panel.lbl_voice)
     lay.addWidget(_row(
-        _btn("语音说一句（Ctrl+Alt+V）", ctl.voice_listen),
         _btn("刷新麦克风", panel._refresh_voice),
     ))
 
@@ -67,7 +66,7 @@ def tab_voice(panel) -> QWidget:
     cmd_hint.setStyleSheet("color:#777;font-size:12px;")
     lay.addWidget(cmd_hint)
 
-    lay.addWidget(QLabel("人格腔调（8 种，声音与用词一起换）"))
+    lay.addWidget(QLabel("音色库（8 种；只换声音、口音和说话习惯，不改她的性格）"))
 
     panel.cmb_persona = QComboBox()
     for key, name in pers.persona_index():
@@ -143,19 +142,7 @@ def tab_voice(panel) -> QWidget:
     panel.chk_tts_online.toggled.connect(lambda v: ctl.set_tts(panel.chk_tts.isChecked(), v))
     lay.addWidget(panel.chk_tts_online)
 
-    lay.addWidget(QLabel("本地大模型（离线推理，云端不可用时兜底）"))
-    panel.lbl_llm = QLabel("")
-    panel.lbl_llm.setWordWrap(True)
-    lay.addWidget(panel.lbl_llm)
-    lay.addWidget(_row(
-        _btn("启动本地模型", panel._start_llm),
-        _btn("停止", panel._stop_llm),
-        _btn("刷新状态", panel._refresh_llm),
-    ))
-    panel.chk_llm = QCheckBox("优先用本地模型回答")
-    panel.chk_llm.setChecked(bool(ctl.config.get("llm_on", True)))
-    panel.chk_llm.toggled.connect(panel._on_llm_toggle)
-    lay.addWidget(panel.chk_llm)
+    lay.addWidget(panel._build_audio_box())
 
     lay.addStretch(1)
     return w

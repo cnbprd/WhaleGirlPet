@@ -56,12 +56,12 @@ class ControlPanel(QWidget):
             (self._tab_tasks(), "打工"),
             (self._tab_remind(), "番茄钟/提醒"),
             (self._tab_chat(), "聊天"),
-            (self._tab_settings(), "设置"),
-            (panel_v2.tab_voice(self), "语音人格"),
-            (panel_v2.tab_models(self), "模型库"),
+            (self._tab_prefs(), "设置"),
+            (panel_v2.tab_voice(self), "音频库"),
+            (self._tab_settings(), "自定义模型"),
             (panel_v2.tab_security(self), "安全体检"),
             (panel_v2.tab_account(self), "账号形态"),
-            (panel_v2.tab_schedule(self), "定时"),
+            (panel_v2.tab_schedule(self), "定时任务"),
         ]
         self.side = QListWidget()
         self.side.setObjectName("SideBar")
@@ -134,15 +134,29 @@ class ControlPanel(QWidget):
         name_row.addWidget(QLabel("名字："))
         self.ed_name = QLineEdit()
         self.ed_name.setMaxLength(12)
-        self.ed_name.editingFinished.connect(
-            lambda: self.ctl.set_name(self.ed_name.text()))
+        self.ed_name.setReadOnly(True)          # v2.9.6：平时锁定，点「修改」才解锁
         name_row.addWidget(self.ed_name)
+        self.btn_name_edit = QPushButton("修改")
+        self.btn_name_edit.setFixedWidth(58)
+        self.btn_name_edit.clicked.connect(self._on_name_edit)
+        self.btn_name_save = QPushButton("保存")
+        self.btn_name_save.setFixedWidth(58)
+        self.btn_name_save.setEnabled(False)
+        self.btn_name_save.clicked.connect(self._on_name_save)
+        name_row.addWidget(self.btn_name_edit)
+        name_row.addWidget(self.btn_name_save)
         lay.addLayout(name_row)
 
         self.lbl_level = QLabel()
         self.lbl_coins = QLabel()
         lay.addWidget(self.lbl_level)
         lay.addWidget(self.lbl_coins)
+
+        # v2.9.6：性格只从聊天里长，这里只显示不给改
+        self.lbl_trait = QLabel("")
+        self.lbl_trait.setWordWrap(True)
+        self.lbl_trait.setStyleSheet("color:#888;font-size:11px;")
+        lay.addWidget(self.lbl_trait)
 
         self.bar_hunger = self._add_bar(lay, "饱食度")
         self.bar_mood = self._add_bar(lay, "心情")
@@ -176,6 +190,27 @@ class ControlPanel(QWidget):
         lay.addWidget(self.size_combo)
         lay.addStretch()
         return w
+
+    def _on_name_edit(self):
+        """解锁名字输入框，进入编辑态。"""
+        self.ed_name.setReadOnly(False)
+        self.ed_name.setFocus()
+        self.ed_name.selectAll()
+        self._name_editing = True
+        self.btn_name_edit.setEnabled(False)
+        self.btn_name_save.setEnabled(True)
+
+    def _on_name_save(self):
+        """保存新名字并重新锁回去。"""
+        name = self.ed_name.text().strip()
+        if name:
+            self.ctl.set_name(name)
+        else:
+            self.ed_name.setText(self.ctl.get_name())
+        self._name_editing = False
+        self.ed_name.setReadOnly(True)
+        self.btn_name_edit.setEnabled(True)
+        self.btn_name_save.setEnabled(False)
 
     def _add_bar(self, lay, name):
         bar = QLabel()
@@ -456,6 +491,226 @@ class ControlPanel(QWidget):
         except OSError as e:
             self.chat_status.setText(f"导出失败：{e}")
 
+    # ---------- 设置页（v2.9.6 新建：关于/更新、储存位置、语音唤醒、天气资讯、聊天入口） ----------
+    def _tab_prefs(self):
+        w = QWidget()
+        root = QVBoxLayout(w)
+        root.setSpacing(7)
+
+        # 关于与更新（从原「设置」页整组迁入）
+        root.addWidget(self._build_update_box())
+
+        # 储存位置（含「打开数据目录」）
+        box_store = QGroupBox("储存位置")
+        sv = QVBoxLayout(box_store)
+        sv.setSpacing(4)
+        self.lbl_store = QLabel("")
+        self.lbl_store.setWordWrap(True)
+        self.lbl_store.setStyleSheet("color:#777;font-size:11px;")
+        sv.addWidget(self.lbl_store)
+        row_dir = QHBoxLayout()
+        row_dir.setSpacing(6)
+        self.ed_store = QLineEdit()
+        self.ed_store.setPlaceholderText("换盘：先浏览选文件夹，再点「迁移到这里」")
+        row_dir.addWidget(self.ed_store)
+        btn_pick = QPushButton("浏览…")
+        btn_pick.setFixedWidth(72)
+        btn_pick.clicked.connect(self._pick_store_dir)
+        row_dir.addWidget(btn_pick)
+        sv.addLayout(row_dir)
+        row_act = QHBoxLayout()
+        row_act.setSpacing(6)
+        for text, slot in (("迁移到这里", self._migrate_store),
+                           ("打开数据目录", self._open_data_dir),
+                           ("迁回默认位置", self._reset_store)):
+            b = QPushButton(text)
+            b.clicked.connect(slot)
+            row_act.addWidget(b)
+        sv.addLayout(row_act)
+        self.lbl_store_msg = QLabel("")
+        self.lbl_store_msg.setWordWrap(True)
+        self.lbl_store_msg.setStyleSheet("color:#2f6f4f;font-size:11px;")
+        sv.addWidget(self.lbl_store_msg)
+        root.addWidget(box_store)
+
+        # 语音唤醒（原「语音说一句」迁入，功能变成改唤醒词）
+        box_wake = QGroupBox("语音唤醒")
+        wv = QVBoxLayout(box_wake)
+        wv.setSpacing(4)
+        tip = QLabel("叫一句她就开始听；默认「大肥鱼」和她的名字，自己的叫法用逗号隔开。")
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color:#777;font-size:11px;")
+        wv.addWidget(tip)
+        row_w = QHBoxLayout()
+        row_w.setSpacing(6)
+        self.ed_wake = QLineEdit()
+        self.ed_wake.setPlaceholderText("例如：小鱼儿，溟月宝")
+        row_w.addWidget(self.ed_wake)
+        btn_ws = QPushButton("保存唤醒词")
+        btn_ws.setFixedWidth(104)
+        btn_ws.clicked.connect(self._save_wake_words)
+        row_w.addWidget(btn_ws)
+        wv.addLayout(row_w)
+        row_w2 = QHBoxLayout()
+        row_w2.setSpacing(6)
+        btn_voice = QPushButton("现在说一句（Ctrl+Alt+V）")
+        btn_voice.clicked.connect(self.ctl.voice_listen)
+        row_w2.addWidget(btn_voice)
+        btn_mic = QPushButton("刷新麦克风")
+        btn_mic.setFixedWidth(96)
+        btn_mic.clicked.connect(self._refresh_voice)
+        row_w2.addWidget(btn_mic)
+        self.lbl_wake = QLabel("")
+        self.lbl_wake.setStyleSheet("color:#888;font-size:11px;")
+        row_w2.addWidget(self.lbl_wake, 1)
+        wv.addLayout(row_w2)
+        root.addWidget(box_wake)
+
+        # 天气资讯模块（天气开关 + 城市 + 科技新闻）
+        box_amb = QGroupBox("天气资讯模块")
+        av = QVBoxLayout(box_amb)
+        av.setSpacing(4)
+        row_a1 = QHBoxLayout()
+        row_a1.setSpacing(8)
+        self.chk_weather = QCheckBox("开机时报天气")
+        self.chk_weather.toggled.connect(self._on_weather_toggle)
+        row_a1.addWidget(self.chk_weather)
+        row_a1.addSpacing(10)
+        row_a1.addWidget(QLabel("城市"))
+        self.ed_city = QLineEdit()
+        self.ed_city.setPlaceholderText("例如：郑州")
+        self.ed_city.setFixedWidth(120)
+        row_a1.addWidget(self.ed_city)
+        btn_city = QPushButton("保存")
+        btn_city.setFixedWidth(60)
+        btn_city.clicked.connect(self._save_city)
+        row_a1.addWidget(btn_city)
+        row_a1.addStretch()
+        av.addLayout(row_a1)
+        row_a2 = QHBoxLayout()
+        row_a2.setSpacing(8)
+        self.chk_news = QCheckBox("顺带说条科技新闻")
+        self.chk_news.toggled.connect(self._on_news_toggle)
+        row_a2.addWidget(self.chk_news)
+        row_a2.addSpacing(10)
+        btn_now = QPushButton("现在试一条")
+        btn_now.setFixedWidth(104)
+        btn_now.clicked.connect(self._ambient_now)
+        row_a2.addWidget(btn_now)
+        self.lbl_amb = QLabel("")
+        self.lbl_amb.setStyleSheet("color:#888;font-size:11px;")
+        row_a2.addWidget(self.lbl_amb, 1)
+        av.addLayout(row_a2)
+        root.addWidget(box_amb)
+
+        # 聊天入口（与左侧「聊天」页合并为同一份记录）
+        row_ch = QHBoxLayout()
+        lb = QLabel("聊天只有一个入口：左侧「聊天」页（记录、附件、导出都在那儿）")
+        lb.setWordWrap(True)
+        lb.setStyleSheet("color:#777;font-size:11px;")
+        row_ch.addWidget(lb, 1)
+        btn_ch = QPushButton("打开聊天")
+        btn_ch.setFixedWidth(96)
+        btn_ch.clicked.connect(self._goto_chat)
+        row_ch.addWidget(btn_ch)
+        root.addLayout(row_ch)
+
+        root.addStretch()
+        return w
+
+    # ---------- 设置页动作 ----------
+    def _pick_store_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "选一个盘或文件夹当新的储存位置")
+        if d:
+            self.ed_store.setText(d)
+
+    def _open_data_dir(self):
+        p = paths.data_dir()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+
+    def _migrate_store(self):
+        import shutil
+
+        target = self.ed_store.text().strip()
+        if not target:
+            self.lbl_store_msg.setText("先点「浏览…」选一个文件夹。")
+            return
+        src = paths.data_dir()
+        if os.path.normcase(os.path.abspath(target)) == os.path.normcase(os.path.abspath(src)):
+            self.lbl_store_msg.setText("这就是现在的位置，不用迁。")
+            return
+        try:
+            os.makedirs(target, exist_ok=True)
+            moved = 0
+            for name in os.listdir(src):
+                if name == "data_root.txt":
+                    continue
+                s = os.path.join(src, name)
+                d = os.path.join(target, name)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(s, d)
+                moved += 1
+            with open(os.path.join(src, "data_root.txt"), "w", encoding="utf-8") as f:
+                f.write(target)
+            self.lbl_store_msg.setText(
+                f"已复制 {moved} 项到 {target}。重启后生效（旧目录留着没删，确认没问题可自己清）。")
+        except OSError as e:
+            self.lbl_store_msg.setText(f"迁移失败：{e}")
+
+    def _reset_store(self):
+        try:
+            p = os.path.join(paths.default_data_dir(), "data_root.txt")
+            if os.path.exists(p):
+                os.remove(p)
+            self.lbl_store_msg.setText("已改回默认位置，重启后生效。")
+        except OSError as e:
+            self.lbl_store_msg.setText(f"改回失败：{e}")
+
+    def _save_wake_words(self):
+        words = [x.strip() for x in self.ed_wake.text().replace("，", ",").split(",") if x.strip()]
+        self.ctl.config["wake_words_extra"] = words[:6]
+        self.ctl.save_config()
+        self.lbl_wake.setText("已保存：" + ("、".join(words[:6]) if words else "（只保留默认叫法）"))
+
+    def _on_weather_toggle(self, on: bool):
+        self.ctl.config["weather_on"] = bool(on)
+        self.ctl.save_config()
+
+    def _on_news_toggle(self, on: bool):
+        self.ctl.config["news_on"] = bool(on)
+        self.ctl.save_config()
+
+    def _save_city(self):
+        city = self.ed_city.text().strip()
+        if not city:
+            self.lbl_amb.setText("城市没填。")
+            return
+        self.ctl.set_weather_city(city)
+        self.lbl_amb.setText(f"已改成 {city}，正在重新拉天气。")
+
+    def _ambient_now(self):
+        try:
+            self.ctl._on_ambient_tick(force=True)
+            self.lbl_amb.setText("已经在拉了，等几秒她就开口。")
+        except Exception as e:  # noqa: BLE001
+            self.lbl_amb.setText(f"拉取失败：{e}")
+
+    def _goto_chat(self):
+        """与新设置页「聊天」合并后的唯一切换入口：直接跳到左侧聊天页并聚焦输入框。"""
+        try:
+            for row in range(self.side.count()):
+                if self.side.item(row).text() == "聊天":
+                    self.side.setCurrentRow(row)
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.chat_input.setFocus()
+        except Exception:  # noqa: BLE001
+            pass
+
     # ---------- 设置页 ----------
     def _tab_settings(self):
         w = QWidget()
@@ -508,7 +763,37 @@ class ControlPanel(QWidget):
         ra.addWidget(self.chk_auto)
         root.addWidget(box_auto)
 
-        # 音频
+        root.addWidget(self._build_llm_box())
+
+        root.addStretch()
+        return w
+
+    def _build_llm_box(self) -> QGroupBox:
+        """「本地大模型」分组：v2.9.6 起从「语音人格」页挪到「自定义模型」页。"""
+        box_llm = QGroupBox("本地大模型（离线推理，云端不可用时兜底）")
+        lv = QVBoxLayout(box_llm)
+        self.lbl_llm = QLabel("")
+        self.lbl_llm.setWordWrap(True)
+        lv.addWidget(self.lbl_llm)
+        row_l = QHBoxLayout()
+        btn_start = QPushButton("启动本地模型")
+        btn_start.clicked.connect(self._start_llm)
+        row_l.addWidget(btn_start)
+        btn_stop = QPushButton("停止")
+        btn_stop.clicked.connect(self._stop_llm)
+        row_l.addWidget(btn_stop)
+        btn_ref = QPushButton("刷新状态")
+        btn_ref.clicked.connect(self._refresh_llm)
+        row_l.addWidget(btn_ref)
+        lv.addLayout(row_l)
+        self.chk_llm = QCheckBox("优先用本地模型回答")
+        self.chk_llm.setChecked(bool(self.ctl.config.get("llm_on", True)))
+        self.chk_llm.toggled.connect(self._on_llm_toggle)
+        lv.addWidget(self.chk_llm)
+        return box_llm
+
+    def _build_audio_box(self) -> QGroupBox:
+        """「音频设置（本地导入）」分组：v2.9.6 起挪到「音频库」页，属性名保持不变。"""
         box_audio = QGroupBox("音频设置（本地导入）")
         aa = QVBoxLayout(box_audio)
         self.chk_audio = QCheckBox("启用音频")
@@ -544,9 +829,10 @@ class ControlPanel(QWidget):
         self.lbl_audio_file = QLabel("未绑定音频文件")
         self.lbl_audio_file.setStyleSheet("color:#888;font-size:11px;")
         aa.addWidget(self.lbl_audio_file)
-        root.addWidget(box_audio)
+        return box_audio
 
-        # 关于与更新
+    def _build_update_box(self) -> QGroupBox:
+        """「关于与更新」分组：v2.9.6 起挪到新的「设置」页。"""
         box_upd = QGroupBox("关于与更新")
         u = QVBoxLayout(box_upd)
         self.lbl_version = QLabel(f"当前版本 v{APP_VERSION}")
@@ -565,10 +851,7 @@ class ControlPanel(QWidget):
         self.lbl_update.setStyleSheet("color:#888;font-size:11px;")
         row_btn.addWidget(self.lbl_update)
         u.addLayout(row_btn)
-        root.addWidget(box_upd)
-
-        root.addStretch()
-        return w
+        return box_upd
 
     # ---------- 后端交互 ----------
     def _on_profile_switch(self, idx: int):
@@ -820,12 +1103,21 @@ class ControlPanel(QWidget):
     # ---------- 刷新 ----------
     def refresh(self):
         st = self.ctl.state
-        self.ed_name.blockSignals(True)
-        self.ed_name.setText(self.ctl.get_name())
-        self.ed_name.blockSignals(False)
+        if not getattr(self, "_name_editing", False):
+            self.ed_name.blockSignals(True)
+            self.ed_name.setText(self.ctl.get_name())
+            self.ed_name.blockSignals(False)
 
         self.lbl_level.setText(f"Lv.{st.level}　经验 {st.exp}/{st.exp_need()}")
         self.lbl_coins.setText(f"金币：{st.coins}")
+        _tw = {"tsundere": "傲娇", "clingy": "黏人", "sarcasm": "小毒舌",
+               "gentle": "温柔", "balanced": "均衡"}
+        try:
+            self.lbl_trait.setText(
+                f"性格：{_tw.get(self.ctl.emotion.trait_word(), '均衡')}"
+                f"（只从你们的聊天里慢慢长出来，不能手动改）")
+        except Exception:  # noqa: BLE001
+            self.lbl_trait.setText("")
         self._set_bar(self.bar_hunger, "饱食度", st.hunger)
         self._set_bar(self.bar_mood, "心情", st.mood)
         self._set_bar(self.bar_intimacy, "亲密度", st.intimacy)
@@ -852,6 +1144,20 @@ class ControlPanel(QWidget):
         self.ed_update_url.blockSignals(True)
         self.ed_update_url.setText(self.ctl.config.get("update_url", ""))
         self.ed_update_url.blockSignals(False)
+
+        # v2.9.6 新「设置」页
+        self.lbl_store.setText(f"数据目录：{paths.data_dir()}")
+        for chk, key in ((self.chk_weather, "weather_on"), (self.chk_news, "news_on")):
+            chk.blockSignals(True)
+            chk.setChecked(bool(self.ctl.config.get(key, True)))
+            chk.blockSignals(False)
+        if not self.ed_city.hasFocus():
+            self.ed_city.setText(self.ctl.config.get("weather_city", "郑州"))
+        if not self.ed_wake.hasFocus():
+            self.ed_wake.setText("，".join(self.ctl.config.get("wake_words_extra", []) or []))
+        _name = self.ctl.get_name()
+        _wake = "大肥鱼" + ("" if _name == "大肥鱼" else "、" + _name)
+        self.lbl_wake.setText(f"现在的叫法：{_wake}（可再加自己的）")
 
         # 后端
         self._reload_profiles()

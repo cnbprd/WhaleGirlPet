@@ -3,7 +3,7 @@
 > 这是给「新窗口」看的入口文件。豆包会话之间的上下文不互通，所以上一轮对话的结论、改了什么、
 > 怎么跑、坑在哪，全部写在这里。项目自带 Python 环境，整个目录可以整体搬走或复制。
 
-- 版本号：`2.9.5`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
+- 版本号：`2.9.6`（`app/paths.py` 的 `APP_VERSION`，安装脚本 `installer/whale_pet.iss` 同步）
 - 平台：Windows 10/11，Python 3.14.7
 - 远端仓库：https://github.com/cnbrd/WhaleGirlPet （`git remote -v` 可查，SSH 443 通道已配好）
 - 发布产物：CI 的 `release-assets.yml` 现在从 `app/paths.py` 读版本号，Release 不存在会自动创建，
@@ -40,19 +40,37 @@ cd F:\WhaleGirlPet
 
 ## 三、面板现状（10 页）
 
-`养成` / `打工` / `番茄钟-提醒` / `聊天` / `设置` / `语音人格` / `模型库` / `安全体检` / `账号形态` / `定时`
+`养成` / `打工` / `番茄钟-提醒` / `聊天` / `设置` / `音频库` / `自定义模型` / `安全体检` / `账号形态` / `定时任务`
 
-### v2.9.5（2026-11-25）的三项
+### v2.9.6（2026-11-25）的改造
 
-1. **启动屏**：`app/splash.py` 的 `LoadingSplash` —— 无边框浮层，圆角卡片 + 鲸鱼娘立绘浮动 +
-   「鲸鱼娘加载中」+ 三个呼吸点 + 细进度条；`main()` 里先显示它，`Controller(defer_show=True)`
-   分三步初始化，最少驻留 2 秒后淡出，`show_pet()` 才把桌宠一次性露出来。`PetWindow.__init__`
-   新增 `show_now` 参数，构造时不再自动 `show()`。
-2. **启动不再弹更新框**：自动检查更新 6 秒 → 20 秒；`_on_update_result` 的 `silent` 分支只发托盘
-   通知并把 `pending_update` 写进 config，不再 `QMessageBox.exec()`。手动点「检查更新」仍会弹。
-3. **对话气泡式安装向导**：`installer/whale_pet.iss` 重写 [Code] —— 三张自定义页（装哪 / 桌面图标 /
-   装完叫醒），左侧白色气泡提问 + 右侧立绘 + 两个选项按钮；美术在 `installer/art/`
-   （`whale.png` 立绘、`bubble.png` 气泡、`small.png` 右上角小图，全部透明底）。
+1. **「设置」是新的**（`panel._tab_prefs`）：关于与更新、储存位置（含「打开数据目录」）、语音唤醒
+   （可加唤醒词，存 `config["wake_words_extra"]`）、天气资讯模块（天气开关/城市/科技新闻/试一条）、
+   聊天入口（一行说明 + 「打开聊天」，与左侧聊天页是同一份记录）。
+2. **原「设置」改名「自定义模型」**：留联网后端管理、自主行动，并接收从「语音人格」迁来的本地大模型组
+   （`panel._build_llm_box`）。
+3. **「语音人格」改名「音频库」**：原「设置」页的「音频设置（本地导入）」整组迁入（`panel._build_audio_box`），
+   页面写明「换音色只换语气和口音，不动性格」。
+4. **「定时」改名「定时任务」**。
+5. **养成页名字锁定**：默认只读，点「修改」解锁、点「保存」写库并锁回去（`_on_name_edit` / `_on_name_save`）。
+6. **性格只从聊天长**：`emotion.apply_text()` 按夸奖/凶人/撒娇/示弱四类线索微调性格，面板只读展示，
+   没有任何手动改性格的入口。
+7. **储存位置可迁**：`paths.data_dir()` 读 `%APPDATA%\WhaleGirlPet\data_root.txt` 指向新根；设置页整目录复制后重启生效。
+8. **剪贴板先授权**：托盘「搜索剪贴板内容（读取前先问你）」→ `ask_search_clipboard()` 弹框，同意才读。
+9. **答不上来先联网学**：`_finish_reply` 命中「不知道/查不到/没联网」→ `_web_relearn()` 抓搜索结果，
+   让模型用自己的话重答，prompt 禁止照搬与列链接。
+
+### v2.9.5（2026-11-25）的三项（仍在）
+
+1. **启动屏**：`app/splash.py` 的 `LoadingSplash` —— v2.9.6 已改成**透明纯人物**：三帧动作轮播
+   （default/wave/dance，每 1.6 秒）、换帧小跳、持续浮动与走动、脚下五点绕圈代替进度条；
+   没有卡片、没有进度条、没有版本号。脚底线 380、点环 +22、文字基线 +80。
+   `main()` 先关掉 PyInstaller 原生启动图，再显示它；`Controller(defer_show=True)` 分三步初始化。
+2. **启动不再弹更新框**：自动检查 20 秒后跑，`silent` 分支只发托盘通知 + 写 `pending_update`。
+   v2.9.6 起：手动点「检查更新」发现新版本后，每小时托盘提醒一次，下载完成即停；对话框 30 分钟自动关。
+3. **对话气泡式安装向导**：`installer/whale_pet.iss` 四张自定义页（装哪 / 桌面图标 / 装完叫醒 / 选装本地模型），
+   左侧白气泡 + 右侧立绘 + 两个选项；右上角小图换成全透明 `art\small_blank.png`；
+   选盘只选到盘根会自动补 `WhaleGirlPetApp` 并建目录；30 分钟系统空闲由 `art\idle_close.ps1` 关掉窗口。
 
 ### 上一轮（2026-11-24）的四项改造，仍然生效
 
@@ -91,10 +109,18 @@ cd F:\WhaleGirlPet
 6. **离屏渲染截图里的中文会显示成方块**（offscreen 平台没有中文字体），结构可核对但字体效果必须看真实桌面。
 7. **Inno 的 `TBitmapImage.Bitmap.LoadFromFile` 只认 BMP**：直接读 PNG 会在 InitializeWizard 抛
    `Bitmap image is not valid`；必须 `TPngImage.Create → LoadFromFile → Bitmap.Assign`（v2.9.5 已改）。
-8. **PyInstaller onefile 启动有 1~1.5 秒空白**（63MB 自解压），之后才轮到 Python 层的启动屏；
-   想更快只能改 onedir 或加 `splash` 原生启动图。
+8. **PyInstaller onefile 启动有 1~1.5 秒空白**（70MB 自解压）。v2.9.6 已加原生 `Splash`：
+   `WhaleGirlPet.spec` 里传 `Splash` 对象，并**必须把 `splash_obj.binaries` 一起塞进 EXE 参数**——
+   Python 3.14 用的是 Tcl 9（`tcl90.dll` / `tcl9tk90.dll`），不显式带上 bootloader 会报
+   `SPLASH: could not find requirement tcl90.dll in archive` 并弹 Error 框（`assets\_matting\boot_0.png` 拍到了）。
+   程序起来后 `main()` 里 `pyi_splash.close()` 让位给透明自绘屏。
 9. **Inno 自定义页的类型名是 `TWizardPage`**（不是 `TCustomPage`），`CreateCustomPage` 返回它；
    运行时 `WizardForm.DirBrowseButton` 即使 `DisableDirPage=yes` 仍可借用来自已弹目录选择框。
+10. **Inno 6 没有 `TTimer`**（编译报 `Unknown type 'TTimer'`），"30 分钟无人操作自动关"只能外挂
+    `installer/art/idle_close.ps1`（`GetLastInputInfo` + `GetTickCount`，20 秒轮询，见 `installing.flag` 立即退出）。
+11. **面板内容变多别直接套 `QScrollArea`**：v2.9.6 试过把每页包一层滚动区，结果主题 QSS 的透明背景失效、
+   分组标题被视口裁掉（截图可见灰块压在字上）。最后改成压缩页面本身（合并成两行、去掉长说明），
+    设置页五块仍能一屏放完。
 
 ## 六、自检脚本怎么用
 
@@ -112,8 +138,12 @@ $env:QT_QPA_PLATFORM="offscreen"
 ## 七、下一步待办
 
 - [x] 真实桌面开一次面板目检（中文渲染、两段分区的视觉间距）
+- [x] 版本号升到 `2.9.6`（`app/paths.py` + `installer/whale_pet.iss` 四处；CI 自动读版本）
+- [x] dist 旧包清理：16,934 MB → 143 MB（历史安装包/portable/source/sha256 + `dist\runtime` 副本）
+- [ ] 托盘右键实际点一次「搜索剪贴板内容」，确认授权框出现、拒绝时不读剪贴板
+- [ ] 「答不上来先联网学」跑一次真实问答（现在只验证了代码链路）
+- [ ] 安装向导 30 分钟空闲关窗与更新每小时提醒，各跑一次真机计时（本轮都没等满）
 - [ ] 模型库「联网添加」跑一次真实大文件下载（目前只验证了地址解析与线程接线）
-- [x] 版本号升到 `2.9.5`（`app/paths.py` + `installer/whale_pet.iss` 四处 + README；CI 自动读版本）
 - [ ] 各皮肤立绘的脸部一致性继续统一（`docs\CHARACTER.md` 是母版）
 - [ ] 果冻过渡动画（形态/换装/动作切换的插值回弹）仍未实现
 - [x] C 盘旧副本已删：`whale-girl-pet`（17.03 GB）与旧 `.venv`（839 MB）内容已核对一致后删除，

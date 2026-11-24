@@ -71,6 +71,42 @@ class EmotionState:
         if len(self.history) > 200:
             self.history = self.history[-200:]
 
+    # ---------- v2.9.6 聊天内容驱动的性格生长 ----------
+    # 性格只由"实际聊过的话 + 互动事件"慢慢长出来，不提供任何手动改性格的底层入口。
+    CHAT_CUES = {
+        "praise": ("喜欢你", "可爱", "好乖", "厉害", "真棒", "爱你", "谢谢", "贴心",
+                   "漂亮", "可爱死", "乖"),
+        "scold": ("笨", "烦", "滚", "讨厌", "闭嘴", "没用", "生气", "别吵"),
+        "miss": ("想你", "陪我", "在吗", "抱抱", "别走", "黏", "亲亲"),
+        "tired": ("累", "难过", "压力", "焦虑", "失眠", "烦死", "撑不住", "委屈"),
+    }
+
+    def apply_text(self, text: str, strength: float = 1.0):
+        """从一句聊天里读出倾向，极小幅改情绪与性格（真正的"聊着聊着变了"）。"""
+        t = text or ""
+        if not t:
+            return
+        hit = [k for k, words in self.CHAT_CUES.items() if any(w in t for w in words)]
+        if "praise" in hit:
+            self.apply("praise", 0.45 * strength)
+        if "scold" in hit:
+            self.apply("scold", 0.45 * strength)
+        if "miss" in hit:
+            self.apply("pat", 0.4 * strength)          # 撒娇/黏人，靠近摸头的效果
+        if "tired" in hit:
+            # 主人示弱：她会软下来一点、也跟着低落一点
+            self.emotions["sad"] = _clamp(self.emotions["sad"] + 5 * strength)
+            self.emotions["joy"] = _clamp(self.emotions["joy"] - 3 * strength)
+            cur = self.traits["gentle"]
+            cur += 0.7 * strength
+            cur += (50.0 - cur) * MEAN_REVERT * strength
+            self.traits["gentle"] = _clamp(cur)
+            self.counts["care"] = self.counts.get("care", 0) + 1
+        if hit:
+            self.history.append((time.time(), "chat:" + "+".join(hit), self.dominant()))
+            if len(self.history) > 200:
+                self.history = self.history[-200:]
+
     def decay(self):
         """按经过时间回落情绪。"""
         now = time.time()

@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "2.9.5"
+APP_VERSION = "2.9.6"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -26,9 +26,29 @@ def asset_path(rel: str) -> str:
     return resource_path(os.path.join("assets", rel))
 
 
-def data_dir() -> str:
+def default_data_dir() -> str:
+    """出厂默认数据目录（%APPDATA%\\WhaleGirlPet），也是储存位置指针文件的所在地。"""
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     d = os.path.join(base, "WhaleGirlPet")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
+def data_dir() -> str:
+    """当前数据目录；若用户改过储存位置，读默认目录下的 data_root.txt 指向新位置。"""
+    root_file = os.path.join(default_data_dir(), "data_root.txt")
+    d = ""
+    try:
+        if os.path.exists(root_file):
+            with open(root_file, encoding="utf-8") as f:
+                d = f.read().strip()
+    except OSError:
+        d = ""
+    if not d or not os.path.isdir(d):
+        d = default_data_dir()
     try:
         os.makedirs(d, exist_ok=True)
     except OSError:

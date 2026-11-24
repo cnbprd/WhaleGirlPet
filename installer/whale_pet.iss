@@ -1,25 +1,25 @@
-; 鲸鱼娘桌宠 安装脚本（Inno Setup 6.7.4）· v2.9.5 对话气泡式向导
+﻿; 鲸鱼娘桌宠 安装脚本（Inno Setup 6.7.4）· v2.9.6 对话气泡式向导
 ; 编译：tools\inno\ISCC.exe installer\whale_pet.iss
 ; 说明：不再用 Inno 默认的"欢迎/选择目录/任务/准备"四页，
-;       改成大肥鱼站在右侧、左侧气泡提问的三问流程（位置 / 桌面图标 / 装完叫醒）。
+;       改成大肥鱼站在右侧、左侧气泡提问的四问流程（位置 / 桌面图标 / 装完叫醒 / 选装本地模型）。
 
 [Setup]
 AppName=鲸鱼娘桌宠
-AppVersion=2.9.5
-AppVerName=鲸鱼娘桌宠 2.9.5
+AppVersion=2.9.6
+AppVerName=鲸鱼娘桌宠 2.9.6
 AppPublisher=本地自制
 DefaultDirName={localappdata}\WhaleGirlPetApp
 DefaultGroupName=鲸鱼娘桌宠
 UninstallDisplayIcon={app}\WhaleGirlPet.exe
-UninstallDisplayName=鲸鱼娘桌宠 2.9.5
+UninstallDisplayName=鲸鱼娘桌宠 2.9.6
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=WhaleGirlPet-Setup-2.9.5
+OutputBaseFilename=WhaleGirlPet-Setup-2.9.6
 SetupIconFile=..\assets\ui\pet.ico
-WizardSmallImageFile=art\small.png
+WizardSmallImageFile=art\small_blank.png
 DisableWelcomePage=yes
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -40,7 +40,7 @@ ButtonBrowse=浏览(&B)...
 FinishedHeadingLabel=装好啦
 FinishedLabel=大肥鱼已经住进这台电脑了。桌面图标点一下就能叫醒她。
 ConfirmUninstall=确定要把大肥鱼请出去吗？
-SetupWindowTitle=Setup: 鲸鱼娘桌宠 2.9.5
+SetupWindowTitle=Setup: 鲸鱼娘桌宠 2.9.6
 
 [Files]
 Source: "..\dist\WhaleGirlPet.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -50,6 +50,7 @@ Source: "copy_models.cmd"; DestDir: "{app}"; Flags: ignoreversion
 ; 向导美术：只嵌入安装包，运行时由 ExtractTemporaryFile 释放，不落到安装目录
 Source: "art\whale.png"; Flags: dontcopy
 Source: "art\bubble.png"; Flags: dontcopy
+Source: "art\idle_close.ps1"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\鲸鱼娘桌宠"; Filename: "{app}\WhaleGirlPet.exe"; IconFilename: "{app}\WhaleGirlPet.exe"
@@ -58,14 +59,16 @@ Name: "{autodesktop}\鲸鱼娘桌宠"; Filename: "{app}\WhaleGirlPet.exe"; IconF
 
 [Code]
 var
-  PageWhere, PageIcon, PageWake: TWizardPage;
-  BmpWhale: array[0..2] of TBitmapImage;
-  BmpBubble: array[0..2] of TBitmapImage;
-  LblAsk: array[0..2] of TNewStaticText;
-  LblSub: array[0..2] of TNewStaticText;
-  BtnA: array[0..2] of TNewButton;
-  BtnB: array[0..2] of TNewButton;
-  WantDesktopIcon, WantWake: Boolean;
+  PageWhere, PageIcon, PageWake, PageModel: TWizardPage;
+  BmpWhale: array[0..3] of TBitmapImage;
+  BmpBubble: array[0..3] of TBitmapImage;
+  LblAsk: array[0..3] of TNewStaticText;
+  LblSub: array[0..3] of TNewStaticText;
+  BtnA: array[0..3] of TNewButton;
+  BtnB: array[0..3] of TNewButton;
+  WantDesktopIcon, WantWake, WantLocalModel: Boolean;
+  SetupName: String;
+  IdleResult: Integer;
   DirBefore: String;
 
 function NeedDesktopIcon: Boolean;
@@ -138,15 +141,35 @@ begin
   WizardForm.NextButton.OnClick(WizardForm.NextButton);
 end;
 
+procedure WardCreateDir(const Dir: String);
+begin
+  if not DirExists(Dir) then
+    ForceDirectories(Dir);
+end;
+
 procedure WherePickFolder(Sender: TObject);
+var
+  Dir: String;
 begin
   DirBefore := WizardForm.DirEdit.Text;
   { 借用被隐藏的"浏览"按钮，弹系统目录选择框；取消时文本不变 }
   if WizardForm.DirBrowseButton <> nil then
     WizardForm.DirBrowseButton.OnClick(WizardForm.DirBrowseButton);
-  if (WizardForm.DirEdit.Text <> DirBefore) and Assigned(LblSub[0]) then
+  Dir := WizardForm.DirEdit.Text;
+  if Dir <> DirBefore then
   begin
-    LblSub[0].Caption := '好，就装到：' + WizardForm.DirEdit.Text;
+    { 用户只选了盘根（如 D:\）→ 自动补一个 WhaleGirlPetApp 子目录并建好，
+      不用他自己新建文件夹；选了具体目录就照那个目录建 }
+    if (Length(Dir) = 3) and (Dir[2] = ':') and (Dir[3] = '\') then
+    begin
+      Dir := Dir + 'WhaleGirlPetApp';
+      WardCreateDir(Dir);
+      WizardForm.DirEdit.Text := Dir;
+    end
+    else
+      WardCreateDir(Dir);
+    if Assigned(LblSub[0]) then
+      LblSub[0].Caption := '好，就装到：' + WizardForm.DirEdit.Text;
     WizardForm.NextButton.OnClick(WizardForm.NextButton);
   end;
 end;
@@ -174,6 +197,19 @@ end;
 procedure WakeNo(Sender: TObject);
 begin
   WantWake := False;
+  WizardForm.NextButton.OnClick(WizardForm.NextButton);
+end;
+
+{ ---- 页 4：选装本地模型服务 ---- }
+procedure ModelYes(Sender: TObject);
+begin
+  WantLocalModel := True;
+  WizardForm.NextButton.OnClick(WizardForm.NextButton);
+end;
+
+procedure ModelNo(Sender: TObject);
+begin
+  WantLocalModel := False;
   WizardForm.NextButton.OnClick(WizardForm.NextButton);
 end;
 
@@ -209,32 +245,39 @@ begin
   LblAsk[AIndex] := PutText(APage, AAsk, 30, 26, QW, 12, True, clBlack);
   LblSub[AIndex] := PutText(APage, ASub, 30, 58, QW, 9, False, $00666A70);
 
-  BtnA[AIndex] := PutBtn(APage, ACapA, 30, 96, 132);
-  BtnB[AIndex] := PutBtn(APage, ACapB, 172, 96, 132);
+  BtnA[AIndex] := PutBtn(APage, ACapA, 28, 96, 132);
+  BtnB[AIndex] := PutBtn(APage, ACapB, 168, 96, 132);
 end;
 
 procedure InitializeWizard;
 begin
   WantDesktopIcon := True;
   WantWake := True;
+  WantLocalModel := False;
+  { 安装器进程名（看门狗用它判断窗口还在不在） }
+  SetupName := ChangeFileExt(ExtractFileName(ExpandConstant('{srcexe}')), '');
 
-  { 从安装包体内释放两张图到临时目录，供页面控件加载 }
+  { 从安装包体内释放图片与看门狗脚本到临时目录，供页面控件/后台进程使用 }
   ExtractTemporaryFile('whale.png');
   ExtractTemporaryFile('bubble.png');
 
   PageWhere := CreateCustomPage(wpWelcome, '', '');
   PageIcon := CreateCustomPage(PageWhere.ID, '', '');
   PageWake := CreateCustomPage(PageIcon.ID, '', '');
+  PageModel := CreateCustomPage(PageWake.ID, '', '');
 
   BuildPage(PageWhere, 0, '要把我装到哪儿呀？',
-    '默认装在你自己的目录里，不碰系统盘权限。',
-    '就用默认位置', '我自己挑一个');
+    '默认装在你自己的目录里；选盘符会自动建 WhaleGirlPetApp 文件夹。',
+    '就用默认位置', '浏览…选盘');
   BuildPage(PageIcon, 1, '要在桌面上放个快捷方式吗？',
     '放一个，以后点一下就能叫我出来。',
     '要，方便找你', '不用啦');
   BuildPage(PageWake, 2, '装好了要马上叫醒我吗？',
     '选"马上"的话，装完我就自己跳出来。',
     '现在就醒', '下次再说');
+  BuildPage(PageModel, 3, '要不要顺手装个本地模型？',
+    '装了断网也能聊，约 3–4GB，装完后台自动下。',
+    '要，装一个', '先不装');
 
   BtnA[0].OnClick := @WhereUseDefault;
   BtnB[0].OnClick := @WherePickFolder;
@@ -242,15 +285,33 @@ begin
   BtnB[1].OnClick := @IconNo;
   BtnA[2].OnClick := @WakeYes;
   BtnB[2].OnClick := @WakeNo;
+  BtnA[3].OnClick := @ModelYes;
+  BtnB[3].OnClick := @ModelNo;
 
   { 页 1 的路径提示先给出默认值 }
   LblSub[0].Caption := '默认装到：' + WizardForm.DirEdit.Text;
+
+  { 30 分钟没人动电脑就把安装窗口关掉：Inno 6 没有定时器，
+    这里放一个小看门狗脚本（只杀"还没开始装文件"的窗口，安装开始后会自己退出） }
+  ExtractTemporaryFile('idle_close.ps1');
+  Exec('powershell.exe',
+    '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
+    ExpandConstant('{tmp}\idle_close.ps1') + '" -Name "' + SetupName + '"',
+    '', SW_HIDE, ewNoWait, IdleResult);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   R: Integer;
 begin
+  { 一进入真正装文件的阶段，就给看门狗打标记，让它别杀进程 }
+  if CurStep = ssInstall then
+    SaveStringToFile(ExpandConstant('{tmp}\installing.flag'), '1', False);
+
+  { 选了"要，装一个"→ 留一个标记，程序第一次启动时自己去下本地模型 }
+  if (CurStep = ssPostInstall) and WantLocalModel then
+    SaveStringToFile(ExpandConstant('{app}\want_local_model.flag'), '1', False);
+
   if (CurStep = ssPostInstall) and WantWake then
     Exec(ExpandConstant('{app}\WhaleGirlPet.exe'), '', '', SW_SHOWNORMAL,
       ewNoWait, R);
@@ -261,5 +322,7 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := (PageID = wpSelectTasks) or (PageID = wpSelectProgramGroup);
 end;
+
+
 
 

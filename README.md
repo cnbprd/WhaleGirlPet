@@ -1,4 +1,4 @@
-# 鲸鱼娘桌宠 · WhaleGirlPet
+﻿# 鲸鱼娘桌宠 · WhaleGirlPet
 
 > 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
 
@@ -99,7 +99,7 @@ WhaleGirlPet/
 │   ├── main.py          # Controller：托盘、快捷键、语音、自主行动、定时
 │   ├── pet_window.py    # 桌宠窗口：绘制、动作、拖拽、右键菜单
 │   ├── panel.py         # 控制面板：10 个页面 + 侧边栏
-│   ├── panel_v2.py      # 语音人格 / 模型库 / 安全 / 账号 / 定时（音频库与记忆页已不挂载）
+│   ├── panel_v2.py      # 音频库 / 自定义模型 / 安全 / 账号 / 定时任务（记忆页已不挂载）
 │   ├── tts.py           # Edge TTS 封装 + 音色档位
 │   ├── voice_profile.py  # 真人音色提炼映射（基频 → pitch 反查）
 │   ├── updater.py       # GitHub Releases 检查与下载校验
@@ -163,7 +163,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.5**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.6**。
 
 ---
 
