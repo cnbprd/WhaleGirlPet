@@ -47,7 +47,8 @@ def _run_ps(script: str, timeout: int = PS_TIMEOUT) -> str:
     try:
         proc = subprocess.run(
             [_ps_exe(), "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            creationflags=0x08000000)  # v2.9.9：禁掉控制台窗口，别每点一次体检就闪黑框
         return (proc.stdout or "").strip()
     except Exception:  # noqa: BLE001
         return ""
@@ -266,7 +267,8 @@ def suspect_processes() -> list:
         out = subprocess.run(
             [_ps_exe(), "-NoProfile", "-NonInteractive", "-Command",
              "Get-Process | Select-Object -ExpandProperty ProcessName | Sort-Object -Unique"],
-            capture_output=True, text=True, encoding="utf-8", timeout=PS_TIMEOUT)
+            capture_output=True, text=True, encoding="utf-8", timeout=PS_TIMEOUT,
+            creationflags=0x08000000)
         names = [n.strip().lower() for n in (out.stdout or "").splitlines() if n.strip()]
     except Exception:  # noqa: BLE001
         names = []

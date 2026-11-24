@@ -10,6 +10,7 @@
 传脚本，stdout 回传 UTF-8。不依赖任何 pip 包。
 """
 import base64
+import time as _time
 import os
 import subprocess
 import sys
@@ -59,8 +60,19 @@ def _ps_exe() -> str:
     return "powershell.exe"
 
 
+_mic_cache = {"t": 0.0, "v": None}
+_MIC_TTL = 300.0
+
+
 def has_microphone() -> bool:
-    """粗判：录音设备列表非空（不做真实录音）。"""
+    """粗判：录音设备列表非空（不做真实录音）。
+
+    v2.9.9：这条要起 PowerShell 枚举设备，实测一次 0.4~0.5 秒。
+    原来面板每刷一次就查一遍，等于每开一次面板卡半秒，改成 5 分钟缓存。
+    """
+    now = _time.monotonic()
+    if _mic_cache["v"] is not None and now - _mic_cache["t"] < _MIC_TTL:
+        return _mic_cache["v"]
     try:
         import wave  # noqa: F401  只是确认音频栈可用
     except Exception:  # noqa: BLE001
@@ -71,9 +83,12 @@ def has_microphone() -> bool:
              "(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } |"
              " Measure-Object).Count"],
             capture_output=True, timeout=15, creationflags=0x08000000)
-        return int((out.stdout or b"0").decode("utf-8", "ignore").strip() or 0) > 0
+        res = int((out.stdout or b"0").decode("utf-8", "ignore").strip() or 0) > 0
     except Exception:  # noqa: BLE001
-        return False
+        res = False
+    _mic_cache["t"] = now
+    _mic_cache["v"] = res
+    return res
 
 
 def recognize(wav_path: str = "", wait_s: int = 5, timeout_s: int = 15,

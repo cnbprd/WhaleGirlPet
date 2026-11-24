@@ -7,6 +7,14 @@ import ctypes
 import os
 import shutil
 import subprocess
+import time
+
+# v2.9.9：从无控制台的 GUI 进程起 nvidia-smi，Windows 会新建一个控制台窗口，
+# 看起来就是"点一下闪个黑框然后卡住"。这里禁掉窗口，同时缓存结果，
+# 避免每刷新一次面板都重新跑子进程（实测一次 60~70ms，原来一屏要跑 9 次）。
+_CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+_CACHE_TTL = 90.0
+_cache = {"t": 0.0, "v": None}
 
 
 def _nvidia() -> tuple:
@@ -14,7 +22,8 @@ def _nvidia() -> tuple:
     try:
         out = subprocess.run(
             [exe, "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=8, check=False)
+            capture_output=True, text=True, timeout=8, check=False,
+            creationflags=_CREATE_NO_WINDOW)
         line = (out.stdout or "").strip().splitlines()[0]
         parts = [p.strip() for p in line.split(",")]
         return parts[0], round(float(parts[1]) / 1024.0, 1), parts[2]
@@ -39,15 +48,22 @@ def _ram_gb() -> float:
         return 0.0
 
 
-def snapshot() -> dict:
+def snapshot(force: bool = False) -> dict:
+    """硬件快照。默认走 90 秒缓存：同一屏里多处调用只探测一次。"""
+    now = time.monotonic()
+    if not force and _cache["v"] is not None and now - _cache["t"] < _CACHE_TTL:
+        return dict(_cache["v"])
     gpu, vram, driver = _nvidia()
-    return {
+    data = {
         "gpu": gpu,
         "vram_gb": vram,
         "driver": driver,
         "ram_gb": _ram_gb(),
         "threads": os.cpu_count() or 4,
     }
+    _cache["t"] = now
+    _cache["v"] = dict(data)
+    return data
 
 
 def summary() -> str:
