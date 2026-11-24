@@ -511,6 +511,7 @@ class PetWindow(QWidget):
             dx = c.x() - (self.x() + self.width() // 2)
             dy = c.y() - (self.y() + self.height() // 2)
             self.move(self.x() + int(dx * 0.12), self.y() + int(dy * 0.12))
+            self._clamp_to_screen()   # v2.9.4：光标跑到副屏时别把桌宠一并带出主屏
             self.alpha = 1.0
             self.bob = -3 * abs(math.sin(self.state_t * 6)) * self.scale
             self.rot = 4 * math.sin(self.state_t * 6)
@@ -881,8 +882,11 @@ class PetWindow(QWidget):
 
     def _clamp_to_screen(self, margin: int = 0):
         scr = QGuiApplication.primaryScreen().availableGeometry()
-        # 立绘四周有 _pad 的活动余量，边界要按立绘算，否则人物会离屏一截
-        x = max(scr.left() - self.width() + self._pad + margin, min(self.x(), scr.right() - margin + self._pad))
+        # v2.9.4：原先把 _pad 加到右边界，双屏时窗口能被推出主屏（人跑到副屏，主屏倒像"凭空消失"）。
+        # 现在保证窗口至少 65% 留在主屏内，既保留探边的自然感，也不会整只跑出画面。
+        keep = max(24, int(self.width() * 0.65))
+        x = max(scr.left() - (self.width() - keep) - margin,
+                min(self.x(), scr.right() - keep + margin))
         y = max(scr.top() - self._pad, min(self.y(), scr.bottom() - self.height() + self._pad))
         self.move(x, y)
 

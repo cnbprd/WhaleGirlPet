@@ -3,8 +3,13 @@ name: Release Assets
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/release-assets.yml'
+      - 'app/**'
+      - 'assets/**'
+      - 'installer/**'
+      - 'WhaleGirlPet.spec'
 
 permissions:
   contents: write
