@@ -1,0 +1,39 @@
+name: Release Notes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/releases/*.md'
+      - '.github/workflows/release-notes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply notes to every release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          ok=0
+          skip=0
+          for f in docs/releases/*.md; do
+            tag=$(basename "$f" .md)
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --notes-file "$f" && ok=$((ok+1))
+            else
+              echo "no release for $tag, skipped"
+              skip=$((skip+1))
+            fi
+          done
+          echo "updated=$ok skipped=$skip"
+          gh release list --limit 10 || true

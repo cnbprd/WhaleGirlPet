@@ -2,6 +2,25 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v2.9.9（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 设置拆成左侧独立页 | 设置页内部的五个子标签取消，关于与更新 / 储存位置 / 语音唤醒 / 天气资讯 / 桌宠行为直接成为侧栏页；`_tab_prefs` 拆成 `_tab_about`、`_tab_store`、`_tab_wake`、`_tab_ambient`、`_tab_pet_behavior`，删掉 `QTabWidget` 与子页包装 | 侧栏 9 页 → 13 页，安装版实拍 `assets\_matting\v299-installed-panel.png`（722×953） |
+| 2 面板与托盘改名 | 窗口标题「控制面板」→「设置」；托盘 QAction 同步改「设置」 | 实拍窗口标题栏显示「设置」 |
+| 3 图标统一大肥鱼 | `assets\ui\pet_flat.ico` 恢复为透明 Q 版七档 ico（16/24/32/48/64/128/256），面板标题栏加 22×22 `pet_head_256.png` 小头像 | 头像单元格像素检测 149 种颜色、最亮 (245,213,197) |
+| 4 启动即崩的括号 | `panel.py:50` `setWindowIcon` 调用少了右括号（压缩前遗留），补齐并加 `icon.isNull()` 守卫 | 源码可正常 import、打包后正常启动 |
+| 5 睡觉蹲坐 | `sleep` 分支改为蹲坐打盹：`sy=0.72`、`sx=1.06`、头顶下沉、慢呼吸、头 18 秒歪一次 | 四帧对比 `assets\_matting\v299-sleep-sheet.png` |
+| 6 动作不再换衣 | 非默认皮肤不套动作帧，靠程序化动作表演 | 汉服下立绘不变、默认皮肤仍用帧 |
+| 7 右键菜单精简 | 托盘/右键删掉「语音说一句（Ctrl+Alt+V）」「今天天气」「说条科技新闻」「换天气城市…」，功能迁进「语音唤醒」「天气资讯」页 | 菜单项清点只剩常用项 |
+| 8 硬件探测缓存 | `hwinfo.snapshot()` 打开面板被调 9 次、每次起 `nvidia-smi` 子进程 60~70ms；加 `_CREATE_NO_WINDOW` 与 90 秒缓存 | open_panel 3.9s → 1.84s |
+| 9 子进程禁窗 | `hwinfo`、`secscan._run_ps()`、`suspect_processes()` 三处 `subprocess.run` 补 `creationflags=0x08000000` | 点安全体检不再闪黑框 |
+| 10 麦克风检测缓存 | `voice_cmd.has_microphone()` 每次 0.4~0.5s、一次刷新查两次；加 `_MIC_TTL=300` 缓存 | 刷新耗时 0.84s → 0.12s |
+| 11 Ollama 请求去重 | `local_llm._http_json` 一次打开被调 12 次；加 `_HTTP_CACHE` + `_HTTP_TTL=4.0` | 累计 0.68s 降到 2~3 次请求 |
+| 12 主题不重复套 | `apply_theme()` 每次全量 `setStyleSheet`（130 控件、0.29s）；记住 `_theme_mode`，同主题直接返回 | 二次打开不再花这 0.29s |
+| 13 性能实测 | 源码 open_panel 3.9s → 1.84s → 1.54s；`refresh()` 0.84s → 0.01s | 安装版冷启首开 1.89s、热开 0.31s；10 秒 CPU 0.36s（单核 3.6%）、内存 119MB |
+| 版本 2.9.9 | `paths.APP_VERSION`、iss 五处、面板右上角同步 | `dist\WhaleGirlPet-Setup-2.9.9.exe`（86,684,968 字节） |
+
 ## v2.9.8（2026-11-25）
 
 用户 8 条反馈，逐条落地：
