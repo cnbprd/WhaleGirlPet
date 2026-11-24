@@ -18,6 +18,9 @@
 | 项目自包含（环境进项目） | 新建项目内 `.venv`（Python 3.14.7），按 `requirements.txt` 装 PySide6 6.12.0 / edge-tts 7.3.1 / psutil 7.2.2 / pycaw 20260927，不再依赖 C 盘 chats 下的旧环境；`.gitignore` 补 `.venv/` | `.venv` 665 MB；用它跑 `test_v294.py` → ALL PASS；项目总计 33.25 GB |
 | 一键启动 | 新增 `启动鲸鱼娘.bat`（pythonw 静默启动）与 `启动-查看日志.bat`（带控制台看报错） | 两个脚本按相对路径定位 `.venv`，找不到时打印建环境命令 |
 | 交接文档 | 新增 `PROJECT.md`：目录地图、启动方式、面板 10 页现状、音色/模型添加步骤、数据目录、6 条已踩过的坑、测试索引、待办与迁移核对记录 | 供项目内新会话直接读，解决"新窗口看不到上次对话"的问题 |
+| 版本号 2.9.4 + CI 自适配 | `app/paths.py` 的 `APP_VERSION` 与 `installer/whale_pet.iss` 四处同步到 2.9.4；CI 改为从 `paths.py` 读版本号、文件名不再写死，Release 不存在时自动 `gh release create` | 推送后 run `45435329913` 成功；Release `v2.9.4` 自动创建，6 个资产（Setup 67.29MB / portable 65.47MB / source 5.41MB + 3 个 sha256） |
+| 旧副本清理 | 删除 C 盘 `whale-girl-pet`（17.03 GB）与旧 `.venv`（839 MB），删前核对「C 盘独有文件 = 0」；同时结束了占用 C 盘 dafeiyu DLL 的残留探测进程 | `C:` 剩余 798.5 → 816.0 GB（释放约 17.5 GB）；空目录壳被句柄占用暂留，重启后可 `rmdir` |
+| 真实桌面目检 | 真实（非离屏）打开面板核对两页，发现音色实验台滑块右侧说明文字贴边；把提示缩短为「低 ← → 高」等三则 | 截图中文渲染正常、右上角显示 `v2.9.4`；改后滑块宽度变大、不再贴边（`assets\_matting\real-model.png` / `real-voice2.png`） |
 
 ## v2.9.3（2026-11-24）
 
