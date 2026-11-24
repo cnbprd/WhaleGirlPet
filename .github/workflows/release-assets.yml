@@ -22,6 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read version from paths.py
+        run: |
+          $m = Select-String -Path app\paths.py -Pattern 'APP_VERSION = "([^"]+)"'
+          $ver = $m.Matches[0].Groups[1].Value
+          "VER=$ver" >> $env:GITHUB_ENV
+          Write-Output "building v$ver"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -46,19 +53,26 @@ jobs:
           New-Item -ItemType Directory -Force pkg | Out-Null
           Copy-Item dist\WhaleGirlPet.exe pkg\
           if (Test-Path README.md) { Copy-Item README.md pkg\ }
-          Compress-Archive -Path pkg\* -DestinationPath dist\WhaleGirlPet-2.9.3-portable.zip -Force
-          git archive --format=zip --prefix=WhaleGirlPet-2.9.3/ -o dist\WhaleGirlPet-2.9.3-source.zip HEAD
-          Get-ChildItem dist -Filter "*2.9.3*" -File |
+          $ver = $env:VER
+          Compress-Archive -Path pkg\* -DestinationPath "dist\WhaleGirlPet-$ver-portable.zip" -Force
+          git archive --format=zip --prefix="WhaleGirlPet-$ver/" -o "dist\WhaleGirlPet-$ver-source.zip" HEAD
+          Get-ChildItem dist -Filter "*$ver*" -File |
             Where-Object { $_.Name -notlike "*.sha256" } |
             ForEach-Object {
               $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
               "$h  $($_.Name)" | Out-File -Encoding ascii -NoNewline ($_.FullName + ".sha256")
             }
-          Get-ChildItem dist -Filter "*2.9.3*" -File | Select-Object Name, Length | Format-Table -AutoSize
+          Get-ChildItem dist -Filter "*$ver*" -File | Select-Object Name, Length | Format-Table -AutoSize
 
-      - name: Upload assets to Release v2.9.3
+      - name: Upload assets to Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $files = Get-ChildItem dist -Filter "*2.9.3*" -File | ForEach-Object { $_.FullName }
-          gh release upload v2.9.3 $files --clobber
+          $ver = $env:VER
+          $tag = "v$ver"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --target $env:GITHUB_SHA --title "鲸鱼娘桌宠 $ver" --notes "由 GitHub Actions 自动构建（$env:GITHUB_SHA）。"
+          }
+          $files = Get-ChildItem dist -Filter "*$ver*" -File | ForEach-Object { $_.FullName }
+          gh release upload $tag $files --clobber

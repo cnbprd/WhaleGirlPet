@@ -115,6 +115,8 @@ class Controller:
         # 旧人格键（大马华语）自动迁移到韩语人格，避免存档里留下不存在的键
         if self.config.get("persona") in pers.LEGACY_ALIASES:
             self.config["persona"] = pers.LEGACY_ALIASES[self.config["persona"]]
+        # 面板里「存为我的音色」的自定义音色，启动时注册成可用人格
+        pers.register_custom(self.config.get("custom_voices"))
         self.state = PetState()
         self.state.from_dict(self.config.get("save", {}))
 
@@ -395,7 +397,7 @@ class Controller:
             pass
 
     def set_persona(self, key: str):
-        if key not in pers.PERSONAS:
+        if not pers.has(key):
             return
         self.config["persona"] = key
         self.save_config()
@@ -671,6 +673,18 @@ class Controller:
     def open_panel_chat(self):
         self.open_panel()
         self.panel.chat_input.setFocus()
+
+    def open_data_dir(self):
+        """托盘入口：记忆/知识库/音色缓存都在账号数据目录里，本地直接看。"""
+        try:
+            d = paths.account_dir()
+        except Exception:  # noqa: BLE001
+            d = ""
+        if not d or not os.path.isdir(d):
+            self.pet.bubble.show_text("数据目录还没建出来。", 3000)
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+        self.pet.bubble.show_text("数据目录已打开：记忆、知识库、语音缓存都在里面。", 4200)
 
     def refresh_panel(self):
         if self.panel is not None:
@@ -1469,6 +1483,34 @@ class Controller:
         self.dl_worker.start()
         return True
 
+    def models_dir(self) -> str:
+        d = os.path.join(paths.runtime_dir(), "models")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def download_model_url(self, url: str):
+        """联网添加模型：.gguf 直链或 hf-mirror 仓库页。返回 (ok, 给用户看的一句话)。"""
+        u = (url or "").strip()
+        if not u.lower().startswith(("http://", "https://")):
+            return False, "地址要以 http:// 或 https:// 开头。"
+        w = self.dl_worker
+        if w is not None and w.isRunning():
+            return False, "已经有下载任务在跑，先等它完成或点「取消下载」。"
+        real, name = model_dl.resolve_gguf_url(u)
+        if not real or not name:
+            return False, "这个地址里没找到 .gguf（仓库页可能只有分片或 safetensors）。"
+        if not name.lower().endswith(".gguf"):
+            return False, "只接受 .gguf 单文件模型。"
+        dest = os.path.join(self.models_dir(), name)
+        if os.path.exists(dest):
+            return False, f"{name} 已经在本地了，不用重复下载。"
+        self.dl_worker = model_dl.ModelDownloader("custom:" + name, real, dest)
+        self.dl_worker.progress.connect(self._on_dl_progress)
+        self.dl_worker.done.connect(self._on_dl_done)
+        self.dl_worker.failed.connect(self._on_dl_failed)
+        self.dl_worker.start()
+        return True, f"开始下载 {name}，下完会出现在「已安装模型」里。"
+
     def cancel_download(self) -> bool:
         w = self.dl_worker
         if w is not None and w.isRunning():
@@ -1490,7 +1532,7 @@ class Controller:
     def _on_dl_done(self, item_id: str, path: str):
         self.dl_speed = 0.0
         it = models_catalog.by_id(item_id) or {}
-        name = it.get("file", "")
+        name = it.get("file") or os.path.basename(path)
         self.config["llm_model_file"] = name
         self.save_config()
         self.dl_worker = None
@@ -1908,7 +1950,7 @@ class Controller:
                 text = "音色回到原生 TTS，不再往真人样本靠。"
             else:
                 persona_key = self.config.get("persona", pers.DEFAULT_PERSONA)
-                voice = (pers.PERSONAS.get(persona_key) or {}).get("voice", "zh-CN-XiaoxiaoNeural")
+                voice = (pers.get(persona_key) or {}).get("voice", "zh-CN-XiaoxiaoNeural")
                 text = vp.describe(voice, key)
             self.pet.bubble.show_text(text, 5200)
         except Exception:
@@ -1960,6 +2002,9 @@ class Controller:
         menu = QMenu()
         act_panel = QAction("打开控制面板", menu)
         act_panel.triggered.connect(self.open_panel)
+        # 记忆/知识不在面板展示后，从这里直接打开本地数据目录
+        act_data = QAction("打开数据目录（记忆 / 知识库 / 音色缓存）", menu)
+        act_data.triggered.connect(self.open_data_dir)
         # v2.9.3 外部浏览器：把当前剪贴板的内容丢进 Tabbit 搜索
         act_search = QAction("用 Tabbit 搜索剪贴板", menu)
         act_search.triggered.connect(self.search_in_browser)
@@ -1984,6 +2029,7 @@ class Controller:
             act_theme = theme_menu.addAction(("✓ " if key == cur_theme else "　") + label)
             act_theme.triggered.connect(lambda _=False, k=key: self.set_theme(k))
         menu.addAction(act_panel)
+        menu.addAction(act_data)
         menu.addAction(act_search)
         menu.addSeparator()
         menu.addAction(act_show)

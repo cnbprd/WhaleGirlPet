@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
                                QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QListWidget, QProgressBar, QPushButton,
-                               QTableWidget, QTableWidgetItem, QTextEdit,
+                               QSlider, QTableWidget, QTableWidgetItem, QTextEdit,
                                QVBoxLayout, QWidget)
 
 import persona as pers
@@ -90,6 +90,49 @@ def tab_voice(panel) -> QWidget:
         _btn("清理语音缓存", panel._clear_tts_cache),
     ))
 
+    # ---- 联网音色实验台：拉取音色 → 试听 → 一句话指令微调 → 存为我的音色 ----
+    lay.addWidget(QLabel("联网音色实验台（拉取微软音色库 → 试听 → 用一句话指令微调）"))
+    panel.cmb_net_voice = QComboBox()
+    panel.cmb_net_voice.addItem("（先点「拉取音色列表」）", "")
+    lay.addWidget(panel.cmb_net_voice)
+    lay.addWidget(_row(
+        _btn("拉取音色列表", panel._fetch_voice_list),
+        _btn("试听选中", panel._preview_net_voice),
+        _btn("存为我的音色", panel._save_net_voice),
+    ))
+
+    panel.sl_pitch = QSlider(Qt.Horizontal)
+    panel.sl_pitch.setRange(-60, 60)
+    panel.sl_rate = QSlider(Qt.Horizontal)
+    panel.sl_rate.setRange(-50, 50)
+    panel.sl_vol = QSlider(Qt.Horizontal)
+    panel.sl_vol.setRange(10, 100)
+    panel.sl_vol.setValue(80)
+    _k0 = ctl.config.get("persona", pers.DEFAULT_PERSONA)
+    _p0 = pers.get(_k0) or {}
+    panel.sl_pitch.setValue(int(_p0.get("pitch", 0)))
+    panel.sl_rate.setValue(int(_p0.get("rate", 0)))
+    lay.addWidget(_row(QLabel("音高"), panel.sl_pitch, QLabel("越低越沉，越高越尖")))
+    lay.addWidget(_row(QLabel("语速"), panel.sl_rate, QLabel("负数变慢，正数变快")))
+    lay.addWidget(_row(QLabel("音量"), panel.sl_vol, QLabel("10–100")))
+    panel.lbl_vparams = QLabel("")
+    panel.lbl_vparams.setWordWrap(True)
+    panel.lbl_vparams.setStyleSheet("color:#2f6f4f;font-size:12px;")
+    lay.addWidget(panel.lbl_vparams)
+    panel.lbl_vnote = QLabel("")
+    panel.lbl_vnote.setWordWrap(True)
+    panel.lbl_vnote.setStyleSheet("color:#666;font-size:12px;")
+    lay.addWidget(panel.lbl_vnote)
+    for _sl in (panel.sl_pitch, panel.sl_rate, panel.sl_vol):
+        _sl.valueChanged.connect(lambda _v: panel._sync_vparams())
+    lay.addWidget(QLabel("优化指令（说人话就行：再尖一点 / 慢 10% / 音高压到 20 / 音量 60 / 换回默认）"))
+    panel.ed_voice_cmd = QLineEdit()
+    panel.ed_voice_cmd.setPlaceholderText("例：尖一点，慢一点，音量 70")
+    lay.addWidget(_row(panel.ed_voice_cmd,
+                       _btn("执行指令", panel._apply_voice_cmd),
+                       _btn("重置", panel._reset_vparams)))
+    panel._sync_vparams()
+
     panel.chk_tts = QCheckBox("开启方言语音（Edge TTS）")
     panel.chk_tts.setChecked(bool(ctl.config.get("tts_on")))
     panel.chk_tts.toggled.connect(panel._on_tts_toggle)
@@ -146,6 +189,18 @@ def tab_models(panel) -> QWidget:
     panel.lst_models = QListWidget()
     panel.lst_models.setMinimumHeight(268)
     lay.addWidget(panel.lst_models)
+
+    net_tip = QLabel("联网添加模型：粘贴一个 .gguf 直链（https://…），下完会自动进上面的「已安装」。\n"
+                     "hf-mirror 的仓库页地址也能直接贴，程序会自己找里面的 .gguf。")
+    net_tip.setWordWrap(True)
+    net_tip.setStyleSheet("color:#666;font-size:12px;")
+    lay.addWidget(net_tip)
+    panel.ed_model_url = QLineEdit()
+    panel.ed_model_url.setPlaceholderText("https://hf-mirror.com/…/xxx.gguf")
+    lay.addWidget(panel.ed_model_url)
+    lay.addWidget(_row(_btn("下载到本地", panel._add_model_url),
+                       _btn("打开模型目录", panel._open_model_dir),
+                       _btn("刷新已安装", panel._refresh_models)))
 
     panel.pbar_model = QProgressBar()
     panel.pbar_model.setVisible(False)

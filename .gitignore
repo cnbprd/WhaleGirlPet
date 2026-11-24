@@ -4,6 +4,11 @@ dist/
 build/
 __pycache__/
 *.pyc
+.venv/
+.pytest_cache/
+
+# 项目自带虚拟环境（本地自建，见 PROJECT.md 第一节）
+venv/
 
 # 大体积原始素材与过程截图（安装包与完整素材见 Release）
 assets/_raw/

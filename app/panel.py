@@ -2,7 +2,7 @@
 """控制面板：养成数值、投喂、换装、大小、番茄钟、提醒、聊天、打工任务、AI 后端、音频与自主行动。"""
 import os
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
@@ -16,10 +16,27 @@ import panel_v2
 import paths
 import persona as pers
 import theme
+import voice_tweak
 from paths import (APP_VERSION, AUDIO_ACTIONS, AUDIO_ACTION_LABELS,
                    SIZE_LEVELS, SKINS)
 from state import SNACKS
 from tasks import TASK_DEFS
+
+
+class _VoiceListWorker(QThread):
+    """后台拉取微软 Edge TTS 音色库（联网，不能阻塞界面）。"""
+    got = Signal(list)
+    err = Signal(str)
+
+    def run(self):  # noqa: D102
+        try:
+            import asyncio
+
+            import edge_tts
+            voices = asyncio.run(edge_tts.list_voices())
+            self.got.emit(list(voices or []))
+        except Exception as e:  # noqa: BLE001
+            self.err.emit(str(e)[:140])
 
 
 class ControlPanel(QWidget):
@@ -40,10 +57,8 @@ class ControlPanel(QWidget):
             (self._tab_remind(), "番茄钟/提醒"),
             (self._tab_chat(), "聊天"),
             (self._tab_settings(), "设置"),
-            (panel_v2.tab_audio(self), "音频库"),
             (panel_v2.tab_voice(self), "语音人格"),
             (panel_v2.tab_models(self), "模型库"),
-            (panel_v2.tab_memory(self), "记忆知识"),
             (panel_v2.tab_security(self), "安全体检"),
             (panel_v2.tab_account(self), "账号形态"),
             (panel_v2.tab_schedule(self), "定时"),
@@ -852,10 +867,11 @@ class ControlPanel(QWidget):
         self.chk_follow_sys.setChecked(bool(audio.get("follow_system", True)))
         self.chk_follow_sys.blockSignals(False)
         self._refresh_audio_label()
-        try:
-            self._refresh_audio_lib()
-        except Exception:  # noqa: BLE001
-            pass
+        if getattr(self, "tbl_audio", None) is not None:   # 音频库页已不挂载
+            try:
+                self._refresh_audio_lib()
+            except Exception:  # noqa: BLE001
+                pass
 
         self.refresh_tasks()
         self._refresh_v2()
@@ -1084,26 +1100,28 @@ class ControlPanel(QWidget):
                                 if has else "没检测到，检查设备或系统麦克风权限"))
         except Exception:  # noqa: BLE001
             pass
-        # 记忆
-        try:
-            facts = ctl.memory_facts()
-            self.lbl_mem.setText(f"已记住 {ctl.memory_count()} 条对话、{len(facts)} 条关于你的事实。")
-            self.lst_facts.clear()
-            for f in facts:
-                self.lst_facts.addItem(f"{f['key']}：{f['value']}")
-        except Exception:  # noqa: BLE001
-            pass
-        # 知识库
-        try:
-            st = ctl.kb_stats()
-            self.lbl_kb.setText(
-                f"文档 {st.get('docs', 0)} 篇 / 片段 {st.get('chunks', 0)} 段 / {st.get('chars', 0)} 字")
-            self.lst_kb.clear()
-            for d in ctl.kb_docs():
-                self.lst_kb.addItem(f"{d['name']}（{d['chars']} 字）")
-                self.lst_kb.item(self.lst_kb.count() - 1).setData(Qt.UserRole, d["id"])
-        except Exception:  # noqa: BLE001
-            pass
+        # 记忆与知识库：面板不再展示，只在托盘「打开数据目录」里本地查看，这里跳过
+        if getattr(self, "lbl_mem", None) is not None:
+            try:
+                facts = ctl.memory_facts()
+                self.lbl_mem.setText(
+                    f"已记住 {ctl.memory_count()} 条对话、{len(facts)} 条关于你的事实。")
+                self.lst_facts.clear()
+                for f in facts:
+                    self.lst_facts.addItem(f"{f['key']}：{f['value']}")
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                st = ctl.kb_stats()
+                self.lbl_kb.setText(
+                    f"文档 {st.get('docs', 0)} 篇 / 片段 {st.get('chunks', 0)} 段 / "
+                    f"{st.get('chars', 0)} 字")
+                self.lst_kb.clear()
+                for d in ctl.kb_docs():
+                    self.lst_kb.addItem(f"{d['name']}（{d['chars']} 字）")
+                    self.lst_kb.item(self.lst_kb.count() - 1).setData(Qt.UserRole, d["id"])
+            except Exception:  # noqa: BLE001
+                pass
         # 账号
         try:
             cur = ctl.account_name()
@@ -1140,39 +1158,84 @@ class ControlPanel(QWidget):
             pass
 
     # ---- 模型库 ----
+    def _add_model_item(self, text: str, role_id: str, info: dict):
+        self.lst_models.addItem(text)
+        item = self.lst_models.item(self.lst_models.count() - 1)
+        item.setData(Qt.UserRole, role_id)
+        item.setData(Qt.UserRole + 1, info)
+
+    def _add_model_header(self, text: str):
+        h = QListWidgetItem(text)
+        h.setFlags(Qt.NoItemFlags)
+        self.lst_models.addItem(h)
+
     def _refresh_models(self):
+        """模型库分两段：已安装（本地真实存在的 .gguf）在上，内置可下载在下。"""
         ctl = self.ctl
         try:
-            local = {m["name"]: m for m in ctl.local_models()}
+            local = ctl.local_models()
         except Exception:  # noqa: BLE001
-            local = {}
+            local = []
+        by_name = {m["name"]: m for m in local}
         cur = ctl.config.get("llm_model_file", "")
         self.lbl_cur_model.setText(
             "当前模型：" + (cur if cur else "（自动：runtime/models 里第一个 .gguf）")
             + f"　本地已有 {len(local)} 个 .gguf")
         self.lst_models.clear()
+
+        # 一、已安装
+        self._add_model_header(f"■ 已安装模型（{len(local)} 个，可直接用）")
+        matched = set()
         for it in models_catalog.CATALOG:
+            f = it.get("file")
+            if f and f in by_name:
+                matched.add(f)
+                text = (f"[已安装] {it['brand']} · {it['name']}　"
+                        f"{'可跑' if it['fits'] else '跑不动'}　"
+                        f"{by_name[f]['size_mb']:.0f} MB")
+                self._add_model_item(text, "local:" + f, it)
+        for m in local:
+            if m["name"] in matched:
+                continue
+            self._add_model_item(
+                f"[已安装] 自定义 · {m['name']}　{m['size_mb']:.0f} MB",
+                "local:" + m["name"],
+                {"id": "custom", "brand": "自定义", "name": m["name"], "file": m["name"],
+                 "size_mb": m["size_mb"], "fits": True, "custom": True})
+        if not local:
+            self._add_model_header("（还没有任何模型。可以下载下面的内置模型，或用「网络地址添加」）")
+
+        # 二、内置可下载（已装的移到上面去了，这里不再重复）
+        self._add_model_header("■ 内置模型（一键下载，走 hf-mirror）")
+        pending = 0
+        for it in models_catalog.CATALOG:
+            f = it.get("file")
+            if f and f in by_name:
+                continue
+            pending += 1
             mark = "可跑" if it["fits"] else "跑不动"
-            extra = ""
-            if it.get("file") and it["file"] in local:
-                extra = f"｜已下载 {local[it['file']]['size_mb']:.0f} MB"
             text = (f"[{mark}] {it['brand']} · {it['name']}　"
-                    f"{models_catalog.fmt_size(it['size_mb'])}{extra}")
-            self.lst_models.addItem(text)
-            item = self.lst_models.item(self.lst_models.count() - 1)
-            item.setData(Qt.UserRole, it["id"])
-            item.setData(Qt.UserRole + 1, it)
+                    f"{models_catalog.fmt_size(it['size_mb'])}")
+            self._add_model_item(text, it["id"], it)
+        if not pending:
+            self._add_model_header("（内置模型都已装好）")
 
     def _cur_model_item(self):
         it = self.lst_models.currentItem()
-        if it is None:
+        if it is None or not (it.flags() & Qt.ItemIsSelectable):
             self.lbl_dl.setText("先在上面选一个模型。")
             return None, None
         return it.data(Qt.UserRole), it.data(Qt.UserRole + 1) or {}
 
     def _dl_model(self):
         item_id, info = self._cur_model_item()
-        if not item_id:
+        if item_id is None:
+            return
+        if str(item_id).startswith("local:"):
+            self.lbl_dl.setText("这个模型已经在本地了，直接点「使用此模型」即可。")
+            return
+        if info.get("custom"):
+            self.lbl_dl.setText("自定义模型已经在本地，无需再下载。")
             return
         if not models_catalog.can_download(info):
             self.lbl_dl.setText("这个模型本机跑不动（或只有分片），不提供下载；可以复制链接或打开仓库页。")
@@ -1220,9 +1283,12 @@ class ControlPanel(QWidget):
 
     def _copy_link(self):
         item_id, info = self._cur_model_item()
-        if not item_id:
+        if item_id is None:
             return
         url = info.get("url") or info.get("repo") or ""
+        if not url:
+            self.lbl_dl.setText("这个模型没有下载链接（已经在本地）。")
+            return
         try:
             self.ctl.app.clipboard().setText(url)
             self.lbl_dl.setText("链接已复制：" + url)
@@ -1231,12 +1297,37 @@ class ControlPanel(QWidget):
 
     def _open_repo(self):
         item_id, info = self._cur_model_item()
-        if not item_id:
+        if item_id is None:
             return
         url = info.get("repo") or ""
         if url:
             QDesktopServices.openUrl(QUrl(url))
             self.lbl_dl.setText("已在浏览器打开仓库页：" + url)
+        else:
+            self.lbl_dl.setText("这个条目没有仓库页（本地自定义模型）。")
+
+    def _add_model_url(self):
+        """联网添加：把任意 https 直链的 .gguf 下到 runtime/models，自动出现在「已安装」。"""
+        url = (self.ed_model_url.text() or "").strip()
+        if not url:
+            self.lbl_dl.setText("先在输入框粘贴一个 .gguf 直链（https://…），或 hf-mirror 的仓库页地址。")
+            return
+        ok, msg = self.ctl.download_model_url(url)
+        self.lbl_dl.setText(msg)
+        if ok:
+            self.pbar_model.setVisible(True)
+        self.ed_model_url.clear()
+
+    def _open_model_dir(self):
+        try:
+            p = self.ctl.models_dir()
+        except Exception:  # noqa: BLE001
+            p = ""
+        if p and os.path.isdir(p):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+            self.lbl_dl.setText("已打开模型目录：" + p)
+        else:
+            self.lbl_dl.setText("模型目录还没建出来（先下过任意一个模型就会生成）。")
 
     def on_model_progress(self, item_id: str, got: int, total: int):
         if not self.pbar_model.isVisible():
@@ -1257,7 +1348,137 @@ class ControlPanel(QWidget):
         key = self.cmb_persona.itemData(idx)
         if key:
             self.ctl.set_persona(key)
+            p = pers.get(key) or {}
+            if getattr(self, "sl_pitch", None) is not None:
+                self.sl_pitch.setValue(int(p.get("pitch", 0)))
+                self.sl_rate.setValue(int(p.get("rate", 0)))
+                self.sl_vol.setValue(int(p.get("volume", 100)))
             self._refresh_v2()
+
+    # ---- 联网音色实验台：拉取音色 → 试听 → 指令微调 → 存为我的音色 ----
+    def _sync_vparams(self):
+        try:
+            p, r, v = self.sl_pitch.value(), self.sl_rate.value(), self.sl_vol.value()
+            self.lbl_vparams.setText(
+                f"当前参数：音高 {p:+d}Hz　语速 {r:+d}%　音量 {v}"
+                f"　（指令里写「音高 {p}」「语速 {r}」「音量 {v}」可直接定值）")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _rebuild_persona_combo(self):
+        cur = self.cmb_persona.currentData()
+        self.cmb_persona.blockSignals(True)
+        self.cmb_persona.clear()
+        for key, name in pers.persona_index():
+            p = pers.get(key)
+            tag = "真音色" if p.get("real_voice") else "近似音色"
+            self.cmb_persona.addItem(f"{name}　[{tag}]", key)
+        idx = self.cmb_persona.findData(cur)
+        if idx >= 0:
+            self.cmb_persona.setCurrentIndex(idx)
+        self.cmb_persona.blockSignals(False)
+
+    def _fetch_voice_list(self):
+        w = getattr(self, "_vl_worker", None)
+        if w is not None and w.isRunning():
+            self.lbl_vnote.setText("正在拉取音色库，稍等…")
+            return
+        self.lbl_vnote.setText("正在联网拉取微软音色库…")
+        self._vl_worker = _VoiceListWorker()
+        self._vl_worker.got.connect(self._on_voice_list)
+        self._vl_worker.err.connect(lambda m: self.lbl_vnote.setText("拉取失败：" + m))
+        self._vl_worker.start()
+
+    def _on_voice_list(self, voices):
+        zh = [v for v in voices if str(v.get("Locale", "")).lower().startswith("zh")]
+        other = [v for v in voices if v not in zh]
+        self.cmb_net_voice.clear()
+        for v in zh + other:
+            name = v.get("ShortName") or v.get("Name") or ""
+            g = {"Female": "女", "Male": "男"}.get(str(v.get("Gender", "")), "")
+            self.cmb_net_voice.addItem(f"{name}　{v.get('Locale', '')}　{g}", name)
+        self.lbl_vnote.setText(
+            f"拉到 {len(voices)} 个音色（中文 {len(zh)} 个排在最前）。选一个点「试听选中」。")
+
+    def _voice_persona(self):
+        spk = self.cmb_net_voice.currentData() or ""
+        if not spk:
+            # 列表刚拉回来时默认停在占位项，往下找第一个真实音色
+            for i in range(self.cmb_net_voice.count()):
+                d = self.cmb_net_voice.itemData(i) or ""
+                if d:
+                    spk = d
+                    self.cmb_net_voice.setCurrentIndex(i)
+                    break
+        if not spk:
+            return None
+        return {"voice": spk, "rate": int(self.sl_rate.value()),
+                "pitch": int(self.sl_pitch.value()),
+                "volume": int(self.sl_vol.value()), "real_voice": True}
+
+    def _preview_net_voice(self):
+        p = self._voice_persona()
+        if not p:
+            self.lbl_vnote.setText("先点「拉取音色列表」并选一个音色。")
+            return
+        if not self.chk_tts.isChecked():
+            self.chk_tts.setChecked(True)
+        self.ctl.config["tts_online"] = self.chk_tts_online.isChecked()
+        text = "我是你的鲸鱼娘。这个声音，你听着顺耳吗？"
+        try:
+            self.ctl.tts.say(text, p, force=True)
+        except Exception as e:  # noqa: BLE001
+            self.lbl_vnote.setText(f"合成失败：{e}")
+            return
+        self.lbl_vnote.setText(
+            f"试听：{p['voice']}　音高 {p['pitch']:+d}Hz　语速 {p['rate']:+d}%　"
+            f"音量 {p['volume']}")
+
+    def _apply_voice_cmd(self):
+        cmd = (self.ed_voice_cmd.text() or "").strip()
+        if not cmd:
+            self.lbl_vnote.setText("先写一句优化指令，比如「再尖一点」「慢 10%」「音量 60」。")
+            return
+        p, r, v, notes = voice_tweak.parse(
+            cmd, self.sl_pitch.value(), self.sl_rate.value(), self.sl_vol.value())
+        self.sl_pitch.setValue(p)
+        self.sl_rate.setValue(r)
+        self.sl_vol.setValue(v)
+        self.lbl_vnote.setText("指令：" + cmd + "\n" + "；".join(notes)
+                               + "\n点「试听选中」听效果，满意再「存为我的音色」。")
+
+    def _reset_vparams(self):
+        self.sl_pitch.setValue(0)
+        self.sl_rate.setValue(0)
+        self.sl_vol.setValue(80)
+        self.lbl_vnote.setText("参数已还原默认：音高 0 / 语速 0 / 音量 80。")
+
+    def _save_net_voice(self):
+        p = self._voice_persona()
+        if not p:
+            self.lbl_vnote.setText("先拉取音色列表并选一个音色，再保存。")
+            return
+        short = self.cmb_net_voice.currentText().split("　")[0]
+        key = "mine_" + p["voice"].replace("-", "_")
+        entry = {"key": key, "name": f"我的 · {short}", "voice": p["voice"],
+                 "rate": p["rate"], "pitch": p["pitch"], "volume": p["volume"]}
+        items = [x for x in (self.ctl.config.get("custom_voices") or [])
+                 if x.get("key") != key]
+        items.append(entry)
+        self.ctl.config["custom_voices"] = items
+        try:
+            self.ctl.save_config()
+        except Exception:  # noqa: BLE001
+            pass
+        pers.register_custom(items)
+        self._rebuild_persona_combo()
+        idx = self.cmb_persona.findData(key)
+        if idx >= 0:
+            self.cmb_persona.setCurrentIndex(idx)
+            self._on_persona_change(idx)
+        self.lbl_vnote.setText(
+            f"已存为「{entry['name']}」并切过去。参数：音高 {p['pitch']:+d}Hz / "
+            f"语速 {p['rate']:+d}% / 音量 {p['volume']}。想再调就输指令，改完重存覆盖。")
 
     def _preview_persona(self):
         key = self.cmb_persona.currentData() or pers.DEFAULT_PERSONA

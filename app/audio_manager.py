@@ -72,14 +72,24 @@ class AudioManager:
             return False
         return priority < self._prio
 
-    def play_file(self, path: str, priority: int = 0) -> bool:
-        """直接播放任意本地音频文件（TTS 合成结果走这里）。priority 越大越优先。"""
+    def play_file(self, path: str, priority: int = 0, volume: int = None) -> bool:
+        """直接播放任意本地音频文件（TTS 合成结果走这里）。priority 越大越优先。
+
+        volume：0–100，给值时按它单独设定这次播放的音量（音色试听/自定义音色用）；
+        不给就按全局「音频设置」的音量。
+        """
         if not self.is_enabled() or not path or not os.path.exists(path):
             return False
         if self._busy_with_higher(priority):
             return False
         try:
-            self._apply_volume()
+            if volume is None:
+                self._apply_volume()
+            else:
+                base = max(0.0, min(100.0, float(volume))) / 100.0
+                if self.config["audio"].get("follow_system", True):
+                    base *= sysvol.master_volume()
+                self.output.setVolume(max(0.0, min(1.0, base)))
             self._prio = priority
             self.player.stop()
             self.player.setSource(QUrl.fromLocalFile(path))

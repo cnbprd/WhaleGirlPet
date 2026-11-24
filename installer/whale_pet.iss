@@ -3,19 +3,19 @@
 
 [Setup]
 AppName=鲸鱼娘桌宠
-AppVersion=2.9.3
-AppVerName=鲸鱼娘桌宠 2.9.3
+AppVersion=2.9.4
+AppVerName=鲸鱼娘桌宠 2.9.4
 AppPublisher=本地自制
 DefaultDirName={localappdata}\WhaleGirlPetApp
 DefaultGroupName=鲸鱼娘桌宠
 UninstallDisplayIcon={app}\WhaleGirlPet.exe
-UninstallDisplayName=鲸鱼娘桌宠 2.9.3
+UninstallDisplayName=鲸鱼娘桌宠 2.9.4
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=WhaleGirlPet-Setup-2.9.3
+OutputBaseFilename=WhaleGirlPet-Setup-2.9.4
 SetupIconFile=..\assets\ui\pet.ico
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible

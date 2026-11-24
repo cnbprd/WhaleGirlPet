@@ -33,6 +33,8 @@ def cached_path(text: str, voice: str, rate: int, pitch: int) -> str:
 
 async def _synth(text: str, voice: str, rate: int, pitch: int, dst: str):
     import edge_tts
+    # 音量不交给 Edge：同一句话用 100/70/40 三种 volume 合成，返回的 mp3 字节数完全一致
+    # （实测 23616 三次相同），看不出幅度差别，所以音量统一改由播放端 QAudioOutput 控制。
     communicate = edge_tts.Communicate(
         text, voice, rate=f"{rate:+d}%", pitch=f"{pitch:+d}Hz")
     await communicate.save(dst)
@@ -96,6 +98,7 @@ class TTSService:
         self._worker = None
         self._pending = []
         self._prios = {}
+        self._vols = {}
         self._seq = 0
         self.last_error = ""
         self.speak_count = 0
@@ -132,22 +135,24 @@ class TTSService:
         rate = max(-40, min(40, rate))
         # Edge 的 pitch 名义值上限约 ±150，实测饱和点在 +60~+90，这里放宽到 ±120
         pitch = max(-120, min(120, pitch))
+        volume = max(10, min(100, int(persona.get("volume", 100) or 100)))
 
         hit = cached_path(text, voice, rate, pitch)
         if hit:
-            return self.audio.play_file(hit, priority)
+            return self.audio.play_file(hit, priority, volume)
 
         self._seq += 1
         play_id = str(self._seq)
         if self._worker is not None and self._worker.isRunning():
             # 排队而不是覆盖：覆盖会让连续说话时中间那句永远不出声
-            self._pending.append((text, voice, rate, pitch, play_id, priority))
+            self._pending.append((text, voice, rate, pitch, play_id, priority, volume))
             return True
-        self._start(text, voice, rate, pitch, play_id, priority)
+        self._start(text, voice, rate, pitch, play_id, priority, volume)
         return True
 
-    def _start(self, text, voice, rate, pitch, play_id, priority=1):
+    def _start(self, text, voice, rate, pitch, play_id, priority=1, volume=100):
         self._prios[play_id] = priority
+        self._vols[play_id] = volume
         self._worker = SynthWorker(text, voice, rate, pitch, play_id)
         self._worker.done.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
@@ -156,7 +161,8 @@ class TTSService:
     def _on_done(self, play_id: str, path: str):
         # 先播这一句（旧逻辑在这里丢弃当前音频，只留 pending，结果连续说话只有第一句有声音）
         prio = self._prios.pop(play_id, 1)
-        if self.audio.play_file(path, prio):
+        vol = self._vols.pop(play_id, 100)
+        if self.audio.play_file(path, prio, vol):
             self.speak_count += 1
         if self._pending:
             nxt = self._pending.pop(0)

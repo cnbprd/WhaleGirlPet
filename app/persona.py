@@ -100,6 +100,37 @@ PERSONAS = {
 
 DEFAULT_PERSONA = "sichuan_sweet"
 
+# 面板「存为我的音色」写进 config["custom_voices"] 后注册到这里，
+# 让自定义音色和内置人格走同一套 get()/persona_index()，不用改调用方。
+_CUSTOM: dict = {}
+
+
+def register_custom(items) -> None:
+    """把用户自定义音色注册成可用人格（每次存/启动都整体重建，避免残留）。"""
+    global _CUSTOM
+    _CUSTOM = {}
+    base = PERSONAS[DEFAULT_PERSONA]
+    for it in items or []:
+        k = str(it.get("key") or "").strip()
+        if not k:
+            continue
+        _CUSTOM[k] = {
+            "name": it.get("name") or k,
+            "voice": it.get("voice") or "zh-CN-XiaoxiaoNeural",
+            "rate": int(it.get("rate", 0)),
+            "pitch": int(it.get("pitch", 0)),
+            "volume": int(it.get("volume", 100)),
+            "real_voice": True,
+            "system": it.get("system") or base["system"],
+            "greeting": [it.get("greeting") or "我是你自己挑的这个声音，听着还顺耳吗？"],
+            "words": {},
+            "custom": True,
+        }
+
+
+def custom_list() -> list:
+    return list(_CUSTOM.values())
+
 
 def resolve(key: str) -> str:
     """把旧人格键归一成当前键（存档兼容）。"""
@@ -107,12 +138,21 @@ def resolve(key: str) -> str:
 
 
 def get(key: str) -> dict:
-    return PERSONAS.get(resolve(key)) or PERSONAS[DEFAULT_PERSONA]
+    k = resolve(key)
+    if k in _CUSTOM:
+        return _CUSTOM[k]
+    return PERSONAS.get(k) or PERSONAS[DEFAULT_PERSONA]
+
+
+def has(key: str) -> bool:
+    """这个 key 是不是可用人格（内置或自定义）。"""
+    k = resolve(key)
+    return k in PERSONAS or k in _CUSTOM
 
 
 def label(key: str) -> str:
-    p = PERSONAS.get(resolve(key))
-    return p["name"] if p else key
+    p = get(key)
+    return p.get("name") or key
 
 
 def voice_label(key: str) -> str:
@@ -142,5 +182,8 @@ def system_hint(key: str) -> str:
 
 
 def persona_index() -> list:
-    """给下拉框用：[(key, 显示名)]，按定义顺序。"""
-    return [(k, v["name"]) for k, v in PERSONAS.items()]
+    """给下拉框用：[(key, 显示名)]，内置在前，自定义在后。"""
+    out = [(k, v["name"]) for k, v in PERSONAS.items()]
+    for k, v in _CUSTOM.items():
+        out.append((k, v["name"]))
+    return out

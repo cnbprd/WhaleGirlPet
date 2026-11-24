@@ -98,8 +98,8 @@ WhaleGirlPet/
 ├── app/                 # 全部业务代码（PySide6 + 线程 + 本地模型接入）
 │   ├── main.py          # Controller：托盘、快捷键、语音、自主行动、定时
 │   ├── pet_window.py    # 桌宠窗口：绘制、动作、拖拽、右键菜单
-│   ├── panel.py         # 控制面板：12 个页面 + 侧边栏
-│   ├── panel_v2.py      # 音频库 / 语音人格 / 模型库 / 记忆 / 安全 / 账号 / 定时
+│   ├── panel.py         # 控制面板：10 个页面 + 侧边栏
+│   ├── panel_v2.py      # 语音人格 / 模型库 / 安全 / 账号 / 定时（音频库与记忆页已不挂载）
 │   ├── tts.py           # Edge TTS 封装 + 音色档位
 │   ├── voice_profile.py  # 真人音色提炼映射（基频 → pitch 反查）
 │   ├── updater.py       # GitHub Releases 检查与下载校验
@@ -163,7 +163,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.3**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.4**。
 
 ---
 

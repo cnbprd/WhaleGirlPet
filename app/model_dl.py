@@ -78,6 +78,55 @@ class ModelDownloader(QThread):
             self.failed.emit(self.item_id, str(e)[:120])
 
 
+def resolve_gguf_url(url: str):
+    """把用户给的地址解析成 (可直下的 .gguf 直链, 文件名)，解析不出返回 ("", "")。
+
+    支持三种形态：
+    1. 本身就是 xxx.gguf 直链；
+    2. hf-mirror.com / huggingface.co 的仓库页（查 /api/models 的文件清单，优先 Q4 量化）；
+    3. 其它网页：抓页面里的 .gguf 链接（取第一个）。
+    """
+    import json
+    import re
+
+    u = (url or "").strip()
+    if not u:
+        return "", ""
+    if u.split("?")[0].lower().endswith(".gguf"):
+        return u, u.split("?")[0].rsplit("/", 1)[-1]
+
+    m = re.match(r"https?://(?:www\.)?(hf-mirror\.com|huggingface\.co)/(.+?)/([^/\s?#]+)",
+                 u, re.I)
+    if m:
+        host, org, repo = m.group(1), m.group(2), m.group(3)
+        api = f"https://{host}/api/models/{org}/{repo}"
+        req = urllib.request.Request(api, headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            fnames = [s.get("rfilename", "") for s in data.get("siblings", [])]
+        except Exception:  # noqa: BLE001
+            fnames = []
+        cand = [f for f in fnames if f.lower().endswith(".gguf")]
+        if not cand:
+            return "", ""
+        q4 = [f for f in cand if "q4" in f.lower() and "mmproj" not in f.lower()]
+        pick = (q4 or [f for f in cand if "mmproj" not in f.lower()] or cand)[0]
+        return f"https://{host}/{org}/{repo}/resolve/main/{pick}", os.path.basename(pick)
+
+    # 兜底：当普通网页抓 .gguf 链接
+    req = urllib.request.Request(u, headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            html = r.read().decode("utf-8", "ignore")
+        hits = re.findall(r'https?://[^\s"\'<>]+\.gguf', html)
+        if hits:
+            return hits[0], hits[0].rsplit("/", 1)[-1]
+    except Exception:  # noqa: BLE001
+        pass
+    return "", ""
+
+
 def local_models() -> list:
     """列出 runtime/models 下已有的 .gguf。"""
     from paths import runtime_dir
