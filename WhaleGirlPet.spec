@@ -15,8 +15,8 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['C:/Users/yangmengke/Doubao/chats/2026-11-23/new-chat/whale-girl-pet/app/main.py'],
-    pathex=['C:/Users/yangmengke/Doubao/chats/2026-11-23/new-chat/whale-girl-pet/app'],
+    ['app/main.py'],
+    pathex=['app'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -48,5 +48,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:/Users/yangmengke/Doubao/chats/2026-11-23/new-chat/whale-girl-pet/assets/ui/pet.ico'],
+    icon=['assets/ui/pet.ico'],
 )
