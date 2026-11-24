@@ -112,8 +112,8 @@ def tab_voice(panel) -> QWidget:
     _p0 = pers.get(_k0) or {}
     panel.sl_pitch.setValue(int(_p0.get("pitch", 0)))
     panel.sl_rate.setValue(int(_p0.get("rate", 0)))
-    lay.addWidget(_row(QLabel("音高"), panel.sl_pitch, QLabel("越低越沉，越高越尖")))
-    lay.addWidget(_row(QLabel("语速"), panel.sl_rate, QLabel("负数变慢，正数变快")))
+    lay.addWidget(_row(QLabel("音高"), panel.sl_pitch, QLabel("低 ← → 高")))
+    lay.addWidget(_row(QLabel("语速"), panel.sl_rate, QLabel("慢 ← → 快")))
     lay.addWidget(_row(QLabel("音量"), panel.sl_vol, QLabel("10–100")))
     panel.lbl_vparams = QLabel("")
     panel.lbl_vparams.setWordWrap(True)
