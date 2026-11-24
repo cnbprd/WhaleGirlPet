@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QTabWidget, QTableWidgetItem, QTextEdit,
                                QVBoxLayout, QWidget)
 
+import ambient
 import models_catalog
 import panel_v2
 import paths
@@ -54,14 +55,14 @@ class ControlPanel(QWidget):
         pages = [
             (self._tab_status(), "养成"),
             (self._tab_tasks(), "打工"),
-            (self._tab_remind(), "番茄钟/提醒"),
+            # v2.9.8：番茄钟/提醒与定时任务合并，统一叫「定时任务」
+            (self._tab_remind(), "定时任务"),
             (self._tab_chat(), "聊天"),
             (self._tab_prefs(), "设置"),
             (panel_v2.tab_voice(self), "音频库"),
             (self._tab_settings(), "自定义模型"),
             (panel_v2.tab_security(self), "安全体检"),
             (panel_v2.tab_account(self), "账号形态"),
-            (panel_v2.tab_schedule(self), "定时任务"),
         ]
         self.side = QListWidget()
         self.side.setObjectName("SideBar")
@@ -84,7 +85,10 @@ class ControlPanel(QWidget):
         head.setContentsMargins(12, 4, 12, 2)
         title = QLabel("鲸鱼娘桌宠")
         title.setObjectName("PanelTitle")
+        # v2.9.8：页面内容变高后，root 布局会把标题行压成一条缝（实测截图里字被切）
+        title.setFixedHeight(24)
         ver = QLabel(f"v{APP_VERSION}")
+        ver.setFixedHeight(20)
         ver.setObjectName("PanelVer")
         head.addWidget(title)
         head.addStretch()
@@ -290,13 +294,15 @@ class ControlPanel(QWidget):
 
     # ---------- 提醒页 ----------
     def _tab_remind(self):
+        """v2.9.8：番茄钟/提醒 + 定时任务合并成一页，页名统一叫「定时任务」。"""
         w = QWidget()
         lay = QVBoxLayout(w)
+        lay.setSpacing(6)
 
         box = QGroupBox("番茄钟")
         bl = QVBoxLayout(box)
         self.lbl_tomato = QLabel("未开始")
-        self.lbl_tomato.setStyleSheet("font-size:18px;font-weight:bold;")
+        self.lbl_tomato.setStyleSheet("font-size:16px;font-weight:bold;")
         bl.addWidget(self.lbl_tomato)
         row = QHBoxLayout()
         for mins in (25, 45, 60):
@@ -322,6 +328,12 @@ class ControlPanel(QWidget):
         r2.addWidget(self.chk_sound)
         # v2.9.7：碎碎念搬进「设置 → 桌宠行为」模块
         lay.addWidget(box2)
+
+        # v2.9.8：原独立「定时任务」页整组并进来
+        box3 = QGroupBox("定时任务（到点她会开口提醒）")
+        b3 = QVBoxLayout(box3)
+        panel_v2.build_schedule(self, b3)
+        lay.addWidget(box3)
         lay.addStretch()
         return w
 
@@ -495,19 +507,23 @@ class ControlPanel(QWidget):
         except OSError as e:
             self.chat_status.setText(f"导出失败：{e}")
 
-    # ---------- 设置页（v2.9.6 新建：关于/更新、储存位置、语音唤醒、天气资讯、聊天入口） ----------
+    # ---------- 设置页（v2.9.8：拆成 4 个模块 + 桌宠行为） ----------
     def _tab_prefs(self):
         w = QWidget()
         root = QVBoxLayout(w)
-        root.setSpacing(7)
+        root.setSpacing(6)
 
-        # 关于与更新（从原「设置」页整组迁入）
-        root.addWidget(self._build_update_box())
+        # v2.9.8：页内先给一个「设置」标题，点开侧栏「设置」不再是空白一片
+        title = QLabel("设置")
+        title.setStyleSheet("font-size:17px;font-weight:bold;padding:2px 2px 0 2px;")
+        root.addWidget(title)
 
-        # v2.9.7 桌宠行为：碎碎念 / 点击音效 / 始终置顶 / 大小 / 换装 / 形态 / 跟随鼠标 / 主题
-        root.addWidget(self._build_pet_box())
+        # v2.9.8：按用户列的四个模块拆成子标签，页内不再一屏堆到底
+        self.prefs_tabs = QTabWidget()
+        self.prefs_tabs.setObjectName("PrefsTabs")
+        self.prefs_tabs.addTab(self._wrap_prefs(self._build_update_box()), "关于与更新")
 
-        # 储存位置（含「打开数据目录」）
+        # ② 储存位置：展示位置 + 资料迁移
         box_store = QGroupBox("储存位置")
         sv = QVBoxLayout(box_store)
         sv.setSpacing(4)
@@ -538,9 +554,9 @@ class ControlPanel(QWidget):
         self.lbl_store_msg.setWordWrap(True)
         self.lbl_store_msg.setStyleSheet("color:#2f6f4f;font-size:11px;")
         sv.addWidget(self.lbl_store_msg)
-        root.addWidget(box_store)
+        self.prefs_tabs.addTab(self._wrap_prefs(box_store), "储存位置")
 
-        # 语音唤醒（原「语音说一句」迁入，功能变成改唤醒词）
+        # ③ 语音唤醒：只做唤醒词修改与设置
         box_wake = QGroupBox("语音唤醒")
         wv = QVBoxLayout(box_wake)
         wv.setSpacing(4)
@@ -571,10 +587,10 @@ class ControlPanel(QWidget):
         self.lbl_wake.setStyleSheet("color:#888;font-size:11px;")
         row_w2.addWidget(self.lbl_wake, 1)
         wv.addLayout(row_w2)
-        root.addWidget(box_wake)
+        self.prefs_tabs.addTab(self._wrap_prefs(box_wake), "语音唤醒")
 
-        # 天气资讯模块（天气开关 + 城市 + 科技新闻）
-        box_amb = QGroupBox("天气资讯模块")
+        # ④ 天气资讯：天气照旧 + 六类资讯
+        box_amb = QGroupBox("天气资讯")
         av = QVBoxLayout(box_amb)
         av.setSpacing(4)
         row_a1 = QHBoxLayout()
@@ -596,7 +612,7 @@ class ControlPanel(QWidget):
         av.addLayout(row_a1)
         row_a2 = QHBoxLayout()
         row_a2.setSpacing(8)
-        self.chk_news = QCheckBox("顺带说条科技新闻")
+        self.chk_news = QCheckBox("开机说条资讯")
         self.chk_news.toggled.connect(self._on_news_toggle)
         row_a2.addWidget(self.chk_news)
         row_a2.addSpacing(10)
@@ -608,8 +624,29 @@ class ControlPanel(QWidget):
         self.lbl_amb.setStyleSheet("color:#888;font-size:11px;")
         row_a2.addWidget(self.lbl_amb, 1)
         av.addLayout(row_a2)
-        root.addWidget(box_amb)
 
+        # v2.9.8 分类资讯：新闻/体育/娱乐/科技/金融/政治
+        cat_row = QHBoxLayout()
+        cat_row.setSpacing(4)
+        self.news_cat_btns = {}
+        for key, label in ambient.NEWS_CATEGORIES:
+            b = QPushButton(label)
+            b.setFixedHeight(24)
+            b.clicked.connect(lambda _=False, k=key: self._load_news_cat(k))
+            cat_row.addWidget(b)
+            self.news_cat_btns[key] = b
+        av.addLayout(cat_row)
+        self.txt_news = QTextEdit()
+        self.txt_news.setReadOnly(True)
+        self.txt_news.setMaximumHeight(86)
+        self.txt_news.setPlaceholderText("点上面任一分类，这里列最新标题")
+        av.addWidget(self.txt_news)
+        self.prefs_tabs.addTab(self._wrap_prefs(box_amb), "天气资讯")
+
+        # ⑤ 桌宠行为（v2.9.7 起就放在设置里，这里保留并排到最后）
+        self.prefs_tabs.addTab(self._wrap_prefs(self._build_pet_box()), "桌宠行为")
+
+        root.addWidget(self.prefs_tabs, 1)
         # 聊天入口（与左侧「聊天」页合并为同一份记录）
         row_ch = QHBoxLayout()
         lb = QLabel("聊天只有一个入口：左侧「聊天」页（记录、附件、导出都在那儿）")
@@ -621,9 +658,33 @@ class ControlPanel(QWidget):
         btn_ch.clicked.connect(self._goto_chat)
         row_ch.addWidget(btn_ch)
         root.addLayout(row_ch)
-
-        root.addStretch()
         return w
+
+    @staticmethod
+    def _wrap_prefs(inner) -> QWidget:
+        """把单个分组包成一张子标签页（顶部对齐，底部留白）。"""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(4, 6, 4, 4)
+        lay.addWidget(inner)
+        lay.addStretch()
+        return page
+
+    def _load_news_cat(self, key: str):
+        """点分类按钮 → 后台抓该类头条，结果贴到小文本框。"""
+        label = dict(ambient.NEWS_CATEGORIES).get(key, key)
+        self.txt_news.setPlainText(f"正在抓{label}…")
+        worker = ambient.NewsWorker(key, 6)
+        worker.done.connect(lambda items, lb=label: self._show_news_cat(lb, items))
+        worker.failed.connect(lambda err: self.txt_news.setPlainText(f"{label}没抓成：{err}"))
+        self._news_worker = worker
+        worker.start()
+
+    def _show_news_cat(self, label: str, items: list):
+        if not items:
+            self.txt_news.setPlainText(f"{label}：这次没抓到，过会儿再试。")
+            return
+        self.txt_news.setPlainText("\n".join(f"· {t}" for t in items))
 
     # ---------- 设置页动作 ----------
     def _build_pet_box(self) -> QGroupBox:
@@ -756,8 +817,31 @@ class ControlPanel(QWidget):
                 moved += 1
             with open(os.path.join(src, "data_root.txt"), "w", encoding="utf-8") as f:
                 f.write(target)
-            self.lbl_store_msg.setText(
-                f"已复制 {moved} 项到 {target}。重启后生效（旧目录留着没删，确认没问题可自己清）。")
+            # v2.9.8：复制完立即删旧文件（用户要求「迁移完自动删除旧文件」）。
+            # data_root.txt 指针留在原地给下次启动读；删不掉的（数据库、语音缓存被进程占用）
+            # 记进 pending_cleanup.json，下次启动成功后自动再删一遍。
+            removed, failed = 0, []
+            for name in os.listdir(src):
+                if name == "data_root.txt":
+                    continue
+                p = os.path.join(src, name)
+                try:
+                    shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+                    removed += 1
+                except OSError:
+                    failed.append(name)
+            if failed:
+                try:
+                    import json
+                    with open(os.path.join(paths.default_data_dir(), "pending_cleanup.json"),
+                              "w", encoding="utf-8") as f:
+                        json.dump({"src": src, "names": failed}, f, ensure_ascii=False)
+                except OSError:
+                    pass
+            msg = (f"已复制 {moved} 项到 {target}，旧目录删掉 {removed} 项。重启后生效。")
+            if failed:
+                msg += f" 还有 {len(failed)} 项被占用（{', '.join(failed[:3])}），下次启动会自动清掉。"
+            self.lbl_store_msg.setText(msg)
         except OSError as e:
             self.lbl_store_msg.setText(f"迁移失败：{e}")
 
@@ -905,7 +989,71 @@ class ControlPanel(QWidget):
         row_hw.addStretch()
         lv.addLayout(row_hw)
         self._refresh_hw_label()
+
+        # v2.9.8：模型仓库与建议直接建在这里（之前这组只有状态和推荐文字，看不到有哪些能下）
+        lv.addWidget(QLabel("模型仓库（一键下载，走 hf-mirror 镜像；★ = 本机推荐）"))
+        self.lst_repo = QListWidget()
+        self.lst_repo.setMaximumHeight(112)
+        self.lst_repo.itemDoubleClicked.connect(lambda _: self._dl_repo_item())
+        lv.addWidget(self.lst_repo)
+        row_repo = QHBoxLayout()
+        btn_dl = QPushButton("下载选中的")
+        btn_dl.clicked.connect(self._dl_repo_item)
+        row_repo.addWidget(btn_dl)
+        btn_repo = QPushButton("刷新仓库")
+        btn_repo.clicked.connect(self._refresh_repo_list)
+        row_repo.addWidget(btn_repo)
+        row_repo.addStretch()
+        lv.addLayout(row_repo)
+        self.lbl_repo_msg = QLabel("")
+        self.lbl_repo_msg.setWordWrap(True)
+        self.lbl_repo_msg.setStyleSheet("color:#888;font-size:11px;")
+        lv.addWidget(self.lbl_repo_msg)
+        self._refresh_repo_list()
         return box_llm
+
+    def _refresh_repo_list(self):
+        """列出内置模型仓库：推荐标记、体积、已装/可下状态。"""
+        try:
+            installed = {m["name"] for m in self.ctl.local_models()}
+        except Exception:  # noqa: BLE001
+            installed = set()
+        rec_id, rec_name = "", ""
+        try:
+            import hardware
+            item, _why = hardware.best()
+            if item:
+                rec_id, rec_name = item["id"], item["name"]
+        except Exception:  # noqa: BLE001
+            pass
+        self.lst_repo.clear()
+        for it in models_catalog.CATALOG:
+            star = "★ " if it["id"] == rec_id else "　 "
+            if it["file"] in installed:
+                state = "已装"
+            elif models_catalog.can_download(it):
+                state = "可下"
+            else:
+                state = "仅仓库"
+            row = QListWidgetItem(
+                f"{star}{it['name']}｜{models_catalog.fmt_size(it['size_mb'])}｜{state}")
+            row.setData(Qt.UserRole, it["id"])
+            row.setToolTip(it.get("note", ""))
+            self.lst_repo.addItem(row)
+        if rec_name:
+            self.lbl_repo_msg.setText(f"★ {rec_name} 是按本机配置挑的；双击一行也能下载。")
+
+    def _dl_repo_item(self):
+        it = self.lst_repo.currentItem()
+        if it is None:
+            self.lbl_repo_msg.setText("先选一行。")
+            return
+        item_id = it.data(Qt.UserRole)
+        info = models_catalog.by_id(item_id) or {}
+        ok = self.ctl.download_model(item_id)
+        self.lbl_repo_msg.setText(
+            f"开始下载 {info.get('name', item_id)}（{models_catalog.fmt_size(info.get('size_mb', 0))}）…"
+            if ok else "下载没起来：检查网络，或到「自定义模型 → 本地大模型」看状态。")
 
     def _refresh_hw_label(self):
         try:
@@ -965,11 +1113,27 @@ class ControlPanel(QWidget):
         return box_audio
 
     def _build_update_box(self) -> QGroupBox:
-        """「关于与更新」分组：v2.9.6 起挪到新的「设置」页。"""
-        box_upd = QGroupBox("关于与更新")
+        """「关于与更新」分组：软件信息 + 版本展示 + 检查更新（v2.9.8 补软件信息）。"""
+        box_upd = QGroupBox("软件信息与更新")
         u = QVBoxLayout(box_upd)
+        u.setSpacing(4)
         self.lbl_version = QLabel(f"当前版本 v{APP_VERSION}")
+        self.lbl_version.setStyleSheet("font-size:14px;font-weight:bold;")
         u.addWidget(self.lbl_version)
+        # v2.9.8：用户要「功能软件信息和版本展示」，补上程序位置/数据位置/引擎/仓库
+        import sys as _sys
+        prog_dir = (os.path.dirname(os.path.abspath(_sys.executable))
+                    if getattr(_sys, "frozen", False)
+                    else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        info = (f"程序目录：{prog_dir}\n"
+                f"数据目录：{paths.data_dir()}\n"
+                f"本地引擎：{paths.runtime_dir()}\\dafeiyu\\dafeiyu-server.exe\n"
+                f"源码仓库：github.com/cnbprd/WhaleGirlPet")
+        lbl_info = QLabel(info)
+        lbl_info.setWordWrap(True)
+        lbl_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        lbl_info.setStyleSheet("color:#888;font-size:11px;")
+        u.addWidget(lbl_info)
         row_url = QHBoxLayout()
         row_url.addWidget(QLabel("清单地址"))
         self.ed_update_url = QLineEdit()

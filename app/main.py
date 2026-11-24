@@ -189,10 +189,10 @@ class Controller:
         self.decay_timer.timeout.connect(self._on_decay)
         self.decay_timer.start()
 
-        self.coin_timer = QTimer()
-        self.coin_timer.setInterval(60_000)
-        self.coin_timer.timeout.connect(self._on_coin)
-        self.coin_timer.start()
+        # v2.9.8：删掉每分钟自动 +2 金币的「金币到账」节奏。
+        # 一方面用户不想要那句"叮——又攒了一点金币"的语音/气泡，
+        # 另一方面它一小时白送 120 金币，远超打工单次 5~15，是零食定价通胀的源头。
+        # 金币现在只从打工结算来（`_finish_task` → `state.reward`）。
 
         self.idle_timer = QTimer()
         self.idle_timer.setInterval(90_000)
@@ -581,12 +581,17 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
 
-    def open_theme_settings(self):
+    def open_settings_page(self):
+        """v2.9.8：右键/托盘里的「设置」统一落到侧栏第 5 项（设置页）。"""
         self.open_panel()
         try:
-            self.panel.side.setCurrentRow(4)   # 设置页
+            self.panel.side.setCurrentRow(4)
         except Exception:  # noqa: BLE001
             pass
+
+    def open_theme_settings(self):
+        """兼容旧调用名（托盘「主题（在设置里改）」）。"""
+        self.open_settings_page()
 
     def do_action(self, key: str):
         self.pet.do_action(key)
@@ -2430,13 +2435,6 @@ class Controller:
             self.pet.bubble.show_text(lines.pick(lines.SLEEPY), 2600)
         self.refresh_panel()
 
-    def _on_coin(self):
-        self.state.earn(2)
-        if random.random() < 0.3:
-            self.pet.bubble.show_text(lines.pick(lines.COIN_DROP), 2200)
-            self.beep("coin")
-        self.refresh_panel()
-
     def _on_idle_talk(self):
         if self.config.get("chatter_on", True) and self.pet.state not in ("sleep", "drag"):
             self.pet.bubble.show_text(lines.pick(lines.CHAT_IDLE), 3000)
@@ -2476,7 +2474,7 @@ class Controller:
         act_quit = QAction("退出程序", menu)
         act_quit.triggered.connect(self.quit_app)
         # v2.9.7：主题整体搬进「设置 → 桌宠行为」，托盘只留跳转
-        act_theme_goto = QAction("主题（在设置里改）", menu)
+        act_theme_goto = QAction("设置…", menu)
         act_theme_goto.triggered.connect(self.open_theme_settings)
         menu.addAction(act_panel)
         menu.addAction(act_search)
@@ -2645,6 +2643,12 @@ def main():
     if not shm.create(1):
         QMessageBox.information(None, APP_NAME, "桌宠已经在运行啦～")
         return 0
+
+    # v2.9.8：上次储存位置迁移时被占用的旧文件，这里再清一遍（此时数据库还没开）
+    try:
+        paths.cleanup_pending()
+    except Exception:  # noqa: BLE001
+        pass
 
     # v2.9.6 先关掉 PyInstaller 的原生启动图（只在 onefile 打包后存在），
     # 交给下面自绘的透明启动屏接管，避免两张图叠在一起

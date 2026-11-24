@@ -503,10 +503,13 @@ class PetWindow(QWidget):
                 self.finish_state()
 
         elif st == "sleep":
-            self.alpha = 0.85
-            self.bob = 0.0
-            self.sy = 1 + 0.012 * math.sin(self.state_t * 1.8)
-            self.sx = 1 - 0.006 * math.sin(self.state_t * 1.8)
+            # v2.9.8：原来只把透明度压到 0.85，看着像站着发呆。现在压暗 + 慢呼吸
+            # + 缓慢歪头打盹，换装形态下也能一眼看出"睡着了"。
+            self.alpha = 0.70
+            self.bob = -3.0 * abs(math.sin(self.state_t * 0.9)) * self.scale
+            self.sy = 1 + 0.035 * math.sin(self.state_t * 0.9)
+            self.sx = 1 - 0.018 * math.sin(self.state_t * 0.9)
+            self.rot = 7 * math.sin(self.state_t * 0.45)
 
         elif st == "follow":
             c = QCursor.pos()
@@ -625,7 +628,13 @@ class PetWindow(QWidget):
 
     def do_sleep(self):
         self.follow = False
-        self.set_expression("sleep", 0)
+        # v2.9.8：先收掉正在播的动作，别让动作帧盖在睡眠姿态上
+        if getattr(self, "_action_timer", None) is not None:
+            self._action_timer.stop()
+        self._action_timer = None
+        self.action_key = ""
+        if self._controller.config.get("skin", "default") == "default":
+            self.set_expression("sleep", 0)     # 只有默认装带闭眼差分
         self.set_state("sleep")
         self._controller.on_sleep()
 
@@ -680,8 +689,13 @@ class PetWindow(QWidget):
             duration_ms = self.DEFAULT_ACTION_MS.get(key, 3000)
         self.follow = False
         self.action_key = key
+        skin_now = self._controller.config.get("skin", "default")
         rel = ACTIONS.get(key, (None, None))[1]
-        if rel:
+        # v2.9.8：动作帧只有默认女仆装那一套。换装或萝莉形态下套动作帧，
+        # 人物会瞬间变回女仆装（用户反馈「做动作怎么换衣服了」），
+        # 所以只在默认皮肤用帧，其他皮肤保持当前立绘，靠 _tick 里的程序化动作表演。
+        use_sprite = bool(rel) and skin_now == "default" and self.current_form() != "loli"
+        if use_sprite:
             self.base = self._load_pix(rel)
             self._update_pix()
         elif key == "eatrice":
@@ -803,7 +817,7 @@ class PetWindow(QWidget):
         menu.addAction("让她睡觉", self.do_sleep)
         menu.addSeparator()
         # v2.9.7：跟随 / 形态 / 换装 / 大小 / 音色 / 置顶 / 碎碎念 统一收进「设置 → 桌宠行为」
-        menu.addAction("桌宠行为设置…", ctl.open_theme_settings)
+        menu.addAction("设置…", ctl.open_settings_page)
 
         menu.addSeparator()
         # v2.9.2 打开控制面板/隐藏桌宠/退出 已合并到任务栏图标右键菜单，这里不再重复

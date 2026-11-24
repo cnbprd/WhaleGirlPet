@@ -28,6 +28,18 @@ OM_URL = ("https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}
           "&timezone=auto")
 NEWS_URL = "https://www.ithome.com/rss/"
 
+# v2.9.8：资讯分六类。中新网各频道 RSS 与 IT之家实测均返回 30~60 条
+# （娱乐频道 ent.xml 返回 0 条，改用文化频道 culture.xml）。
+NEWS_FEEDS = {
+    "news":    ("要闻", "https://www.chinanews.com.cn/rss/scroll-news.xml"),
+    "sports":  ("体育", "https://www.chinanews.com.cn/rss/sports.xml"),
+    "ent":     ("娱乐", "https://www.chinanews.com.cn/rss/culture.xml"),
+    "tech":    ("科技", NEWS_URL),
+    "finance": ("金融", "https://www.chinanews.com.cn/rss/finance.xml"),
+    "politics":("时政", "https://www.chinanews.com.cn/rss/china.xml"),
+}
+NEWS_CATEGORIES = [(k, v[0]) for k, v in NEWS_FEEDS.items()]
+
 # 中国天气网城市代码（常用城市，可自行扩充）
 CITY_CODES = {
     "北京": "101010100", "上海": "101020100", "广州": "101280101", "深圳": "101280601",
@@ -225,10 +237,10 @@ def fetch_weather(city: str) -> dict:
     return {}
 
 
-def fetch_news(limit: int = 3) -> list:
-    """IT之家 RSS 头条标题；失败返回 []。"""
+def _rss_titles(url: str, limit: int = 3) -> list:
+    """抓一个 RSS，取前 limit 条标题；网络失败或格式不对返回 []。"""
     try:
-        xml = _fetch(NEWS_URL, timeout=15)
+        xml = _fetch(url, timeout=15)
     except Exception:  # noqa: BLE001
         return []
     titles = []
@@ -247,6 +259,12 @@ def fetch_news(limit: int = 3) -> list:
         if len(titles) >= limit:
             break
     return titles
+
+
+def fetch_news(limit: int = 3, category: str = "tech") -> list:
+    """按分类取头条标题。category 见 NEWS_FEEDS；未知分类回退科技。失败返回 []。"""
+    url = NEWS_FEEDS.get(category, NEWS_FEEDS["tech"])[1]
+    return _rss_titles(url, limit)
 
 
 # ---------------- 台词 ----------------
@@ -330,3 +348,22 @@ class AmbientWorker(QThread):
             self.failed.emit("天气与新闻都没拿到")
             return
         self.done.emit(out)
+
+
+class NewsWorker(QThread):
+    """v2.9.8：按分类拉头条（面板「天气资讯 → 分类资讯」用），不阻塞 UI。"""
+    done = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, category: str = "tech", limit: int = 6):
+        super().__init__()
+        self.category = category
+        self.limit = limit
+
+    def run(self):
+        try:
+            items = fetch_news(self.limit, self.category)
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(str(e)[:120])
+            return
+        self.done.emit(items)

@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "2.9.7"
+APP_VERSION = "2.9.8"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -58,6 +58,51 @@ def data_dir() -> str:
 
 def accounts_file() -> str:
     return os.path.join(data_dir(), "accounts.json")
+
+
+def cleanup_pending() -> int:
+    """v2.9.8：储存位置迁移后，被进程占用没删掉的旧文件，下次启动再清一遍。
+
+    迁移时把删不掉的项写进 `%APPDATA%\\WhaleGirlPet\\pending_cleanup.json`；
+    这里读出来重试，全部清干净就删掉标记文件。返回本次删掉的项数。
+    """
+    import json
+    import shutil
+
+    marker = os.path.join(default_data_dir(), "pending_cleanup.json")
+    if not os.path.exists(marker):
+        return 0
+    try:
+        with open(marker, encoding="utf-8") as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        try:
+            os.remove(marker)
+        except OSError:
+            pass
+        return 0
+    src = info.get("src") or ""
+    names = [n for n in (info.get("names") or []) if n and n != "data_root.txt"]
+    left, removed = [], 0
+    for name in names:
+        p = os.path.join(src, name)
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            elif os.path.exists(p):
+                os.remove(p)
+            removed += 1
+        except OSError:
+            left.append(name)
+    try:
+        if left:
+            with open(marker, "w", encoding="utf-8") as f:
+                json.dump({"src": src, "names": left}, f, ensure_ascii=False)
+        else:
+            os.remove(marker)
+    except OSError:
+        pass
+    return removed
 
 
 def account_dir(slug: str = "") -> str:

@@ -296,18 +296,16 @@ def tab_account(panel) -> QWidget:
 
 
 # ---------------- 定时 ----------------
-def tab_schedule(panel) -> QWidget:
+def build_schedule(panel, lay) -> None:
+    """把「定时任务」整组塞进调用方给的布局里（v2.9.8 与番茄钟/提醒合并成同页）。"""
     ctl = panel.ctl
-    w = QWidget()
-    lay = QVBoxLayout(w)
     panel.chk_night = QCheckBox("22:00 提醒休息（没关机会每 15 分钟再催，最多 4 次）")
     panel.chk_night.setChecked(ctl.night_on())
     panel.chk_night.toggled.connect(ctl.set_night_on)
     lay.addWidget(panel.chk_night)
 
-    lay.addWidget(QLabel("定时任务"))
     panel.lst_sched = QListWidget()
-    panel.lst_sched.setMaximumHeight(150)
+    panel.lst_sched.setMaximumHeight(100)
     lay.addWidget(panel.lst_sched)
 
     row = QHBoxLayout()
@@ -329,13 +327,18 @@ def tab_schedule(panel) -> QWidget:
         _btn("启用/停用", panel._toggle_sched),
     ))
 
-    lay.addWidget(QLabel("昨天电脑使用情况"))
     panel.txt_usage = QTextEdit()
     panel.txt_usage.setReadOnly(True)
-    panel.txt_usage.setMaximumHeight(120)
+    panel.txt_usage.setMaximumHeight(64)
     lay.addWidget(panel.txt_usage)
-    lay.addWidget(_row(_btn("刷新", panel._refresh_usage)))
+    lay.addWidget(_row(_btn("刷新昨天使用情况", panel._refresh_usage)))
 
+
+def tab_schedule(panel) -> QWidget:
+    """兼容旧调用：单独一页的定时任务。"""
+    w = QWidget()
+    lay = QVBoxLayout(w)
+    build_schedule(panel, lay)
     lay.addStretch(1)
     return w
 
