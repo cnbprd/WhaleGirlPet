@@ -2453,7 +2453,7 @@ class Controller:
         self.tray.setIcon(icon)
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()
-        act_panel = QAction(icon, "打开控制面板", menu)
+        act_panel = QAction(icon, "设置", menu)
         act_panel.triggered.connect(self.open_panel)
         # v2.9.6 剪贴板不再自动读取：点这一项先弹授权框，同意才读
         act_search = QAction("搜索剪贴板内容（读取前先问你）", menu)

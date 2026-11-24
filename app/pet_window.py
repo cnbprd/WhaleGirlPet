@@ -503,13 +503,14 @@ class PetWindow(QWidget):
                 self.finish_state()
 
         elif st == "sleep":
-            # v2.9.8：原来只把透明度压到 0.85，看着像站着发呆。现在压暗 + 慢呼吸
-            # + 缓慢歪头打盹，换装形态下也能一眼看出"睡着了"。
-            self.alpha = 0.70
-            self.bob = -3.0 * abs(math.sin(self.state_t * 0.9)) * self.scale
-            self.sy = 1 + 0.035 * math.sin(self.state_t * 0.9)
-            self.sx = 1 - 0.018 * math.sin(self.state_t * 0.9)
-            self.rot = 7 * math.sin(self.state_t * 0.45)
+            # v2.9.9：站着打盹不像睡。改成"蹲坐抱膝、身子压扁下沉、头慢慢歪倒"，
+            # 呼吸做成 5 秒一轮的起伏，换装形态下没有闭眼差分包，靠姿态也能看出睡了。
+            breath = 0.5 + 0.5 * math.sin(self.state_t * 0.55)   # 0~1，约 11 秒一轮
+            self.alpha = 0.68
+            self.sy = 0.72 + 0.045 * breath                      # 上限 0.765，永远低于站姿
+            self.sx = 1.06 - 0.025 * breath                      # 压扁同时略变宽，像缩成一团
+            self.bob = -(1.0 + 3.2 * breath) * self.scale        # 贴地，只随呼吸轻微上浮
+            self.rot = 8 * math.sin(self.state_t * 0.35)         # 约 18 秒慢慢歪一次头
 
         elif st == "follow":
             c = QCursor.pos()
@@ -799,10 +800,7 @@ class PetWindow(QWidget):
             "QMenu::separator{height:1px;background:#ececf0;margin:5px 8px;}")
 
         menu.addAction("陪我聊聊天", ctl.open_panel_chat)
-        menu.addAction("语音说一句（Ctrl+Alt+V）", ctl.voice_listen)
-        menu.addAction("今天天气", ctl.speak_weather)
-        menu.addAction("说条科技新闻", ctl.speak_news)
-        menu.addAction("换天气城市…", self._pick_weather_city)
+        # v2.9.9：语音说一句/天气/科技新闻已挪进面板「语音唤醒」「天气资讯」页，这里不再重复
         menu.addAction("摸摸头", self.do_pat)
 
         menu.addAction("表演一个", ctl.perform_random)

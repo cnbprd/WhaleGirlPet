@@ -3,7 +3,7 @@
 import os
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem,
@@ -44,7 +44,14 @@ class ControlPanel(QWidget):
     def __init__(self, controller):
         super().__init__()
         self.ctl = controller
-        self.setWindowTitle("鲸鱼娘桌宠 · 控制面板")
+        self.setWindowTitle("设置")
+        # v2.9.9：控制面板的窗口/任务栏图标换成 Q 版大肥鱼方形头像
+        try:
+            icon = QIcon(paths.asset_path(os.path.join("ui", "pet_flat.ico")))
+            if not icon.isNull():
+                self.setWindowIcon(icon)
+        except Exception:  # noqa: BLE001
+            pass
         self.setObjectName("PanelRoot")
         self.resize(560, 700)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -58,7 +65,12 @@ class ControlPanel(QWidget):
             # v2.9.8：番茄钟/提醒与定时任务合并，统一叫「定时任务」
             (self._tab_remind(), "定时任务"),
             (self._tab_chat(), "聊天"),
-            (self._tab_prefs(), "设置"),
+            # v2.9.9：设置拆成 5 个模块，直接排到左侧导航（不再做页内子标签）
+            (self._tab_about(), "关于与更新"),
+            (self._tab_store(), "储存位置"),
+            (self._tab_wake(), "语音唤醒"),
+            (self._tab_ambient(), "天气资讯"),
+            (self._tab_pet_behavior(), "桌宠行为"),
             (panel_v2.tab_voice(self), "音频库"),
             (self._tab_settings(), "自定义模型"),
             (panel_v2.tab_security(self), "安全体检"),
@@ -90,6 +102,14 @@ class ControlPanel(QWidget):
         ver = QLabel(f"v{APP_VERSION}")
         ver.setFixedHeight(20)
         ver.setObjectName("PanelVer")
+        # v2.9.9：标题左边挂一个小头像，一眼认出是大肥鱼（原来只有一行字）
+        avatar = QLabel()
+        avatar.setFixedSize(22, 22)
+        avatar.setScaledContents(True)
+        pm_head = QPixmap(paths.asset_path(os.path.join("ui", "pet_head_256.png")))
+        if not pm_head.isNull():
+            avatar.setPixmap(pm_head)
+            head.addWidget(avatar)
         head.addWidget(title)
         head.addStretch()
         head.addWidget(ver)
@@ -507,21 +527,12 @@ class ControlPanel(QWidget):
         except OSError as e:
             self.chat_status.setText(f"导出失败：{e}")
 
-    # ---------- 设置页（v2.9.8：拆成 4 个模块 + 桌宠行为） ----------
-    def _tab_prefs(self):
-        w = QWidget()
-        root = QVBoxLayout(w)
-        root.setSpacing(6)
+    # ---------- 设置模块（v2.9.9：不再是页内子标签，改到左侧导航当独立页） ----------
+    def _tab_about(self):
+        """关于与更新：软件信息 + 版本 + 检查更新。"""
+        return self._wrap_prefs(self._build_update_box())
 
-        # v2.9.8：页内先给一个「设置」标题，点开侧栏「设置」不再是空白一片
-        title = QLabel("设置")
-        title.setStyleSheet("font-size:17px;font-weight:bold;padding:2px 2px 0 2px;")
-        root.addWidget(title)
-
-        # v2.9.8：按用户列的四个模块拆成子标签，页内不再一屏堆到底
-        self.prefs_tabs = QTabWidget()
-        self.prefs_tabs.setObjectName("PrefsTabs")
-        self.prefs_tabs.addTab(self._wrap_prefs(self._build_update_box()), "关于与更新")
+    def _tab_store(self):
 
         # ② 储存位置：展示位置 + 资料迁移
         box_store = QGroupBox("储存位置")
@@ -554,7 +565,9 @@ class ControlPanel(QWidget):
         self.lbl_store_msg.setWordWrap(True)
         self.lbl_store_msg.setStyleSheet("color:#2f6f4f;font-size:11px;")
         sv.addWidget(self.lbl_store_msg)
-        self.prefs_tabs.addTab(self._wrap_prefs(box_store), "储存位置")
+        return self._wrap_prefs(box_store)
+
+    def _tab_wake(self):
 
         # ③ 语音唤醒：只做唤醒词修改与设置
         box_wake = QGroupBox("语音唤醒")
@@ -587,7 +600,9 @@ class ControlPanel(QWidget):
         self.lbl_wake.setStyleSheet("color:#888;font-size:11px;")
         row_w2.addWidget(self.lbl_wake, 1)
         wv.addLayout(row_w2)
-        self.prefs_tabs.addTab(self._wrap_prefs(box_wake), "语音唤醒")
+        return self._wrap_prefs(box_wake)
+
+    def _tab_ambient(self):
 
         # ④ 天气资讯：天气照旧 + 六类资讯
         box_amb = QGroupBox("天气资讯")
@@ -641,24 +656,11 @@ class ControlPanel(QWidget):
         self.txt_news.setMaximumHeight(86)
         self.txt_news.setPlaceholderText("点上面任一分类，这里列最新标题")
         av.addWidget(self.txt_news)
-        self.prefs_tabs.addTab(self._wrap_prefs(box_amb), "天气资讯")
+        return self._wrap_prefs(box_amb)
 
-        # ⑤ 桌宠行为（v2.9.7 起就放在设置里，这里保留并排到最后）
-        self.prefs_tabs.addTab(self._wrap_prefs(self._build_pet_box()), "桌宠行为")
-
-        root.addWidget(self.prefs_tabs, 1)
-        # 聊天入口（与左侧「聊天」页合并为同一份记录）
-        row_ch = QHBoxLayout()
-        lb = QLabel("聊天只有一个入口：左侧「聊天」页（记录、附件、导出都在那儿）")
-        lb.setWordWrap(True)
-        lb.setStyleSheet("color:#777;font-size:11px;")
-        row_ch.addWidget(lb, 1)
-        btn_ch = QPushButton("打开聊天")
-        btn_ch.setFixedWidth(96)
-        btn_ch.clicked.connect(self._goto_chat)
-        row_ch.addWidget(btn_ch)
-        root.addLayout(row_ch)
-        return w
+    def _tab_pet_behavior(self):
+        """桌宠行为：碎碎念、点击音效、始终指定、大小、换装、形态、跟随鼠标。"""
+        return self._wrap_prefs(self._build_pet_box())
 
     @staticmethod
     def _wrap_prefs(inner) -> QWidget:

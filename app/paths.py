@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "2.9.8"
+APP_VERSION = "2.9.9"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -61,7 +61,7 @@ def accounts_file() -> str:
 
 
 def cleanup_pending() -> int:
-    """v2.9.8：储存位置迁移后，被进程占用没删掉的旧文件，下次启动再清一遍。
+    """v2.9.9：储存位置迁移后，被进程占用没删掉的旧文件，下次启动再清一遍。
 
     迁移时把删不掉的项写进 `%APPDATA%\\WhaleGirlPet\\pending_cleanup.json`；
     这里读出来重试，全部清干净就删掉标记文件。返回本次删掉的项数。
