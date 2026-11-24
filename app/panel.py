@@ -41,6 +41,9 @@ class _VoiceListWorker(QThread):
 
 
 class ControlPanel(QWidget):
+    # v2.9.9：关于页展示的仓库地址，一处改全局生效
+    REPO_URL = "https://github.com/cnbprd/WhaleGirlPet"
+
     def __init__(self, controller):
         super().__init__()
         self.ctl = controller
@@ -536,8 +539,101 @@ class ControlPanel(QWidget):
 
     # ---------- 设置模块（v2.9.9：不再是页内子标签，改到左侧导航当独立页） ----------
     def _tab_about(self):
-        """关于与更新：软件信息 + 版本 + 检查更新。"""
-        return self._wrap_prefs(self._build_update_box())
+        """关于与更新：品牌区 + 源码与下载 + 帮助与维护。
+
+        对齐 OpenWrite 的 About 布局（头像 / 名称 / 版本 / 一句话 + 分组条目），
+        但不做 QQ 群、使用教程、加入社区；只留 Git 仓库、发布页、反馈与下载二维码。
+        """
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(6, 10, 6, 6)
+        lay.setSpacing(10)
+
+        # ① 品牌区
+        logo = QLabel()
+        logo.setFixedSize(64, 64)
+        logo.setScaledContents(True)
+        pm_logo = QPixmap(paths.asset_path(os.path.join("ui", "about_logo.png")))
+        if not pm_logo.isNull():
+            logo.setPixmap(pm_logo)
+        lay.addWidget(logo, 0, Qt.AlignHCenter)
+
+        title = QLabel("鲸鱼娘桌宠")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size:17px;font-weight:bold;")
+        lay.addWidget(title)
+
+        self.lbl_version = QLabel(f"版本 v{APP_VERSION}")
+        self.lbl_version.setAlignment(Qt.AlignCenter)
+        self.lbl_version.setStyleSheet("color:#8a8a8a;font-size:12px;")
+        lay.addWidget(self.lbl_version)
+
+        slogan = QLabel("你的桌面陪伴助手 · 聊天走本地模型")
+        slogan.setAlignment(Qt.AlignCenter)
+        slogan.setStyleSheet("color:#7a7a7a;font-size:11px;")
+        lay.addWidget(slogan)
+
+        # ② 源码与下载：三行入口 + 下载二维码
+        box_src = QGroupBox("源码与下载")
+        sv = QVBoxLayout(box_src)
+        sv.setSpacing(4)
+        for text, desc, url in (
+            ("GitHub 仓库", "cnbprd / WhaleGirlPet", self.REPO_URL),
+            ("版本发布页", "历史版本与安装包都在这", self.REPO_URL + "/releases"),
+            ("问题反馈", "提个 Issue，我按条改", self.REPO_URL + "/issues"),
+        ):
+            row = QHBoxLayout()
+            col = QVBoxLayout()
+            col.setSpacing(0)
+            t = QLabel(text)
+            t.setStyleSheet("font-size:12px;")
+            d = QLabel(desc)
+            d.setStyleSheet("color:#7a7a7a;font-size:10px;")
+            col.addWidget(t)
+            col.addWidget(d)
+            row.addLayout(col, 1)
+            btn = QPushButton("打开")
+            btn.setFixedWidth(56)
+            btn.clicked.connect(lambda _=False, u=url: self._open_url(u))
+            row.addWidget(btn)
+            sv.addLayout(row)
+
+        qr_row = QHBoxLayout()
+        qr_row.setSpacing(10)
+        qr = QLabel()
+        qr.setFixedSize(132, 132)
+        qr.setScaledContents(True)
+        pm_qr = QPixmap(paths.asset_path(os.path.join("ui", "repo_qr.png")))
+        if not pm_qr.isNull():
+            qr.setPixmap(pm_qr)
+        qr_row.addWidget(qr, 0, Qt.AlignCenter)
+        tip = QLabel("手机扫一扫\n直接打开下载页\n挑最新版本装就行")
+        tip.setStyleSheet("color:#7a7a7a;font-size:11px;")
+        qr_row.addWidget(tip, 1)
+        sv.addLayout(qr_row)
+        lay.addWidget(box_src)
+
+        # ③ 帮助与维护
+        lay.addWidget(self._build_update_box())
+        lay.addStretch()
+        return page
+
+    def _open_url(self, url: str):
+        """用系统默认浏览器打开链接（Git 仓库 / 发布页 / Issue 都走这里）。"""
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _open_log(self):
+        """诊断日志：优先打开安装目录里的本地引擎日志，没有就打开数据目录。"""
+        try:
+            rt = paths.runtime_dir()
+        except Exception:  # noqa: BLE001
+            rt = ""
+        for name in ("dafeiyu-server.log", "dafeiyu-server.err.log"):
+            p = os.path.join(rt, name) if rt else ""
+            if p and os.path.exists(p):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+                return
+        self._open_data_dir()
 
     def _tab_store(self):
 
@@ -1122,41 +1218,48 @@ class ControlPanel(QWidget):
         return box_audio
 
     def _build_update_box(self) -> QGroupBox:
-        """「关于与更新」分组：软件信息 + 版本展示 + 检查更新（v2.9.8 补软件信息）。"""
-        box_upd = QGroupBox("软件信息与更新")
+        """「帮助与维护」分组：检查更新 + 清单地址 + 诊断日志 + 软件信息。"""
+        box_upd = QGroupBox("帮助与维护")
         u = QVBoxLayout(box_upd)
         u.setSpacing(4)
-        self.lbl_version = QLabel(f"当前版本 v{APP_VERSION}")
-        self.lbl_version.setStyleSheet("font-size:14px;font-weight:bold;")
-        u.addWidget(self.lbl_version)
-        # v2.9.8：用户要「功能软件信息和版本展示」，补上程序位置/数据位置/引擎/仓库
+        row_upd = QHBoxLayout()
+        btn_upd = QPushButton("检查更新")
+        btn_upd.clicked.connect(self._check_update)
+        row_upd.addWidget(btn_upd)
+        self.lbl_update = QLabel("")
+        self.lbl_update.setStyleSheet("color:#8a8a8a;font-size:11px;")
+        row_upd.addWidget(self.lbl_update, 1)
+        u.addLayout(row_upd)
+
+        row_url = QHBoxLayout()
+        row_url.addWidget(QLabel("清单"))
+        self.ed_update_url = QLineEdit()
+        self.ed_update_url.setPlaceholderText("可选：更新清单 JSON 地址，留空只能手动装新版")
+        row_url.addWidget(self.ed_update_url, 1)
+        u.addLayout(row_url)
+
+        row_log = QHBoxLayout()
+        btn_log = QPushButton("看诊断日志")
+        btn_log.clicked.connect(self._open_log)
+        row_log.addWidget(btn_log)
+        btn_dir = QPushButton("打开数据目录")
+        btn_dir.clicked.connect(self._open_data_dir)
+        row_log.addWidget(btn_dir)
+        row_log.addStretch()
+        u.addLayout(row_log)
+
         import sys as _sys
         prog_dir = (os.path.dirname(os.path.abspath(_sys.executable))
                     if getattr(_sys, "frozen", False)
                     else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         info = (f"程序目录：{prog_dir}\n"
                 f"数据目录：{paths.data_dir()}\n"
-                f"本地引擎：{paths.runtime_dir()}\\dafeiyu\\dafeiyu-server.exe\n"
-                f"源码仓库：github.com/cnbprd/WhaleGirlPet")
+                f"本地引擎：{paths.runtime_dir()}\\dafeiyu\\dafeiyu-server.exe")
         lbl_info = QLabel(info)
         lbl_info.setWordWrap(True)
         lbl_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        lbl_info.setStyleSheet("color:#888;font-size:11px;")
+        lbl_info.setStyleSheet("color:#888;font-size:10px;")
         u.addWidget(lbl_info)
-        row_url = QHBoxLayout()
-        row_url.addWidget(QLabel("清单地址"))
-        self.ed_update_url = QLineEdit()
-        self.ed_update_url.setPlaceholderText("可选：托管的更新清单 JSON 地址，留空则无法联网检查")
-        row_url.addWidget(self.ed_update_url)
-        u.addLayout(row_url)
-        row_btn = QHBoxLayout()
-        btn_upd = QPushButton("检查更新")
-        btn_upd.clicked.connect(self._check_update)
-        row_btn.addWidget(btn_upd)
-        self.lbl_update = QLabel("")
-        self.lbl_update.setStyleSheet("color:#888;font-size:11px;")
-        row_btn.addWidget(self.lbl_update)
-        u.addLayout(row_btn)
         return box_upd
 
     # ---------- 后端交互 ----------

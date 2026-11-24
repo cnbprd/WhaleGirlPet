@@ -24,9 +24,11 @@ def _cb(hwnd, _lp):
     buf = ctypes.create_unicode_buffer(512)
     user32.GetWindowTextW(hwnd, buf, 512)
     if TITLE == buf.value and user32.IsWindowVisible(hwnd):
+        cls = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, cls, 256)
         r = wt.RECT()
         user32.GetWindowRect(hwnd, ctypes.byref(r))
-        cands.append((hwnd, buf.value, r.right - r.left, r.bottom - r.top))
+        cands.append((hwnd, buf.value, r.right - r.left, r.bottom - r.top, cls.value))
     return True
 
 
@@ -36,7 +38,10 @@ for c in cands:
 if not cands:
     sys.exit(1)
 
-hwnd, title, w, h = max(cands, key=lambda c: c[2] * c[3])
+# 同名窗口很多（Windows 自带的「设置」也是这个名字），优先挑 Qt 窗口
+qt = [c for c in cands if c[4].lower().startswith("qt")]
+pool = qt or cands
+hwnd, title, w, h = max(pool, key=lambda c: c[2] * c[3])[:4]
 print("选中", title, w, h)
 
 hdc = user32.GetWindowDC(hwnd)
