@@ -871,8 +871,16 @@ class Controller:
 
     # ================= 满屏跑撞图标 =================
     def begin_run(self, duration_ms: int = 60000):
-        self.icon_layout = IconLayout()
-        self.icon_layout.reload()
+        # v3.0.6：满屏跑撞图标会用 LVM_SETITEMPOSITION 真的挪用户的桌面图标，
+        # 每挪一次资源管理器就重排/刷新一遍，表现为"桌面/资源管理器不定时刷新"。
+        # 默认改成不碰真实图标（只让桌宠自己撞、自己喊疼），要玩真格的在面板里打开开关。
+        self.icon_layout = None
+        if self.config.get("allow_icon_scatter", False):
+            try:
+                self.icon_layout = IconLayout()
+                self.icon_layout.reload()
+            except Exception:  # noqa: BLE001
+                self.icon_layout = None
         self._collided = False
         self.pet.do_run(duration_ms)
         self._schedule_collision()
@@ -2748,19 +2756,51 @@ def main():
     keep["splash"].show()
     app.processEvents()
 
+    def _boot_log(msg: str):
+        """v3.0.6：启动过程写时间线到 runtime/startup.log，方便下次排查卡在哪一步。"""
+        try:
+            p = os.path.join(paths.runtime_dir(), "startup.log")
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+        except Exception:  # noqa: BLE001
+            pass
+
     def _boot_step2():
         keep["splash"].set_step("正在读取配置与记忆…")
-        keep["controller"] = Controller(app, defer_show=True)
+        _boot_log("step2 开始：构造 Controller")
+        try:
+            keep["controller"] = Controller(app, defer_show=True)
+        except Exception as e:  # noqa: BLE001
+            _boot_log(f"step2 异常：{e!r}")
+            keep["splash"]._hard_close()
+            QMessageBox.critical(None, APP_NAME, f"启动失败：{e}")
+            app.quit()
+            return
+        _boot_log("step2 完成")
         QTimer.singleShot(320, _boot_step3)
 
     def _boot_step3():
         keep["splash"].set_step("正在加载形象与语音…")
+        _boot_log("step3")
         QTimer.singleShot(280, _boot_step4)
 
     def _boot_step4():
-        keep["controller"].show_pet()
-        keep["splash"].finish()
+        _boot_log("step4 开始：露出桌宠")
+        try:
+            keep["controller"].show_pet()
+            _boot_log("step4 桌宠已显示")
+        except Exception as e:  # noqa: BLE001
+            # 桌宠没露出来也要把启动屏收掉，否则屏幕上留一个卡住的大肥鱼
+            _boot_log(f"step4 show_pet 异常：{e!r}")
+        finally:
+            try:
+                keep["splash"].finish()
+                _boot_log("step4 启动屏已请求淡出")
+            except Exception:  # noqa: BLE001
+                keep["splash"]._hard_close()
+                _boot_log("step4 启动屏强制关闭")
 
+    _boot_log("step1 启动屏已显示")
     QTimer.singleShot(260, _boot_step2)
     return app.exec()
 

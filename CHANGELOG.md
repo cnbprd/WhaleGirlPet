@@ -2,6 +2,15 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.6（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 启动浮层卡住 | `splash.py` 的 `_tick` 里淡入那行每帧把 `_fade` 重置回 1.0，与淡出每帧减 0.075 互相抵消，`_fade` 恒为 0.925、永远进不了关闭分支。改为淡入加 `not self._done` 条件 | 修复前 1/3/6/9 秒 `_fade` 均 0.925；修复后 `_fade` 递减到 −0.05、`closing=True`、`IsWindowVisible=0` |
+| 2 启动浮层兜底 | 15s 硬超时 `_hard_close`、Win32 `ShowWindow(SW_HIDE)` 直隐藏、`step2/step4` try/finally、`runtime\startup.log` 时间线 | 探针 tick 222 次 0 异常，关闭路径走通 |
+| 3 资源管理器不定时刷新 | `begin_run` 默认不建 `IconLayout`，仅 `allow_icon_scatter=True` 才用 `LVM_SETITEMPOSITION` 挪真实图标；面板「桌宠行为」新增开关，默认关 | 机制：20s 抽签 → run 权重 10% → 撞 3 个图标 → 2.6s 复位，每次重排一次资源管理器 |
+| 4 版本 3.0.6 | `paths.APP_VERSION`、iss 六处同步 | 六处 3.0.6、零残留 3.0.5 |
+
 ## v3.0.5（2026-11-25）
 
 | 项 | 改动 | 实测 |

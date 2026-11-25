@@ -26,6 +26,7 @@ ART_H = 470                 # 人物绘制高度
 FOOT_Y = 545                # 脚底基线
 MIN_SHOW = 2.0              # 最短驻留，避免一闪而过
 FADE_IN = 0.55              # 淡入时长
+MAX_LIFE_MS = 15000         # v3.0.6：兜底存活上限，超过就无条件收掉
 
 # 只用同一套立绘：三帧轮播里另外两帧是不同服装，切换像换装，反而跳。
 FRAMES = ["skins/default.png"]
@@ -64,6 +65,8 @@ class LoadingSplash(QWidget):
         self._tm.timeout.connect(self._tick)
         self._tm.start()
         self._center()
+        # v3.0.6：不管调用方有没有按时 finish、哪怕它自己抛异常，最多活 15 秒
+        QTimer.singleShot(MAX_LIFE_MS, self._hard_close)
 
     # ---------------- 外部 ----------------
     def set_step(self, text: str):
@@ -74,6 +77,41 @@ class LoadingSplash(QWidget):
         self._done = True
         self._finish_at = max(self._t0 + MIN_SHOW, time.time())
 
+    def _hide_now(self):
+        """直接调 Win32 隐藏窗口。
+
+        v3.0.6 实测：程序首次启动时主线程可能被初始化卡住上百毫秒到几秒，
+        Qt 的 close()/hide() 只是投递消息，主线程不空转就不会真正隐藏，
+        屏幕上于是留着一个"卡住的大肥鱼"。ShowWindow(SW_HIDE) 直接走系统调用，
+        不依赖事件循环，立刻从屏幕上消失。
+        """
+        try:
+            hwnd = int(self.winId())
+            if hwnd:
+                import ctypes
+                ctypes.windll.user32.ShowWindow(hwnd, 0)   # SW_HIDE
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.hide()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _hard_close(self):
+        """无条件收尾：先系统级隐藏，再 close，最后销毁。"""
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self._tm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        self._hide_now()
+        try:
+            self.close()
+        except Exception:  # noqa: BLE001
+            pass
+
     # ---------------- 内部 ----------------
     def _center(self):
         scr = QApplication.primaryScreen().availableGeometry()
@@ -81,16 +119,17 @@ class LoadingSplash(QWidget):
 
     def _tick(self):
         el = time.time() - self._t0
-        # 淡入
-        if self._fade < 1.0:
+        # 淡入：只在还没收到 finish() 时做。
+        # v3.0.6 修的 bug：原来这里不看 _done，每帧都把 _fade 重置回 1.0，
+        # 而淡出每帧只减 0.075，两个方向互相抵消，_fade 永远卡在 0.925，
+        # 关闭分支永远进不去 —— 表现就是屏幕上一直留着一个不动的大肥鱼。
+        if self._fade < 1.0 and not self._done:
             self._fade = min(1.0, el / FADE_IN)
         # 淡出关闭
         if self._done and time.time() >= self._finish_at:
             self._fade -= 0.075
             if self._fade <= 0.0 and not self._closing:
-                self._closing = True
-                self._tm.stop()
-                self.close()
+                self._hard_close()
         self.update()
 
     def paintEvent(self, _ev):

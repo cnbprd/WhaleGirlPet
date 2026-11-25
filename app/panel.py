@@ -822,6 +822,10 @@ class ControlPanel(QWidget):
         self.txt_news.setPlainText("\n".join(f"· {t}" for t in items))
 
     # ---------- 设置页动作 ----------
+    def _on_scatter_toggle(self, v: bool):
+        self.ctl.config["allow_icon_scatter"] = bool(v)
+        self.ctl.save_config()
+
     def _build_pet_box(self) -> QGroupBox:
         """v2.9.7「桌宠行为」：把散在养成页/提醒页/托盘里的零碎开关收在一处。"""
         box = QGroupBox("桌宠行为")
@@ -851,6 +855,19 @@ class ControlPanel(QWidget):
         row2.addWidget(self.chk_follow)
         row2.addStretch()
         pv.addLayout(row2)
+
+        # v3.0.6：撞图标会真的挪桌面图标，移到一次图标资源管理器就刷新一次，
+        # 所以收成显式开关，默认关（只做动作和气泡，不动真实图标）。
+        row_icon = QHBoxLayout()
+        self.chk_scatter = QCheckBox("满屏跑时撞乱桌面图标")
+        self.chk_scatter.setToolTip(
+            "打开后，她撞到的东西会把附近桌面图标挪开，2.6 秒后再复位；"
+            "挪动/复位会让资源管理器重排一次（看起来像桌面刷新）。\n"
+            "默认关闭：只撞、只喊疼，不碰真实图标。")
+        self.chk_scatter.toggled.connect(self._on_scatter_toggle)
+        row_icon.addWidget(self.chk_scatter)
+        row_icon.addStretch()
+        pv.addLayout(row_icon)
 
         row3 = QHBoxLayout()
         row3.setSpacing(6)
@@ -1614,6 +1631,7 @@ class ControlPanel(QWidget):
         # v2.9.7 桌宠行为模块
         for chk, key, default in ((self.chk_click_sound, "click_sound_on", True),
                                   (self.chk_topmost, "topmost", True),
+                                  (self.chk_scatter, "allow_icon_scatter", False),
                                   (self.chk_follow, "follow_mouse", False)):
             chk.blockSignals(True)
             chk.setChecked(bool(self.ctl.config.get(key, default)))
