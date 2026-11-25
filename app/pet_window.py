@@ -15,6 +15,7 @@ from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SK
 import anim_engine as anim
 import director as director_mod
 import rig as rig_mod
+import secondary as secondary_mod
 import skeletal as sk_mod
 from bubble import BubbleWindow
 from voice_profile import profile_names as voice_profile_names
@@ -85,14 +86,26 @@ class PetWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.setWindowTitle("鲸鱼娘桌宠")
+        # v3.0.26：先定缩放，再加载立绘/分层，避免配置是 1.4 倍却先按 1x 读图
+        self.scale = float(controller.config.get("scale", 1.0))
 
         self.pix_cache = {}
+        self._skin_full = self._load_skin_full(controller.config.get("skin", "default"))
         self.base = self._load_skin(controller.config.get("skin", "default"))
+        self._full_base = self._skin_full
+        self._layer_active = False
+        self._last_x = None
+        self._last_y = None
+        self._last_bob = 0.0
         self._foot_cache = {}          # 脚底行缓存：切皮肤/表情后按底边对齐地面（v2.8）
         self.night = False             # 夜间模式：呼吸幅度收窄（v2.8）
         self._pix = QPixmap()
+        self._pix_full = QPixmap()
         self._pad = 0
-        self.scale = float(controller.config.get("scale", 1.0))
+        # v3.0.26：裙摆/尾巴 alpha 分层 + Verlet spring（第三阶段）
+        self._sec = secondary_mod.SecondaryMotion(self.scale)
+        self._layer_active = self._sec.set_skin(
+            controller.config.get("skin", "default"), bool(getattr(self, "base_is_2x", False)))
         # v3.0.22 果冻回弹：切形态/换装时给一个短促的挤压-拉伸，抵消「硬切」感
         self._jelly_t0 = None
         self._jelly_dur = 0.55
@@ -204,16 +217,36 @@ class PetWindow(QWidget):
         self.base_is_2x = two
         return self.pix_cache[key]
 
-    def _load_skin(self, skin_key: str) -> QPixmap:
+    def _load_skin_full(self, skin_key: str) -> QPixmap:
         rel = SKINS.get(skin_key, SKINS["default"])[1]
         return self._load_pix(rel)
 
+    def _load_skin(self, skin_key: str) -> QPixmap:
+        """底图保留完整立绘：裙摆/尾巴层只叠加在可动区域。
+
+        之前试过把底图挖洞再靠层补回，旋转时裙腰会露白缝；改用完整底图 +
+        alpha 层叠加，静止时层与原图像素重合，动起来也不会出现透明洞。
+        """
+        return self._load_skin_full(skin_key)
+
     def set_skin(self, skin_key: str):
         self._controller.config["skin"] = skin_key
-        self.base = self._load_skin(skin_key)
-        self.restore_base_expression()
-        self._update_pix()
+        self._reload_skin_base(skin_key)
+        self._expr_timer.stop()
+        self.expr = "idle"
+        self._mouth_pix = None
+        self._mouth_level = 0.0
         self._jelly_t0 = time.monotonic()
+
+    def _reload_skin_base(self, skin_key: str):
+        """换皮肤时同步三套底图：整图（步态兜底）、分层底图（静止/动作）、层资产。"""
+        self._skin_full = self._load_skin_full(skin_key)
+        self.base = self._load_skin(skin_key)
+        self._full_base = self._skin_full
+        self._sec.scale = self.scale
+        self._layer_active = bool(self._sec.set_skin(
+            skin_key, bool(getattr(self, "base_is_2x", False))))
+        self._update_pix()
 
     # ---------- 形态（成熟 / 萝莉） ----------
     def current_form(self) -> str:
@@ -259,6 +292,8 @@ class PetWindow(QWidget):
             p.end()
             self._face_cache[key] = hit
         self.base = hit
+        self._full_base = self._skin_full
+        self._layer_active = bool(self._sec.enabled)
         self._mouth_pix = self._load_face_patch(expr, "mouth")
         self._update_pix()
         return True
@@ -273,6 +308,8 @@ class PetWindow(QWidget):
             if not patched and skin_now == "default":
                 # 默认皮肤可以用整套表情图换姿势
                 self.base = self._load_pix(rel)
+                self._full_base = self.base
+                self._layer_active = False
                 self._mouth_pix = None
                 self._update_pix()
             elif not patched:
@@ -289,11 +326,10 @@ class PetWindow(QWidget):
     def restore_base_expression(self):
         self._expr_timer.stop()
         skin = self._controller.config.get("skin", "default")
-        self.base = self._load_skin(skin)
+        self._reload_skin_base(skin)
         self.expr = "idle"
         self._mouth_pix = None
         self._mouth_level = 0.0
-        self._update_pix()
 
     # ================= 基础几何 =================
     def _foot_row(self, pm: QPixmap) -> int:
@@ -316,21 +352,24 @@ class PetWindow(QWidget):
         self._foot_cache[key] = row
         return row
 
-    def _update_pix(self, base=None):
+    def _update_pix(self, base=None, full_base=None):
         base = base if base is not None else self.base
+        if full_base is None:
+            full_base = self._full_base if self._layer_active else base
         # v2.8 脚底对齐：裁掉底部透明边，窗口底边即脚底，换皮肤不再上下漂
         if self._controller.config.get("anchor_crop", True):
             foot = self._foot_row(base)
             if 0 < foot < base.height():
                 base = base.copy(0, 0, base.width(), foot)
+            if full_base is not base and 0 < foot < full_base.height():
+                full_base = full_base.copy(0, 0, full_base.width(), foot)
         bw = max(1, int(base.width() * self.scale / (2 if getattr(self, "base_is_2x", False) else 1)))
         bh = max(1, int(base.height() * self.scale / (2 if getattr(self, "base_is_2x", False) else 1)))
-        # v3.0.22：放大超过 1.2 倍时走 2 倍超采样源，消除 alpha 边缘台阶（可关）
-        if (self.scale > 1.2 and not getattr(self, "base_is_2x", False)
-                and bool(self._controller.config.get("alpha_supersample", True))):
-            self._pix = supersampled(base, bw, bh, 2)
+        self._pix = self._scale_pix(base, bw, bh)
+        if full_base is base:
+            self._pix_full = self._pix
         else:
-            self._pix = base.scaled(bw, bh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self._pix_full = self._scale_pix(full_base, bw, bh)
         pw, ph = self._pix.width(), self._pix.height()
         # 活动余量：动作时人物会 bob/旋转/横向摆出立绘边界，窗口必须比立绘大一圈
         pad = max(12, int(ph * PAD_RATIO))
@@ -338,6 +377,13 @@ class PetWindow(QWidget):
         self.resize(pw + 2 * pad, ph + 2 * pad)
         self._apply_mask()
         self._split_limbs()
+
+    def _scale_pix(self, base, bw, bh):
+        # v3.0.22：放大超过 1.2 倍时走 2 倍超采样源，消除 alpha 边缘台阶（可关）
+        if (self.scale > 1.2 and not getattr(self, "base_is_2x", False)
+                and bool(self._controller.config.get("alpha_supersample", True))):
+            return supersampled(base, bw, bh, 2)
+        return base.scaled(bw, bh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
     def _apply_mask(self):
         """可选蒙版（默认关闭，仅作兜底）。
@@ -391,6 +437,13 @@ class PetWindow(QWidget):
             bc = self.frameGeometry().bottomLeft()
             bc.setX(bc.x() + self.width() // 2)
         self.scale = s
+        self._sec.scale = s
+        # 跨过 1.2 倍时换成 2x 层，和超采样底图保持同一清晰度
+        skin = self._controller.config.get("skin", "default")
+        want2 = s > 1.2 and os.path.exists(asset_path("skins/layers/" + skin + "_skirt@2x.png"))
+        if want2 != getattr(self._sec, "two", False):
+            self._sec.set_skin(skin, want2)
+            self._layer_active = bool(self._sec.enabled)
         self._controller.config["scale"] = round(s, 3)
         self._update_pix()
         if anchor_bottom:
@@ -802,6 +855,16 @@ class PetWindow(QWidget):
             for ev in self.tl.pop_events():
                 self._on_anim_event(ev)
 
+        # v3.0.26：分层裙摆/尾巴的惯性输入。用窗口实际位移当外力，
+        # 拖拽/走路/跑步都能带动；步态分支仍走整图，不叠两层。
+        now_x, now_y = self.x(), self.y()
+        dx = 0.0 if self._last_x is None else float(now_x - self._last_x)
+        dy = 0.0 if self._last_y is None else float(now_y - self._last_y)
+        self._last_x, self._last_y = now_x, now_y
+        if self._layer_active and not self.gait_on:
+            if self.mirror:
+                dx = -dx
+            self._sec.step(self.frame_ms / 1000.0, dx, dy, st, self.state_t)
         self.update()
 
     def _on_anim_event(self, name: str):
@@ -854,10 +917,12 @@ class PetWindow(QWidget):
             rel = self._sleep_rel()
             if not rel:
                 return False
-            self._update_pix(base=self._load_pix(rel))
+            pix = self._load_pix(rel)
+            self._full_base = pix
+            self._layer_active = False
+            self._update_pix(base=pix)
             return True
-        self.base = self._load_skin(self._controller.config.get("skin", "default"))
-        self._update_pix()
+        self._reload_skin_base(self._controller.config.get("skin", "default"))
         return True
 
     def do_sleep(self):
@@ -954,6 +1019,8 @@ class PetWindow(QWidget):
         use_sprite = bool(rel) and skin_now == "default" and self.current_form() != "loli"
         if use_sprite:
             self.base = self._load_pix(rel)
+            self._full_base = self.base
+            self._layer_active = False
             self._update_pix()
         elif key == "eatrice":
             self.set_expression("eat", 0)
@@ -1199,6 +1266,8 @@ class PetWindow(QWidget):
             self._paint_gait(p, pw, ph)
         else:
             p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+            if self._layer_active:
+                self._sec.paint(p, pw, ph)
         self._paint_mouth(p, pw, ph)
         if self.state in TASK_STATES:
             self._paint_work_prop(p, pw, ph)
@@ -1301,9 +1370,15 @@ class PetWindow(QWidget):
                 p.drawEllipse(QPointF(cx, cy), r, r)
         p.restore()
 
+    def _gait_source(self):
+        """步态分支用完整立绘；分层底图有裙摆/尾巴的洞，不能拿去切腿。"""
+        if self._layer_active and not self._pix_full.isNull():
+            return self._pix_full
+        return self._pix
+
     def _skel_for(self):
         """按当前立绘懒建骨骼精灵（换皮肤/表情/形态时重建）。"""
-        pix = self._pix
+        pix = self._gait_source()
         if pix.isNull() or pix.width() < 8 or pix.height() < 8:
             return None
         key = (pix.cacheKey(), pix.width(), pix.height(),
@@ -1317,7 +1392,7 @@ class PetWindow(QWidget):
         """游戏引擎式动画：骨架 + 蒙皮 + 动作剪辑（walk / run）。"""
         sprite = self._skel_for()
         if sprite is None:
-            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._gait_source())
             return
         name = "run" if self.state == "run" else "walk"
         clip = sk_mod.CLIPS[name]
@@ -1338,7 +1413,7 @@ class PetWindow(QWidget):
 
     def _rig_for(self):
         """按当前立绘懒建 Rig（换皮肤/表情/形态时重建）。"""
-        pix = self._pix
+        pix = self._gait_source()
         if pix.isNull() or pix.width() < 8 or pix.height() < 8:
             return None
         key = (pix.cacheKey(), pix.width(), pix.height())
@@ -1351,7 +1426,7 @@ class PetWindow(QWidget):
         """档 B：网格蒙皮骨骼走路——两条腿真的绕髋/膝转，不是整段横移。"""
         rig = self._rig_for()
         if rig is None:
-            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._gait_source())
             return
         st = self.state
         phase = self.gait * 2 * math.pi
@@ -1374,6 +1449,7 @@ class PetWindow(QWidget):
         strip = 8
         amp = 0.030 * ph                       # 脚部最大横移（691 高约 21px）
         hip = self._hip_y or int(ph * HIP_RATIO)
+        src = self._gait_source()
         g2 = self.gait * 2 * math.pi
         for y in range(0, ph, strip):
             hh = min(strip, ph - y)
@@ -1390,4 +1466,4 @@ class PetWindow(QWidget):
             # 目标矩形比源多 1px：相邻条带重叠，避免取整后在身上留下横向细缝
             sh = min(hh + 1, ph - y)
             p.drawPixmap(QRect(int(-pw // 2 + dx), int(-ph + y + dy), pw, sh),
-                         self._pix, QRect(0, y, pw, sh))
+                         src, QRect(0, y, pw, sh))

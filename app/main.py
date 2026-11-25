@@ -217,6 +217,7 @@ class Controller:
         self.tool_win = None
         self._care_last_beg = 0.0
         self._care_last_ask = 0.0
+        self._bag_last_use = 0.0        # v3.0.26 背包自动取食冷却
         self._status_shown_at = 0.0
         self._fallback_local = False     # 云端失败后是否已经切过本地，防来回踢皮球
 
@@ -247,6 +248,7 @@ class Controller:
         self.care_timer.setInterval(60_000)
         self.care_timer.timeout.connect(self._on_care_tick)
         self.care_timer.start()
+        QTimer.singleShot(2200, self._auto_use_bag)
 
         # ---- v2.9.7 硬件适配：启动 30 秒后查一次，之后每小时一次 ----
         self.hw_timer = QTimer()
@@ -290,10 +292,19 @@ class Controller:
         self._build_tray()
         self._build_hotkey()
         self._check_install_model_flag()
-        self._save_timer = QTimer()
-        self._save_timer.setInterval(60_000)
-        self._save_timer.timeout.connect(self.save_config)
-        self._save_timer.start()
+        # v3.0.26 修复：原先把 60s 周期定时器直接连到 save_config，
+        # save_config 内部又 start(600) 重启同一个非单次定时器，导致它
+        # 每 600ms 自我触发、_flush_config 永远不会执行，运行期间所有
+        # 养成/背包变化只在内存里，退出才落盘。这里拆成两个定时器：
+        # 一个 600ms 合并写盘的单次定时器 + 一个 60s 周期自动保存。
+        if getattr(self, "_save_timer", None) is None:
+            self._save_timer = QTimer()
+            self._save_timer.setSingleShot(True)
+            self._save_timer.timeout.connect(self._flush_config)
+        self._autosave_timer = QTimer()
+        self._autosave_timer.setInterval(60_000)
+        self._autosave_timer.timeout.connect(self.save_config)
+        self._autosave_timer.start()
 
         # 使用统计采样（只记进程名与时长，不记窗口标题）
         self.usage_timer = QTimer()
@@ -592,20 +603,107 @@ class Controller:
         if why:
             self.pet.bubble.show_text(why, 2600)
 
-    def eat_from_bag(self, key: str):
+    def eat_from_bag(self, key: str, auto: bool = False):
         ok, msg = self.state.eat(key, auto_buy=False)
         if ok:
             self.emotion.apply("feed_like", 1.0)
             self.beep("feed")
             self.pet.set_expression("happy", 2200)
-            self._speak(msg, 3200)
+            # 自动取食也算“真有事”，静音模式下给 priority 1，别只冒泡不出声
+            self._speak(("背包里的" + msg) if auto else msg, 3200,
+                        priority=1 if auto else 0)
         else:
             self._speak(msg, 2600)
-            if not self.state.bag_list():
+            if not auto and not self.state.bag_list():
                 self.open_backpack(companion.empty_bag_line())
         self.save_config()
         self.refresh_panel()
         return ok, msg
+
+    def _log_auto(self, detail: str):
+        """写一行背包自动取食诊断日志（runtime/auto_eat.log，超过 256KB 轮转）。"""
+        try:
+            rdir = paths.runtime_dir()
+            os.makedirs(rdir, exist_ok=True)
+            log = os.path.join(rdir, "auto_eat.log")
+            if os.path.exists(log) and os.path.getsize(log) > 256_000:
+                old = log + ".1"
+                try:
+                    os.remove(old)
+                except OSError:
+                    pass
+                os.replace(log, old)
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + detail + "\n")
+        except OSError:
+            pass
+
+    def _auto_use_bag(self, force: bool = False):
+        """背包里有能吃的，就自己拿出来吃；不必等玩家点背包。
+
+        v3.0.26 修复：旧逻辑只有 beg_snack() 在临界/饥饿分支里才翻背包，
+        面板开着、任务中或 180/300s 冷却里都不会动，所以“背包有东西却
+        不会自己吃”。这里做成独立入口：启动时和每 60s care tick 都检查，
+        按当前最缺的一项选食物，吃到低于 55 才动手，避免满状态浪费。
+        """
+        reason = "start"
+        st = getattr(self, "state", None)
+        try:
+            now = time.time()
+            if not force and now - self._bag_last_use < 150:
+                reason = "cooldown"
+                return False
+            if self.task_active and not force:
+                reason = "task"
+                return False
+            hungry = st.hunger < 55
+            thirsty = st.thirst < 55
+            if not hungry and not thirsty:
+                reason = "not_need"
+                return False
+            bag = []
+            for it, n in st.bag_list():
+                if it.get("kind") == "toy":
+                    continue
+                h = float(it.get("hunger", 0) or 0)
+                w = float(it.get("water", 0) or 0)
+                if h + w <= 0:
+                    continue
+                if hungry and not thirsty and h <= 0:
+                    continue
+                if thirsty and not hungry and w <= 0:
+                    continue
+                bag.append((it, n, h, w))
+            if not bag:
+                reason = "no_suitable_food"
+                return False
+
+            def score(row):
+                h, w = row[2], row[3]
+                if hungry and thirsty:
+                    return min(h, 25) + min(w, 25) + (h + w) * 0.2
+                if thirsty:
+                    return w * 2.0 + h * 0.35
+                return h * 2.0 + w * 0.35
+
+            it = max(bag, key=score)[0]
+            self._bag_last_use = now
+            ok, msg = self.eat_from_bag(it["key"], auto=True)
+            reason = f"pick={it['key']} ok={ok} msg={msg}"
+            return ok
+        except Exception as e:  # noqa: BLE001
+            reason = f"error={type(e).__name__}: {e}"
+            return False
+        finally:
+            h = f"{st.hunger:.1f}" if st is not None else "?"
+            w = f"{st.thirst:.1f}" if st is not None else "?"
+            try:
+                self._log_auto(
+                    f"hunger={h} thirst={w} task={bool(getattr(self, 'task_active', None))} "
+                    f"force={force} reason={reason}"
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
     def do_drink(self):
         ok, msg = self.state.drink()
@@ -738,6 +836,9 @@ class Controller:
             st = self.state
             now = time.time()
             panel_open = self.panel is not None and self.panel.isVisible()
+            # v3.0.26：背包里有能吃的，先自己吃；这条不依赖面板开不开
+            if self._auto_use_bag():
+                return
             # v3.0.25：归零级需求独立于面板/背包/任务；面板开着就只冒泡，不抢窗口
             critical = st.critical_need(8)
             if critical and not self.task_active and now - self._care_last_beg > 180:

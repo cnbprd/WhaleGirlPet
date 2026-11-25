@@ -1,0 +1,36 @@
+{
+  "skins": {
+    "default": {
+      "skirt_pivot": [
+        0.5,
+        0.43
+      ],
+      "tail_pivot": [
+        0.63,
+        0.55
+      ],
+      "base": "default_base.png",
+      "skirt": "default_skirt.png",
+      "tail": "default_tail.png",
+      "base_2x": "default_base@2x.png",
+      "skirt_2x": "default_skirt@2x.png",
+      "tail_2x": "default_tail@2x.png"
+    },
+    "jk": {
+      "skirt_pivot": [
+        0.5,
+        0.43
+      ],
+      "tail_pivot": [
+        0.71,
+        0.46
+      ],
+      "base": "jk_base.png",
+      "skirt": "jk_skirt.png",
+      "tail": "jk_tail.png",
+      "base_2x": "jk_base@2x.png",
+      "skirt_2x": "jk_skirt@2x.png",
+      "tail_2x": "jk_tail@2x.png"
+    }
+  }
+}
