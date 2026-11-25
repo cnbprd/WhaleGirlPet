@@ -39,7 +39,24 @@ BASE = [
     ("lobster", "龙虾", "🦞", 45, 40, 18, 4, 25, 0, "高档"),
 ]
 
-CATEGORIES = ["主食", "肉鱼", "甜点", "饮品", "水果", "高档", "新品"]
+CATEGORIES = ["主食", "肉鱼", "甜点", "饮品", "水果", "高档", "玩具", "新品"]
+
+# v3.0.0 玩具：买回来放背包，点「陪她玩」涨亲密度和心情，玩本身不消耗玩具。
+# 定价参考零食区间上限，按「一次玩给多少心情/亲密」估，不做成白嫖亲密度。
+BASE_TOYS = [
+    # key, 名称, 表情, 价, 心情, 一次玩的亲密, 说明
+    ("toy_yarn", "毛线球", "🧶", 24, 10, 3, "滚来滚去，能自己追半天"),
+    ("toy_wand", "逗猫棒", "🎣", 30, 12, 3, "晃一晃就扑上来"),
+    ("toy_bubble", "泡泡机", "🫧", 36, 14, 4, "一按吐一串泡泡"),
+    ("toy_duck", "小黄鸭泳圈", "🦆", 42, 16, 4, "抱着漂在水上"),
+]
+TOYS = {}
+for _k, _n, _e, _c, _m, _i, _d in BASE_TOYS:
+    TOYS[_k] = {
+        "key": _k, "name": _n, "emoji": _e, "cost": _c,
+        "hunger": 0, "mood": _m, "intimacy": _i, "exp": 6,
+        "water": 0, "cat": "玩具", "kind": "toy", "desc": _d,
+    }
 
 MIN_COST, MAX_COST = 4, 45
 
@@ -83,11 +100,11 @@ FALLBACK_NEW = [
 
 
 def by_key(key: str):
-    return SNACKS.get(key) or NEW_ITEMS.get(key)
+    return SNACKS.get(key) or TOYS.get(key) or NEW_ITEMS.get(key)
 
 
 def all_items() -> list:
-    return list(SNACKS.values()) + list(NEW_ITEMS.values())
+    return list(SNACKS.values()) + list(TOYS.values()) + list(NEW_ITEMS.values())
 
 
 def items_of(cat: str) -> list:

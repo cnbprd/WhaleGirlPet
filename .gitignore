@@ -20,3 +20,11 @@ tools/innosetup-*.exe
 
 # 本地测试残留
 assets/_tts_test/
+
+# 抖音视频素材与剪辑中间产物（125MB+，只留本地）
+短视频/
+tools/_cut_tiktok*.py
+tools/_vid_*.py
+
+# 本地放的 BGM（代码未引用，只用于剪视频）
+assets/bgm/

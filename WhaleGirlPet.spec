@@ -30,24 +30,15 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# v2.9.6 原生启动图：onefile 解压那 1.5 秒不再白屏（PyInstaller 6 需以 Splash 对象作为 EXE 参数）
-splash_obj = Splash(
-    'assets/ui/splash_native.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=None,
-    text_size=12,
-    text_default='鲸鱼娘加载中',
-    always_on_top=True,
-)
-
+# v3.0.1：去掉 PyInstaller 原生启动图。
+# 原生 Splash 是 Tk 窗口，只能显示一张不透明方块图，做不出「纯人物透明背景」；
+# 用户要求启动画面 = 大肥鱼本人在动、没有任何背景板，所以冷启动那几个窗口空白
+# 交给 app/splash.py 的透明浮层来表现（它一出来就是透明的人物动画）。
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
     a.datas,
-    splash_obj,
-    splash_obj.binaries,   # tcl90.dll / tcl9tk90.dll 必须一起进包，否则启动图起不来
     [],
     name='WhaleGirlPet',
     debug=False,

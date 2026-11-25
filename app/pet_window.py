@@ -3,9 +3,9 @@
 import math
 import random
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import (QAction, QCursor, QGuiApplication, QImage, QPainter, QPainterPath,
-                           QPixmap, QRegion, qAlpha)
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer
+from PySide6.QtGui import (QAction, QColor, QCursor, QGuiApplication, QImage, QPainter,
+                           QPainterPath, QPen, QPixmap, QRegion, qAlpha)
 from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
 
 from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SKINS,
@@ -32,6 +32,10 @@ CODE_ACTION_LABELS = {
     "look": "左右看", "eatrice": "吃白饭",
     "tumble": "摔一跤", "brawl": "打闹", "hop": "蹦蹦跳",
 }
+
+# v3.0.0 打工专用动作：每个工种一套持续表演，任务开始到结束一直在做，
+# 不再是「播 4.2 秒 → 回 idle」，并配一个手边道具（书 / 扫帚 / 抹布 / 箱子）。
+TASK_STATES = ("work_study", "work_rest", "work_clean", "work_wipe", "work_chores")
 
 
 def action_label(key: str) -> str:
@@ -587,6 +591,46 @@ class PetWindow(QWidget):
             self.bob = -5 * abs(math.sin(self.state_t * 10)) * self.scale
             self.rot = 5 * math.sin(self.state_t * 10)
 
+        # ---------- 打工专用动作（v3.0.0）：每个工种一直做，配道具 ----------
+        elif st == "work_study":
+            # 听课看书：身体前倾，按阅读节奏点头
+            self.rot = 4.5 + 2.0 * math.sin(self.state_t * 1.8)
+            self.bob = -1.2 * abs(math.sin(self.state_t * 3.6)) * self.scale
+            self.sy = 1 - 0.006 * abs(math.sin(self.state_t * 3.6))
+
+        elif st == "work_rest":
+            # 摸鱼休息：靠在那儿慢悠悠晃
+            self.rot = 3.5 * math.sin(self.state_t * 1.1)
+            self.bob = -3.5 * abs(math.sin(self.state_t * 1.3)) * self.scale
+
+        elif st == "work_clean":
+            # 清理垃圾：左右大幅摆手，扫帚跟着扫
+            swing = math.sin(self.state_t * 5.0)
+            self.rot = 8 * swing
+            self.bob = -2.0 * abs(math.sin(self.state_t * 10.0)) * self.scale
+            self.mirror = swing < 0
+
+        elif st == "work_wipe":
+            # 擦桌面：小幅高频画圈，肩膀跟着动
+            self.rot = 4 * math.sin(self.state_t * 4.0)
+            self.bob = -2.2 * abs(math.sin(self.state_t * 16.0)) * self.scale
+            self.sx = 1 + 0.012 * math.sin(self.state_t * 8.0)
+
+        elif st == "work_chores":
+            # 做家务：抱着箱子一趟一趟往前挪
+            v = 1.6 * self.scale
+            scr = QGuiApplication.primaryScreen().availableGeometry()
+            over = self._edge_over()
+            x = self.x() + int(self.run_dir * v)
+            if x <= scr.left() - over:
+                self.run_dir = 1
+            elif x + self.width() >= scr.right() + over:
+                self.run_dir = -1
+            self.mirror = self.run_dir < 0
+            self.move(x, self.y())
+            self.bob = -7 * abs(math.sin(self.state_t * 3.2)) * self.scale
+            self.rot = 3 * math.sin(self.state_t * 3.2)
+
         elif st == "look":
             self.rot = 8 * math.sin(self.state_t * 2.5)
             self.mirror = math.sin(self.state_t * 2.5) > 0
@@ -715,6 +759,22 @@ class PetWindow(QWidget):
             self._action_timer.timeout.connect(self.finish_action)
             self._action_timer.start(duration_ms)
 
+    def do_task_work(self, state: str):
+        """打工动作入口：进专用状态并一直表演到任务结束（不设自动收回计时器）。
+
+        v3.0.0：原来任务里调 do_action(..., 4200)，4.2 秒后自动回 idle，
+        中间 6 秒空档看上去就是「点开始没反应」；改成整套动作做到完工。
+        """
+        if state not in TASK_STATES:
+            return
+        self.follow = False
+        if getattr(self, "_action_timer", None) is not None:
+            self._action_timer.stop()
+        self._action_timer = None
+        self.action_key = ""
+        self.set_expression("curious", 0)
+        self.set_state(state)
+
     def finish_action(self):
         if self._action_timer is not None:
             self._action_timer.stop()
@@ -799,8 +859,7 @@ class PetWindow(QWidget):
             "QMenu::item:selected{background:#4a6cf7;color:#fff;}"
             "QMenu::separator{height:1px;background:#ececf0;margin:5px 8px;}")
 
-        menu.addAction("陪我聊聊天", ctl.open_panel_chat)
-        # v2.9.9：语音说一句/天气/科技新闻已挪进面板「语音唤醒」「天气资讯」页，这里不再重复
+        # v3.0.0：原「陪我聊聊天」已合并到「设置 → 聊天」页，右键菜单不再单独占一项
         menu.addAction("摸摸头", self.do_pat)
 
         menu.addAction("表演一个", ctl.perform_random)
@@ -875,6 +934,89 @@ class PetWindow(QWidget):
             self._paint_gait(p, pw, ph)
         else:
             p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+        if self.state in TASK_STATES:
+            self._paint_work_prop(p, pw, ph)
+
+    def _paint_work_prop(self, p: QPainter, pw: int, ph: int):
+        """任务道具：书 / 扫帚 / 抹布 / 箱子 / 泡泡，纯代码绘制，不新增素材。"""
+        st = self.state
+        t = self.state_t
+        s = self.scale
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setPen(Qt.NoPen)
+
+        if st == "work_study":
+            # 书：捧在胸前，微微倾斜，像在低头看
+            bw = max(24.0, pw * 0.32)
+            bh = bw * 0.70
+            p.save()
+            p.translate(pw * 0.05, -ph * 0.58)
+            p.rotate(-6)
+            p.setBrush(QColor(240, 244, 250, 242))
+            p.drawRoundedRect(QRectF(-bw / 2, -bh / 2, bw, bh), 3 * s, 3 * s)
+            p.setBrush(QColor(72, 112, 182, 240))
+            p.drawRect(QRectF(-bw / 2, -bh / 2, bw, bh * 0.14))
+            p.setPen(QPen(QColor(148, 160, 182, 190), max(1.0, 1.1 * s)))
+            for i in range(3):
+                yy = -bh * 0.18 + i * bh * 0.16
+                p.drawLine(QPointF(-bw * 0.36, yy), QPointF(bw * 0.36, yy))
+            p.restore()
+        elif st == "work_clean":
+            # 扫帚：握在右手，帚头朝下，随摆手左右扫
+            swing = math.sin(t * 5.0)
+            hx = pw * 0.20 + swing * pw * 0.05
+            hy = -ph * 0.60
+            tx = hx + pw * 0.10 + swing * pw * 0.06
+            ty = -ph * 0.16
+            p.setPen(QPen(QColor(168, 124, 72, 240), max(2.0, 2.8 * s)))
+            p.drawLine(QPointF(hx, hy), QPointF(tx, ty))
+            p.setPen(Qt.NoPen)
+            path = QPainterPath()
+            path.moveTo(tx - pw * 0.05, ty)
+            path.lineTo(tx + pw * 0.05, ty)
+            path.lineTo(tx + pw * 0.13, ty + ph * 0.10)
+            path.lineTo(tx - pw * 0.13, ty + ph * 0.10)
+            path.closeSubpath()
+            p.setBrush(QColor(226, 190, 128, 240))
+            p.drawPath(path)
+            p.setBrush(QColor(198, 160, 96, 245))
+            p.drawRoundedRect(QRectF(tx - pw * 0.12, ty + ph * 0.075, pw * 0.24, ph * 0.035),
+                              2 * s, 2 * s)
+        elif st == "work_wipe":
+            # 抹布：在腰前偏右画小圈
+            cx = pw * 0.14 + math.cos(t * 4.0) * pw * 0.09
+            cy = -ph * 0.46 + math.sin(t * 8.0) * ph * 0.02
+            p.setBrush(QColor(120, 200, 232, 230))
+            p.drawRoundedRect(QRectF(cx - pw * 0.08, cy - ph * 0.03, pw * 0.16, ph * 0.06),
+                              4 * s, 4 * s)
+            p.setBrush(QColor(255, 255, 255, 80))
+            p.drawRoundedRect(QRectF(cx - pw * 0.08, cy - ph * 0.03, pw * 0.055, ph * 0.06),
+                              4 * s, 4 * s)
+        elif st == "work_chores":
+            # 箱子：抱在肚子前面，带顶面和胶带，不像一块扁板
+            bw = pw * 0.36
+            bh = ph * 0.10
+            bx = -bw * 0.5
+            by = -ph * 0.52
+            p.setBrush(QColor(206, 158, 96, 245))
+            p.drawRoundedRect(QRectF(bx, by, bw, bh), 3 * s, 3 * s)
+            p.setBrush(QColor(228, 186, 128, 245))
+            p.drawRect(QRectF(bx, by, bw, bh * 0.18))
+            p.setBrush(QColor(238, 214, 164, 235))
+            p.drawRect(QRectF(bx + bw * 0.46, by, bw * 0.08, bh))
+            p.drawRect(QRectF(bx, by + bh * 0.44, bw, bh * 0.12))
+        elif st == "work_rest":
+            # 休息：头顶偏右飘泡泡
+            for i in range(3):
+                u = (t * 0.6 + i / 3.0) % 1.0
+                r = pw * (0.028 + 0.02 * u)
+                cx = pw * 0.18 + math.sin(t * 1.2 + i) * pw * 0.04
+                cy = -ph * 0.78 - u * ph * 0.16
+                aa = int(120 * (1.0 - u))
+                p.setBrush(QColor(180, 220, 255, aa))
+                p.drawEllipse(QPointF(cx, cy), r, r)
+        p.restore()
 
     def _paint_gait(self, p: QPainter, pw: int, ph: int):
         """条带弯曲步态（strip warp）。

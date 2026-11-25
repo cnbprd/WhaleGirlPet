@@ -173,6 +173,13 @@ class Controller:
 
         self.pet = PetWindow(self, show_now=not defer_show)
 
+        # v3.0.1：首启新人礼包刚发过就立刻落盘，保证「只发一次」的标记存得住
+        if getattr(self.state, "_gift_just_sent", False):
+            try:
+                self.save_config()
+            except Exception:  # noqa: BLE001
+                pass
+
         # ---- v2.9.7 新增窗口（用到才建，避免拖慢启动）----
         self.shop_win = None
         self.bag_win = None
@@ -473,9 +480,38 @@ class Controller:
         if ok:
             self.beep("feed")
             self.pet.set_expression("happy", 1800)
+            # v3.0.0：第一次买进新玩具直接加一笔亲密度（参考养成游戏"买玩具"是一次性大额）
+            toy = snack_catalog.by_key(key) or {}
+            if toy.get("kind") == "toy":
+                self.state.gain_intimacy("toy_buy")
+                msg += " 她抱着新玩具不撒手了。"
         self.save_config()
         self.refresh_panel()
         return ok, msg
+
+    def play_toy(self, key: str):
+        """陪她玩背包里的玩具：v3.0.1 改成一次性消耗——玩一次就从背包里扣掉一个。"""
+        toy = snack_catalog.by_key(key) or {}
+        if toy.get("kind") != "toy":
+            return False
+        if not self.state.take_from_bag(key):
+            self.pet.bubble.show_text("这个玩具已经玩完了，去商城再挑一个吧。", 2600)
+            return False
+        self.state.mood = min(100.0, self.state.mood + int(toy.get("mood", 8)))
+        self.state.gain_intimacy("play")
+        self.state.spend("play")
+        self.pet.set_expression("happy", 3000)
+        try:
+            self.pet.do_action("hop", 2400)
+        except Exception:  # noqa: BLE001
+            pass
+        self.beep("pat")
+        left = int(self.state.bag.get(key, 0))
+        tail = f"（这一个玩坏了，背包还剩 {left} 个）" if left else "（最后一个也玩坏了）"
+        self._speak(f"玩玩{toy['name']}！最喜欢这个了。{tail}", 3200)
+        self.save_config()
+        self.refresh_panel()
+        return True
 
     def refresh_shop_online(self):
         """联网淘新零食；返回新增列表（空列表 = 没淘到）。"""
@@ -778,10 +814,12 @@ class Controller:
         self.pet.do_feed(key)
 
     def on_walk(self):
+        self.state.spend("walk")        # v3.0.0：散步按动作扣饱食/水分
         self.beep("walk")
         self.pet.bubble.show_text(lines.pick(lines.WALK), 2000)
 
     def on_run(self):
+        self.state.spend("run")
         self.emotion.apply("run", 1.0)
         self.beep("walk")
         self._speak("跑起来咯——满屏溜达！", 2000)
@@ -795,9 +833,11 @@ class Controller:
         self.pet.bubble.show_text(lines.pick(lines.WAKE), 2000)
 
     def on_jump(self):
+        self.state.spend("jump")
         self.pet.bubble.show_text(lines.pick(["嘿咻！", "跳高高～", "飞咯！"]), 1600)
 
     def on_squish(self):
+        self.state.spend("squish")
         self.pet.bubble.show_text(lines.pick(["呜哇，被压扁啦！", "弹弹弹～", "噗叽～"]), 1600)
 
     def on_shake(self):
@@ -1080,12 +1120,6 @@ class Controller:
             ctx = self.kb.context_block(user_text, k=2)
             if ctx:
                 parts.append(ctx)
-        if self.config.get("websearch_on", True) and websearch.looks_like_query(user_text):
-            ctx = websearch.context_block(user_text, k=4)
-            if ctx:
-                parts.append(ctx)
-                parts.append("上面这些资料只能当参考：先自己看懂，再用你自己的话讲出来，"
-                             "不许整段照抄，不许列标题、链接或来源清单。")
         parts.append("用口语回答，2 到 4 句，不要分点罗列，不要用书面腔；不确定就说不确定。")
         if no_think:
             parts.append("/no_think")
@@ -1098,16 +1132,40 @@ class Controller:
         msgs.append({"role": "user", "content": user_text})
         return msgs
 
-    def send_chat(self, text: str):
+    def send_chat(self, text: str, attach: list | None = None, show: bool = True):
+        """统一聊天入口：用户气泡只在这里画一次，避免面板和控制器各画一遍。
+
+        v3.0.0：面板「发送」和语音都走这里，show=False 表示气泡已由调用方画好；
+        attach 是本地附件列表，只注入路径，不上传内容。
+        """
         text = (text or "").strip()
-        if not text:
+        attach = [f for f in (attach or []) if f]
+        if not text and not attach:
             return
         self._web_retry_done = False
         if self._chat_busy():
             self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
             return
-        self.history.append({"role": "user", "content": text})
-        self.panel and self.panel.append_chat("user", text)
+        # ---- 气泡：附件逐个一条，文字只挂在第一条上，避免重复 ----
+        if show and self.panel is not None:
+            try:
+                if attach:
+                    for i, f in enumerate(attach):
+                        self.panel.append_chat("user", text if i == 0 else "", attachment=f)
+                elif text:
+                    self.panel.append_chat("user", text)
+            except Exception:  # noqa: BLE001
+                pass
+        # ---- 附件转成文字注入（每条一次，不再按附件重复追加原文） ----
+        ask_text = text
+        if attach:
+            parts = []
+            for f in attach:
+                kind = ("图片" if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                        else "文件")
+                parts.append(f"（用户发来{kind}：{os.path.basename(f)}，路径 {f}）")
+            ask_text = ("，".join(parts) + ("，" + text if text else "")).strip()
+        self.history.append({"role": "user", "content": ask_text})
         self.panel and self.panel.set_chat_status("思考中……")
         self.pet.set_expression("curious", 4000)
         if self.config.get("memory_on", True):
@@ -1121,25 +1179,25 @@ class Controller:
         self.emotion.apply("chat", 1.0)
 
         import skills as sk
-        blocked, why = sk.guard(text)
+        blocked, why = sk.guard(ask_text)
         if blocked:
             self._finish_reply("这个操作要删东西或者动磁盘，我不做。要不要我帮你把文件挪到回收站？",
                                "安全前置拦截")
             return
         if (self.config.get("llm_on", True) and local_llm.available()
-                and sk.looks_like_command(text)):
+                and sk.looks_like_command(ask_text)):
             try:
                 self.skill_worker = local_llm.LocalChatWorker(
-                    self.llm, self._router_messages(text), max_tokens=180,
+                    self.llm, self._router_messages(ask_text), max_tokens=180,
                     temperature=0.1, fmt="json")
                 self.skill_worker.reply_ready.connect(
-                    lambda raw: self._on_skill_route(raw, text))
-                self.skill_worker.failed.connect(lambda r: self._chat_plain(text))
+                    lambda raw: self._on_skill_route(raw, ask_text))
+                self.skill_worker.failed.connect(lambda r: self._chat_plain(ask_text))
                 self.skill_worker.start()
                 return
             except Exception:  # noqa: BLE001
                 pass
-        self._chat_plain(text)
+        self._chat_plain(ask_text)
 
     def _router_messages(self, text: str) -> list:
         sys = ("你是指令解析器，只输出一个 JSON 对象，不要任何解释文字。\n"
@@ -1608,7 +1666,7 @@ class Controller:
             rest = text.strip()[len(wake):].strip(" ，,。.!！?？、")
             self.pet.bubble.show_text("在呢，说吧。", 2200)
             self.pet.set_expression("happy", 2500)
-            self.panel and self.panel.append_chat("user", text)
+            # v3.0.0：这里不再先画一条用户气泡，交给 send_chat 统一画一次，避免语音双发
             if not rest:
                 # 只喊了名字：接着听下一句，不用再按快捷键
                 if self.config.get("wake_then_listen", True) and not self._chat_busy():
@@ -2051,6 +2109,10 @@ class Controller:
             return
         self.task_active = {"key": key, "left": defn["duration"], "total": defn["duration"],
                             "fact": "", "last_action": -999}
+        # v3.0.0：开工先按工种扣一次体力，干活越重饿得越快
+        self.state.spend({"study": "work_study", "patrol": "work_run",
+                          "stretch": "work_rest", "cleanup": "work_clean",
+                          "wipe": "work_wipe", "chores": "work_chores"}.get(key, ""))
         kind = defn["kind"]
         self._play_task_action(defn)
         if kind == "run":
@@ -2111,27 +2173,23 @@ class Controller:
         if self.task_active["left"] <= 0:
             self._finish_task()
             return
-        # 任务期间循环播动作：干活时身子一直在动，而不是只转个表情
-        elapsed = self.task_active["total"] - self.task_active["left"]
-        if elapsed - self.task_active.get("last_action", 0) >= TASK_ACTION_GAP:
-            self.task_active["last_action"] = elapsed
-            defn = TASK_DEFS.get(self.task_active["key"]) or {}
-            if defn.get("kind") != "run":
-                self._play_task_action(defn)
+        # 任务期间不再每 6 秒重播一次动作：v3.0.0 起每个工种是一整套持续表演
         self.panel and self.panel.refresh_tasks()
 
+    TASK_WORK_STATE = {"knowledge": "work_study", "rest": "work_rest",
+                       "clean": "work_clean", "wipe": "work_wipe", "chore": "work_chores"}
+
     def _play_task_action(self, defn: dict):
-        """按任务类型播一个动作（sleep 走 do_sleep，其余走动作表）。"""
-        act = str((defn or {}).get("action") or "")
-        if not act:
+        """按工种给桌宠一套持续动作（v3.0.0：做到完工，不是闪一下）。"""
+        kind = str((defn or {}).get("kind") or "")
+        st = self.TASK_WORK_STATE.get(kind)
+        if st:
+            try:
+                self.pet.do_task_work(st)
+            except Exception:  # noqa: BLE001
+                pass
             return
-        try:
-            if act == "sleep":
-                self.pet.do_sleep()
-            else:
-                self.pet.do_action(act, 4200)
-        except Exception:  # noqa: BLE001
-            pass
+        # kind == "run" 由 begin_run 负责整套奔跑，不重复设置
 
     def _finish_task(self):
         active = self.task_active
@@ -2143,7 +2201,7 @@ class Controller:
         done[active["key"]] = done.get(active["key"], 0) + 1
         self.task_active = None
         self.task_timer.stop()
-        self.pet.restore_base_expression()
+        self.pet.finish_state()       # v3.0.0：把 work_* 状态一起收回 idle
         self.beep("done")
         msg = f"完工！拿到 {defn['coins']} 金币、{defn['exp']} 经验。"
         if leveled:
@@ -2159,7 +2217,7 @@ class Controller:
             return
         self.task_active = None
         self.task_timer.stop()
-        self.pet.restore_base_expression()
+        self.pet.finish_state()
         self.panel and self.panel.refresh_tasks()
 
     # ================= 自主行动 =================
@@ -2429,7 +2487,9 @@ class Controller:
 
     # ================= 周期衰减 / 金币 / 闲聊 =================
     def _on_decay(self):
-        low = self.state.decay()
+        # v3.0.0：睡着时基础代谢降到 35%，心情只在长时间无互动时才掉
+        sleeping = self.pet.state == "sleep"
+        low = self.state.decay(sleeping=sleeping)
         if low and random.random() < 0.5:
             self.pet.set_expression("sleepy", 3000)
             self.pet.bubble.show_text(lines.pick(lines.SLEEPY), 2600)
@@ -2455,13 +2515,10 @@ class Controller:
         menu = QMenu()
         act_panel = QAction(icon, "设置", menu)
         act_panel.triggered.connect(self.open_panel)
-        # v2.9.6 剪贴板不再自动读取：点这一项先弹授权框，同意才读
-        act_search = QAction("搜索剪贴板内容（读取前先问你）", menu)
-        act_search.triggered.connect(self.ask_search_clipboard)
+        # v3.0.0：剪贴板搜索项与单独的「隐藏桌宠」已按用户要求删除。
+        # 隐藏统一走「显示 / 隐藏桌宠」一个开关，不再留两个功能重复的入口。
         act_show = QAction("显示 / 隐藏桌宠（Alt+Shift+F）", menu)
         act_show.triggered.connect(self.toggle_visibility)
-        act_hide = QAction("隐藏桌宠", menu)
-        act_hide.triggered.connect(self.hide_pet)
         act_auto = QAction("自主行动", menu)
         act_auto.setCheckable(True)
         act_auto.setChecked(self.config.get("auto_on", True))
@@ -2477,10 +2534,8 @@ class Controller:
         act_theme_goto = QAction("设置…", menu)
         act_theme_goto.triggered.connect(self.open_theme_settings)
         menu.addAction(act_panel)
-        menu.addAction(act_search)
         menu.addSeparator()
         menu.addAction(act_show)
-        menu.addAction(act_hide)
         menu.addSeparator()
         menu.addAction(act_auto)
         menu.addAction(act_mute)

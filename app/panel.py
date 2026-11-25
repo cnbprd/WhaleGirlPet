@@ -7,9 +7,9 @@ from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem,
-                               QPushButton, QScrollArea, QSlider, QStackedWidget,
-                               QTabWidget, QTableWidgetItem, QTextEdit,
-                               QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSizeGrip, QSlider,
+                               QStackedWidget, QTabWidget, QTableWidgetItem,
+                               QTextEdit, QVBoxLayout, QWidget)
 
 import ambient
 import models_catalog
@@ -56,8 +56,14 @@ class ControlPanel(QWidget):
         except Exception:  # noqa: BLE001
             pass
         self.setObjectName("PanelRoot")
-        self.resize(560, 700)
+        # v3.0.0：窗口可自由拖动边缘缩放（去掉原来的 560×700 固定观感，只留最小尺寸）
+        self.resize(660, 820)
+        self.setMinimumSize(520, 560)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        # 右下角补一个抓手，边框不可见时也能一眼看到能拖大拖小
+        self._size_grip = QSizeGrip(self)
+        self._size_grip.setFixedSize(16, 16)
+        self._size_grip.setToolTip("拖动这里可以调整窗口大小")
         # 主题在 tabs 建完后再套（apply_theme 还要改聊天区等内联样式）
 
         # v2.9.3 macOS 风格：左侧 QListWidget 侧边栏 + 右侧 QStackedWidget 内容区
@@ -125,10 +131,30 @@ class ControlPanel(QWidget):
         root.addLayout(body)
         self.apply_theme()
 
+        # v3.0.0：历史气泡延迟到布局完成后再加载——构造时 viewport 宽度还是 0，
+        # 会按 200px 把长句子压窄裁掉。
+        QTimer.singleShot(0, self._load_history_safe)
+
+    def _load_history_safe(self):
+        if getattr(self, "_history_loaded", False):
+            return
+        self._history_loaded = True
         try:
             self.load_chat_history()
         except Exception:  # noqa: BLE001
             pass
+
+    def showEvent(self, ev):  # noqa: N802
+        super().showEvent(ev)
+        if not getattr(self, "_history_loaded", False):
+            QTimer.singleShot(0, self._load_history_safe)
+
+    def resizeEvent(self, ev):  # noqa: N802
+        super().resizeEvent(ev)
+        grip = getattr(self, "_size_grip", None)
+        if grip is not None:
+            grip.move(self.width() - grip.width() - 2, self.height() - grip.height() - 2)
+            grip.raise_()
 
     def apply_theme(self):
         """按 config["theme"]（auto/light/dark）套整套配色，包括写死颜色的聊天区。
@@ -166,16 +192,22 @@ class ControlPanel(QWidget):
 
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel("名字："))
+        # v3.0.0：平时只显示名字文本，输入框和保存按钮都藏着；点「修改」才露出来
+        self.lbl_name = QLabel()
+        self.lbl_name.setObjectName("PetNameText")
+        self.lbl_name.setStyleSheet("font-size:15px;font-weight:bold;")
+        name_row.addWidget(self.lbl_name, 1)
         self.ed_name = QLineEdit()
         self.ed_name.setMaxLength(12)
-        self.ed_name.setReadOnly(True)          # v2.9.6：平时锁定，点「修改」才解锁
-        name_row.addWidget(self.ed_name)
+        self.ed_name.hide()
+        name_row.addWidget(self.ed_name, 1)
         self.btn_name_edit = QPushButton("修改")
         self.btn_name_edit.setFixedWidth(58)
         self.btn_name_edit.clicked.connect(self._on_name_edit)
         self.btn_name_save = QPushButton("保存")
         self.btn_name_save.setFixedWidth(58)
         self.btn_name_save.setEnabled(False)
+        self.btn_name_save.hide()
         self.btn_name_save.clicked.connect(self._on_name_save)
         name_row.addWidget(self.btn_name_edit)
         name_row.addWidget(self.btn_name_save)
@@ -218,25 +250,32 @@ class ControlPanel(QWidget):
         return w
 
     def _on_name_edit(self):
-        """解锁名字输入框，进入编辑态。"""
+        """进入编辑态：露出输入框，藏起名字文本。"""
+        self.ed_name.setText(self.ctl.get_name())
+        self.lbl_name.hide()
+        self.ed_name.show()
         self.ed_name.setReadOnly(False)
         self.ed_name.setFocus()
         self.ed_name.selectAll()
         self._name_editing = True
         self.btn_name_edit.setEnabled(False)
         self.btn_name_save.setEnabled(True)
+        self.btn_name_save.show()
 
     def _on_name_save(self):
-        """保存新名字并重新锁回去。"""
+        """保存后收回输入框，只留名字文本。"""
         name = self.ed_name.text().strip()
         if name:
             self.ctl.set_name(name)
         else:
             self.ed_name.setText(self.ctl.get_name())
         self._name_editing = False
-        self.ed_name.setReadOnly(True)
+        self.ed_name.hide()
+        self.btn_name_save.hide()
         self.btn_name_edit.setEnabled(True)
         self.btn_name_save.setEnabled(False)
+        self.lbl_name.setText(self.ctl.get_name())
+        self.lbl_name.show()
 
     def _add_bar(self, lay, name):
         bar = QLabel()
@@ -324,16 +363,18 @@ class ControlPanel(QWidget):
 
     # ---------- 提醒页 ----------
     def _tab_remind(self):
-        """v2.9.8：番茄钟/提醒 + 定时任务合并成一页，页名统一叫「定时任务」。"""
+        """v3.0.0：番茄钟并进「日常提醒」，下面整块「定时任务」吃掉剩余高度。"""
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setSpacing(6)
+        lay.setSpacing(8)
 
-        box = QGroupBox("番茄钟")
-        bl = QVBoxLayout(box)
-        self.lbl_tomato = QLabel("未开始")
-        self.lbl_tomato.setStyleSheet("font-size:16px;font-weight:bold;")
-        bl.addWidget(self.lbl_tomato)
+        box2 = QGroupBox("日常提醒")
+        r2 = QVBoxLayout(box2)
+        r2.setSpacing(6)
+        # ---- 专注计时（原番茄钟，已合并进来） ----
+        self.lbl_tomato = QLabel("专注计时：未开始")
+        self.lbl_tomato.setStyleSheet("font-size:15px;font-weight:bold;")
+        r2.addWidget(self.lbl_tomato)
         row = QHBoxLayout()
         for mins in (25, 45, 60):
             b = QPushButton(f"{mins} 分钟")
@@ -342,11 +383,8 @@ class ControlPanel(QWidget):
         self.btn_tomato_stop = QPushButton("停止")
         self.btn_tomato_stop.clicked.connect(self.ctl.stop_tomato)
         row.addWidget(self.btn_tomato_stop)
-        bl.addLayout(row)
-        lay.addWidget(box)
-
-        box2 = QGroupBox("日常提醒")
-        r2 = QVBoxLayout(box2)
+        r2.addLayout(row)
+        r2.addSpacing(4)
         self.chk_water = QCheckBox("喝水提醒（每 45 分钟）")
         self.chk_sedentary = QCheckBox("久坐提醒（每 60 分钟）")
         self.chk_sound = QCheckBox("音效 / 音频")
@@ -359,12 +397,11 @@ class ControlPanel(QWidget):
         # v2.9.7：碎碎念搬进「设置 → 桌宠行为」模块
         lay.addWidget(box2)
 
-        # v2.9.8：原独立「定时任务」页整组并进来
+        # v2.9.8：原独立「定时任务」页整组并进来；v3.0.0 让它占满剩余空间
         box3 = QGroupBox("定时任务（到点她会开口提醒）")
         b3 = QVBoxLayout(box3)
         panel_v2.build_schedule(self, b3)
-        lay.addWidget(box3)
-        lay.addStretch()
+        lay.addWidget(box3, 1)
         return w
 
     # ---------- 聊天页 ----------
@@ -486,22 +523,14 @@ class ControlPanel(QWidget):
         self.btn_attach_x.hide()
 
     def send_chat(self):
+        """面板发送：只清输入框，气泡与语义处理统一交给控制器（v3.0.0 修双发）。"""
         text = self.chat_input.toPlainText().strip()
         attach = list(self._attach)
         if not text and not attach:
             return
         self.chat_input.clear()
-        for f in attach:
-            self.append_chat("user", text, attachment=f)
-            kind = "图片" if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")) else "文件"
-            self.ctl.send_chat(f"（用户发来{kind}：{os.path.basename(f)}，路径 {f}）" + (("，" + text) if text else ""))
-        if text:
-            if not attach:
-                self.append_chat("user", text)
-                self.ctl.send_chat(text)
-            else:
-                self.append_chat("user", text)
         self._clear_attach()
+        self.ctl.send_chat(text, attach=attach)
 
     def clear_chat(self):
         self._chat_log = []
@@ -509,6 +538,7 @@ class ControlPanel(QWidget):
             item = self.chat_lay.takeAt(0)
             wdt = item.widget()
             if wdt is not None:
+                wdt.setParent(None)
                 wdt.deleteLater()
         self.chat_status.setText("已清屏（本地记录文件保留，导出仍可用）")
 
@@ -1513,8 +1543,10 @@ class ControlPanel(QWidget):
     def refresh(self):
         st = self.ctl.state
         if not getattr(self, "_name_editing", False):
+            name_now = self.ctl.get_name()
+            self.lbl_name.setText(name_now)
             self.ed_name.blockSignals(True)
-            self.ed_name.setText(self.ctl.get_name())
+            self.ed_name.setText(name_now)
             self.ed_name.blockSignals(False)
 
         self.lbl_level.setText(f"Lv.{st.level}　经验 {st.exp}/{st.exp_need()}")
@@ -1530,7 +1562,7 @@ class ControlPanel(QWidget):
         self._set_bar(self.bar_hunger, "饱食度", st.hunger)
         self._set_bar(self.bar_thirst, "水分", st.thirst)
         self._set_bar(self.bar_mood, "心情", st.mood)
-        self._set_bar(self.bar_intimacy, "亲密度", st.intimacy)
+        self._set_bar(self.bar_intimacy, f"亲密度（{st.bond_label()}）", st.intimacy)
         skin = self.ctl.config.get("skin", "default")
         idx = self.skin_combo.findData(skin)
         if idx >= 0 and self.skin_combo.currentIndex() != idx:
@@ -1642,6 +1674,14 @@ class ControlPanel(QWidget):
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(8)
 
+        # v3.0.0：气泡宽度上限按可用宽度算；直接给 QLabel 设最大宽度，
+        # 让换行由 QLabel 自己完成，不再依赖「构造时的 viewport 宽度」。
+        vw = self.chat_scroll.viewport().width() or 0
+        if vw <= 0:
+            vw = max(360, self.width() - 190)
+        maxw = max(220, int(vw * 0.72))
+        text_max = max(140, maxw - 30)
+
         bubble = QFrame()
         bubble.setObjectName("BubbleMe" if role == "user" else "BubblePet")
         bg = "#3f6cf6" if role == "user" else "#e9eef8"
@@ -1657,8 +1697,16 @@ class ControlPanel(QWidget):
         bv.setSpacing(5)
         lbl = QLabel(text)
         lbl.setWordWrap(True)
+        lbl.setMaximumWidth(text_max)
         lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         lbl.setStyleSheet(f"color:{fg};font-size:13px;background:transparent;")
+        # 换行后行高必须自己算：QLabel 在布局里默认只按单行算高度，多行会压住下一行气泡
+        try:
+            need_h = lbl.heightForWidth(text_max)
+            if need_h > 0:
+                lbl.setMinimumHeight(need_h)
+        except Exception:  # noqa: BLE001
+            pass
         bv.addWidget(lbl)
 
         if attachment and os.path.exists(attachment):
@@ -1678,12 +1726,8 @@ class ControlPanel(QWidget):
                 f.setStyleSheet(f"color:{'#e8efff' if role == 'user' else '#2b6ea8'};font-size:12px;background:transparent;")
                 bv.addWidget(f)
 
-        maxw = max(200, int(self.chat_scroll.viewport().width() * 0.70))
-        fm = lbl.fontMetrics()
-        natural = fm.horizontalAdvance(text) + 26
-        if attachment and os.path.exists(attachment):
-            natural = max(natural, 196)
-        bubble.setFixedWidth(min(maxw, max(96, natural)))
+        # 宽度交给 QLabel 换行决定；这里只兜住上限，不再强制最小宽度（短句不该被拉宽）
+        bubble.setMaximumWidth(maxw)
 
         col = QVBoxLayout()
         col.setContentsMargins(0, 0, 0, 0)
@@ -1765,6 +1809,15 @@ class ControlPanel(QWidget):
                         continue
         except OSError:
             return
+        # v3.0.0：老版本「双发」在历史文件里留下了成对的重复条目，加载时把相邻重复合并
+        dedup = []
+        for it in rows:
+            if (dedup and it.get("role") == dedup[-1].get("role")
+                    and (it.get("text") or "") == (dedup[-1].get("text") or "")
+                    and bool(it.get("attach")) == bool(dedup[-1].get("attach"))):
+                continue
+            dedup.append(it)
+        rows = dedup
         self._loading = True
         try:
             for it in rows[-limit:]:

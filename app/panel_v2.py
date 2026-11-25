@@ -305,8 +305,9 @@ def build_schedule(panel, lay) -> None:
     lay.addWidget(panel.chk_night)
 
     panel.lst_sched = QListWidget()
-    panel.lst_sched.setMaximumHeight(100)
-    lay.addWidget(panel.lst_sched)
+    # v3.0.0：列表与下方使用情况都改成可伸缩，撑满「定时任务」模块，不留底部空白
+    panel.lst_sched.setMinimumHeight(96)
+    lay.addWidget(panel.lst_sched, 2)
 
     row = QHBoxLayout()
     panel.cmb_sched_kind = QComboBox()
@@ -329,8 +330,9 @@ def build_schedule(panel, lay) -> None:
 
     panel.txt_usage = QTextEdit()
     panel.txt_usage.setReadOnly(True)
-    panel.txt_usage.setMaximumHeight(64)
-    lay.addWidget(panel.txt_usage)
+    panel.txt_usage.setMinimumHeight(150)
+    panel.txt_usage.setStyleSheet("font-size:13px;")
+    lay.addWidget(panel.txt_usage, 3)
     lay.addWidget(_row(_btn("刷新昨天使用情况", panel._refresh_usage)))
 
 

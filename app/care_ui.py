@@ -250,16 +250,23 @@ class SnackShopWindow(_Card):
     def rebuild(self):
         while self.grid.count():
             item = self.grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            wdt = item.widget()
+            if wdt is not None:
+                # 先摘父再 deleteLater，否则旧货架按钮会和新按钮叠在一起显示
+                wdt.setParent(None)
+                wdt.deleteLater()
         items = items_of(self._cat)
         if not items:
             tip = QLabel("这个货架还空着，点「联网补货」去找点新口味。")
             tip.setObjectName("hint")
             self.grid.addWidget(tip, 0, 0, 1, 2)
         for i, it in enumerate(items):
-            b = QPushButton(f"{it['emoji']} {it['name']}\n{it['cost']} 金币")
-            b.setMinimumHeight(50)
+            is_toy = it.get("kind") == "toy"
+            # 玩具用单行纯文字：多行 + emoji 在部分字体下会挤在一起
+            label = (f"{it['name']}（玩具） {it['cost']}金币" if is_toy
+                     else f"{it['emoji']} {it['name']}\n{it['cost']} 金币")
+            b = QPushButton(label)
+            b.setMinimumHeight(52 if is_toy else 50)
             b.setEnabled(self.ctl.state.coins >= it["cost"])
             b.clicked.connect(lambda _=False, k=it["key"]: self.buy(k))
             self.grid.addWidget(b, i // 2, i % 2)
@@ -310,14 +317,23 @@ class BackpackWindow(_Card):
             self.lbl_tip.setText("背包是空的。饿了的时候我会自己翻一遍——你也可以先塞点进来。")
             return
         for i, (it, n) in enumerate(bag):
+            is_toy = it.get("kind") == "toy"
             b = QPushButton(f"{it['emoji']} {it['name']} ×{n}")
             b.setMinimumHeight(38)
-            b.clicked.connect(lambda _=False, k=it["key"]: self.eat(k))
+            if is_toy:
+                b.setToolTip(it.get("desc", "陪她玩一会儿，涨亲密度"))
+                b.clicked.connect(lambda _=False, k=it["key"]: self.play(k))
+            else:
+                b.clicked.connect(lambda _=False, k=it["key"]: self.eat(k))
             self.grid.addWidget(b, i // 2, i % 2)
-        self.lbl_tip.setText("点一份就吃掉；背包空了我再自己去讨。")
+        self.lbl_tip.setText("点零食就吃掉，点玩具就陪她玩（玩具不会损耗）；背包空了我再自己去讨。")
 
     def eat(self, key):
         self.ctl.eat_from_bag(key)
         self.rebuild()
         if not self.ctl.state.bag_list():
             QTimer.singleShot(1200, self.close)
+
+    def play(self, key):
+        self.ctl.play_toy(key)
+        self.rebuild()
