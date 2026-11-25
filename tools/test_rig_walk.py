@@ -14,9 +14,10 @@ import rig as rig_mod  # noqa: E402
 
 
 class Ctl:
-    def __init__(self, rig_on=True):
+    def __init__(self, extra=None):
         self.config = {"skin": "default", "anim_timeline": True, "scale": 1.0,
-                       "rig_mesh": rig_on}
+                       "rig_mesh": True, "skeletal": True}
+        self.config.update(extra or {})
         self.audio = None
 
     def on_action(self, key):
@@ -35,8 +36,10 @@ class Ctl:
 COLS = 8
 SHOT = {}
 
-for label, rig_on in (("网格骨骼（新）", True), ("条带 warp（旧）", False)):
-    pet = pw.PetWindow(Ctl(rig_on), show_now=False)
+for label, extra in (("骨骼引擎（新）", {}),
+                     ("网格腿 rig（v3.0.12）", {"skeletal": False}),
+                     ("条带 warp（旧）", {"skeletal": False, "rig_mesh": False})):
+    pet = pw.PetWindow(Ctl(extra), show_now=False)
     pet.set_state("walk")
     frames = []
     for i in range(COLS * 5):
@@ -73,3 +76,4 @@ p.end()
 out = r"F:\WhaleGirlPet\docs\rig_walk_compare.png"
 img.save(out)
 print("对比图:", out, os.path.getsize(out), "bytes")
+

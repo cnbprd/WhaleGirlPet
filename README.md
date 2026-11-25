@@ -185,5 +185,18 @@ WhaleGirlPet/
 - 立绘与音效由生成/公开素材整理而来，仅供个人非商业使用；商业用途请自行确认授权。
 - 本项目与 DeepSeek 官方无隶属关系。
 
+### 第三方与参考（动画引擎）
+
+`app/skeletal.py`（v3.0.13 起的骨骼动画）**未复制任何第三方源码**，代码自写，
+仅在架构设计上参考了两份开源资料，完整声明见 [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md)：
+
+- **Godot Engine 4.x** 的 2D 骨骼系统（`Skeleton2D` / `Bone2D` / `Polygon2D` 顶点权重蒙皮），MIT 许可 —
+  https://docs.godotengine.org/en/stable/tutorials/animation/2d_skeletons.html
+- **Inochi2D**（开源 2D rigging，Live2D 的开源替代），BSD 2-Clause —
+  https://inochi2d.com
+
+明确**未使用**：Spine Runtime（许可要求最终用户自行持有 Spine Editor 授权，不适合免费分发）、
+Live2D Cubism SDK（专有许可）。
+
 如果这个项目对你有用，点个 Star 就是最实在的支持。
 

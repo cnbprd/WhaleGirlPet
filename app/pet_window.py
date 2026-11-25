@@ -12,6 +12,7 @@ from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SK
                    SKINS, SKIN_FORM, asset_path)
 import anim_engine as anim
 import rig as rig_mod
+import skeletal as sk_mod
 from bubble import BubbleWindow
 from voice_profile import profile_names as voice_profile_names
 
@@ -123,6 +124,9 @@ class PetWindow(QWidget):
         # v3.0.12：档 B 网格蒙皮骨骼（腿部真屈膝），config["rig_mesh"] 可关
         self._rig = None
         self._rig_key = None
+        # v3.0.13：游戏引擎式骨骼（骨架+蒙皮+动作剪辑），优先于 rig 单段方案
+        self._skel = None
+        self._skel_key = None
 
         self.bubble = BubbleWindow(self)
 
@@ -979,7 +983,10 @@ class PetWindow(QWidget):
             p.scale(-1.0, 1.0)
         p.rotate(self.rot)
         p.scale(self.sx, self.sy)
-        if (self.gait_on and self.state in ("walk", "run", "trot")
+        if (self.state in ("walk", "run")
+                and self._controller.config.get("skeletal", True)):
+            self._paint_skeletal(p, pw, ph)
+        elif (self.gait_on and self.state in ("walk", "run", "trot")
                 and self._controller.config.get("rig_mesh", True)):
             self._paint_rig(p, pw, ph)
         elif self.gait_on and self._leg is not None:
@@ -1069,6 +1076,29 @@ class PetWindow(QWidget):
                 p.setBrush(QColor(180, 220, 255, aa))
                 p.drawEllipse(QPointF(cx, cy), r, r)
         p.restore()
+
+    def _skel_for(self):
+        """按当前立绘懒建骨骼精灵（换皮肤/表情/形态时重建）。"""
+        pix = self._pix
+        if pix.isNull() or pix.width() < 8 or pix.height() < 8:
+            return None
+        key = (pix.cacheKey(), pix.width(), pix.height())
+        if self._skel is None or self._skel_key != key:
+            self._skel = sk_mod.SkeletalSprite(pix)
+            self._skel_key = key
+        return self._skel
+
+    def _paint_skeletal(self, p: QPainter, pw: int, ph: int):
+        """游戏引擎式动画：骨架 + 蒙皮 + 动作剪辑（walk / run）。"""
+        sprite = self._skel_for()
+        if sprite is None:
+            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+            return
+        name = "run" if self.state == "run" else "walk"
+        clip = sk_mod.CLIPS[name]
+        t = (self.state_t % clip.duration) if clip.loop else min(self.state_t, clip.duration)
+        frame = sprite.render(clip.pose(t))
+        p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), frame)
 
     def _rig_for(self):
         """按当前立绘懒建 Rig（换皮肤/表情/形态时重建）。"""

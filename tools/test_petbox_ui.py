@@ -52,13 +52,15 @@ for chk, key in ((p.chk_rig, "rig_mesh"), (p.chk_timeline, "anim_timeline")):
     off = p.ctl.config[key]
     print(f"{chk.text()}: 默认 {off} ← 关 / 开 → {on} | save_config {p.ctl.saved} 次")
 
-# refresh() 里的回填元组是否包含这两个开关（面板每次打开都会刷新）
+# refresh() 里的回填元组是否包含这些开关（面板每次打开都会刷新）
 import inspect
 src = inspect.getsource(panel_mod.ControlPanel.refresh)
 print("refresh 回填含 anim_timeline:", '"anim_timeline"' in src,
-      "| 含 rig_mesh:", '"rig_mesh"' in src)
+      "| 含 rig_mesh:", '"rig_mesh"' in src,
+      "| 含 skeletal:", '"skeletal"' in src)
 
 img = box.grab()
 out = r"F:\WhaleGirlPet\docs\panel_petbox_v312.png"
 img.save(out)
 print("面板截图:", out, os.path.getsize(out), "bytes")
+

@@ -944,6 +944,10 @@ class ControlPanel(QWidget):
         self.ctl.config["rig_mesh"] = bool(v)
         self.ctl.save_config()
 
+    def _on_skel_toggle(self, v: bool):
+        self.ctl.config["skeletal"] = bool(v)
+        self.ctl.save_config()
+
     def _build_pet_box(self) -> QGroupBox:
         """v2.9.7「桌宠行为」：把散在养成页/提醒页/托盘里的零碎开关收在一处。"""
         box = QGroupBox("桌宠行为")
@@ -1005,6 +1009,18 @@ class ControlPanel(QWidget):
         row_anim.addWidget(self.chk_rig)
         row_anim.addStretch()
         pv.addLayout(row_anim)
+
+        # v3.0.13：游戏引擎式骨骼（骨架 + 蒙皮 + 动作剪辑）
+        row_skel = QHBoxLayout()
+        self.chk_skel = QCheckBox("骨骼引擎动画（走路/跑步）")
+        self.chk_skel.setToolTip(
+            "开：走路/跑步由骨架驱动（髋-膝-踝三级骨 + 顶点蒙皮 + 动作剪辑），"
+            "腿有抬腿相和支撑相、鞋保持水平。\n"
+            "关：退回网格腿（单段两骨）或条带横移。默认开。")
+        self.chk_skel.toggled.connect(self._on_skel_toggle)
+        row_skel.addWidget(self.chk_skel)
+        row_skel.addStretch()
+        pv.addLayout(row_skel)
 
         row3 = QHBoxLayout()
         row3.setSpacing(6)
@@ -1771,6 +1787,7 @@ class ControlPanel(QWidget):
                                   (self.chk_scatter, "allow_icon_scatter", False),
                                   (self.chk_timeline, "anim_timeline", True),
                                   (self.chk_rig, "rig_mesh", True),
+                                  (self.chk_skel, "skeletal", True),
                                   (self.chk_follow, "follow_mouse", False)):
             chk.blockSignals(True)
             chk.setChecked(bool(self.ctl.config.get(key, default)))
