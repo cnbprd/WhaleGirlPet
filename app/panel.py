@@ -81,7 +81,7 @@ class ControlPanel(QWidget):
             (self._tab_ambient(), "天气资讯"),
             (self._tab_pet_behavior(), "桌宠行为"),
             (panel_v2.tab_voice(self), "音频库"),
-            (self._tab_settings(), "自定义模型"),
+            (self._scrollable(self._tab_settings()), "自定义模型"),
             (panel_v2.tab_security(self), "安全体检"),
             (panel_v2.tab_account(self), "账号形态"),
         ]
@@ -1033,6 +1033,20 @@ class ControlPanel(QWidget):
             pass
 
     # ---------- 设置页 ----------
+    def _scrollable(self, page: QWidget):
+        """把一页塞进竖向滚动区：内容比窗口高时滚动，而不是把控件压扁。"""
+        from PySide6.QtWidgets import QFrame
+        sc = QScrollArea()
+        sc.setObjectName("PageScroll")
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QFrame.NoFrame)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sc.setWidget(page)
+        sc.setStyleSheet(
+            "QScrollArea{background:transparent;border:none;}"
+            "QScrollArea > QWidget > QWidget{background:transparent;}")
+        return sc
+
     def _tab_settings(self):
         w = QWidget()
         root = QVBoxLayout(w)
@@ -1128,7 +1142,10 @@ class ControlPanel(QWidget):
         # v2.9.8：模型仓库与建议直接建在这里（之前这组只有状态和推荐文字，看不到有哪些能下）
         lv.addWidget(QLabel("模型仓库（一键下载，走 hf-mirror 镜像；★ = 本机推荐）"))
         self.lst_repo = QListWidget()
-        self.lst_repo.setMaximumHeight(112)
+        # v3.0.3：原来只给最大高度 112，布局又把它压到一行高，等于仓库藏起来了。
+        # 改成给最小高度，让用户一眼能看到 ★ 推荐那几行，其余滚一下也能选。
+        self.lst_repo.setMinimumHeight(168)
+        self.lst_repo.setMaximumHeight(220)
         self.lst_repo.itemDoubleClicked.connect(lambda _: self._dl_repo_item())
         lv.addWidget(self.lst_repo)
         row_repo = QHBoxLayout()
@@ -1858,7 +1875,9 @@ class ControlPanel(QWidget):
             elif info["available"]:
                 state = "可启动（还没加载）"
             else:
-                state = "未找到模型或推理程序"
+                # v3.0.3：绝大多数用户装完是"没装模型"这个状态，得把话说清楚，
+                # 别让人以为坏了；同时指到下面能一键下载的地方
+                state = "还没装本地模型（不影响使用，聊天走云端或台词）"
             backend = {"ollama": "Ollama", "dafeiyu_cpp": "dafeiyu.cpp", "llama_cpp": "dafeiyu.cpp"}.get(
                 info.get("backend", ""), info.get("backend", "") or "未定")
             extra = ""
