@@ -164,6 +164,7 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
         self.memory = mem.MemoryStore()
+        self._init_memory_tiers()
         self.kb = knowledge.KnowledgeBase()
         self.usage = UsageTracker()
         self.tts = TTSService(self.config, self.audio)
@@ -1127,6 +1128,17 @@ class Controller:
                     (self.llm_worker is not None and self.llm_worker.isRunning()) or
                     (self.skill_worker is not None and self.skill_worker.isRunning()))
 
+    def _init_memory_tiers(self):
+        """v3.0.16：三层记忆。开机先做一次衰减 + 压缩，之后每轮用 core 块注入 prompt。"""
+        self.memory_tiers = None
+        try:
+            import memory_tiers as mt
+            self.memory_tiers = mt.MemoryTiers(self.memory)
+            self.memory_tiers.tick_decay()
+            self.memory_tiers.compress()
+        except Exception:  # noqa: BLE001
+            pass
+
     def _system_text(self, user_text: str, no_think: bool = True) -> str:
         key = self.config.get("persona", pers.DEFAULT_PERSONA)
         p = pers.get(key) or {}
@@ -1134,7 +1146,16 @@ class Controller:
         parts.append(f"你在跟你的主人聊天。你的名字是「{self.get_name()}」。")
         parts.append(self.emotion.to_prompt())
         if self.config.get("memory_on", True):
-            ctx = self.memory.context_block(user_text, n_recent=4, n_facts=6)
+            # v3.0.16：三层记忆的 Core 块（预算 420 字）先注入，facts 只在这一处出现
+            core = ""
+            try:
+                if self.memory_tiers is not None:
+                    core = self.memory_tiers.core(budget=420, n_facts=8)
+            except Exception:  # noqa: BLE001
+                core = ""
+            if core:
+                parts.append(core)
+            ctx = self.memory.context_block(user_text, n_recent=4, n_facts=0)
             if ctx:
                 parts.append(ctx)
         if self.config.get("kb_on", True):
@@ -1542,6 +1563,7 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
         self.memory = mem.MemoryStore()
+        self._init_memory_tiers()
         self.kb = knowledge.KnowledgeBase()
         self.usage = UsageTracker()
         self.audio = AudioManager(self.config)
@@ -2608,7 +2630,20 @@ class Controller:
                 pick = k
                 break
         if pick == "chatter" and self.config.get("chatter_on", True):
-            self.pet.bubble.show_text(lines.pick(lines.CHAT_IDLE), 3000)
+            # v3.0.16：有"还没做完的事"就先提它（议程），否则随机碎碎念
+            said = None
+            try:
+                ag = self.memory_tiers.agenda(2) if self.memory_tiers is not None else []
+            except Exception:  # noqa: BLE001
+                ag = []
+            if ag and random.random() < 0.5:
+                said = f"鱼片，{ag[0]}——这事你没忘吧？"
+            self.pet.bubble.show_text(said or lines.pick(lines.CHAT_IDLE), 3200)
+            if said:
+                try:
+                    self.memory.add_message("assistant", said)
+                except Exception:  # noqa: BLE001
+                    pass
         elif pick == "walk":
             self.pet.do_walk()
         elif pick == "random_action":
