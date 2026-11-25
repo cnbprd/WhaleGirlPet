@@ -2,6 +2,19 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.11（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 关键帧引擎 | 新增 `app/anim_engine.py`：缓动（linear/in/out/sine/back/bounce/elastic）× 轨道关键帧 × 姿态（bob/rot/sx/sy/alpha/dx/dy/flip）× 动作片段 × 事件点，另有时间轴负责播放/推进/停播 | 8 个动作全部定义并跑通；采样曲线见 release 文档表 |
+| 2 8 个动作迁移 | crab / floatstep / trot / look / eatrice / tumble / brawl / hop 从 `_tick` 的手写公式改为动作片段驱动；循环动作记 `loop`，单次动作播完交回状态机 | hop 起跳 -91.6px、落地 -2.7px、三跳 2.04s；tumble 峰值 bob -25.9 / rot 22°、落地 sy 0.755 压扁 |
+| 3 落地反馈 | 动作内埋事件点（`land` / `recover`），桌宠收到 `land` 播 `step` 音效并补一帧下沉；事件用已触发集合去重，循环回卷时清空 | 首轮 bug：事件每帧重复触发（tumble/hop 各几十条）→ 修 `_fired` 后 tumble 2 条、hop 3 条 |
+| 4 flip 通道 | 朝向改为独立通道；动作没写 flip 轨道时返回 None，不再强行清掉皮肤/形态的镜像状态 | look 动作 flip 右→左→右正常扫视；crab 保持原朝向交替 |
+| 5 接线 | `pet_window`：`set_state`/`finish_state` 停播、`do_action` 起播、`_tick` 推进并在末尾用姿态覆盖旧公式、新增 `_on_anim_event` | 真 PetWindow 冒烟：hop 2.31s 回 idle 且停播；tumble 走完落地压扁再回正；关开关回退旧公式 bob=-14.0 |
+| 6 设置开关 | 桌宠行为页新增「动作用关键帧动画引擎」（默认开，配置键 `anim_timeline`） | 关掉后 `tl.playing=False`，旧公式生效 |
+| 7 验收帧图 | 新增 `tools/test_anim_engine.py`（数值采样 + 8×6 帧图）与 `tools/test_pet_timeline.py`（状态机集成），帧图落 `docs/anim_v311_preview.png` | 离屏渲染需手动装字体（否则标签方块）；无 QApplication 构造 QPixmap 会崩（exit 0xC0000409），已修 |
+| 8 版本 3.0.11 | `paths.APP_VERSION`、iss 六处同步 | 六处 3.0.11 |
+
 ## v3.0.10（2026-11-25）
 
 | 项 | 改动 | 实测 |

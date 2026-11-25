@@ -936,6 +936,10 @@ class ControlPanel(QWidget):
         self.ctl.config["allow_icon_scatter"] = bool(v)
         self.ctl.save_config()
 
+    def _on_timeline_toggle(self, v: bool):
+        self.ctl.config["anim_timeline"] = bool(v)
+        self.ctl.save_config()
+
     def _build_pet_box(self) -> QGroupBox:
         """v2.9.7「桌宠行为」：把散在养成页/提醒页/托盘里的零碎开关收在一处。"""
         box = QGroupBox("桌宠行为")
@@ -978,6 +982,19 @@ class ControlPanel(QWidget):
         row_icon.addWidget(self.chk_scatter)
         row_icon.addStretch()
         pv.addLayout(row_icon)
+
+        # v3.0.11：动作走关键帧时间轴（轨道×关键帧×缓动+事件点）。
+        # 关掉就退回旧的手写公式，方便对照哪个更好看。
+        row_anim = QHBoxLayout()
+        self.chk_timeline = QCheckBox("动作用关键帧动画引擎")
+        self.chk_timeline.setToolTip(
+            "开：蹦跳/摔跤/螃蟹步/左右看等 8 个代码动作改由时间轴驱动，"
+            "起落带缓动、落地有压扁和脚步声。\n"
+            "关：用旧的手写公式（匀速跳动）。默认开。")
+        self.chk_timeline.toggled.connect(self._on_timeline_toggle)
+        row_anim.addWidget(self.chk_timeline)
+        row_anim.addStretch()
+        pv.addLayout(row_anim)
 
         row3 = QHBoxLayout()
         row3.setSpacing(6)
@@ -1742,6 +1759,7 @@ class ControlPanel(QWidget):
         for chk, key, default in ((self.chk_click_sound, "click_sound_on", True),
                                   (self.chk_topmost, "topmost", True),
                                   (self.chk_scatter, "allow_icon_scatter", False),
+                                  (self.chk_timeline, "anim_timeline", True),
                                   (self.chk_follow, "follow_mouse", False)):
             chk.blockSignals(True)
             chk.setChecked(bool(self.ctl.config.get(key, default)))

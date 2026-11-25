@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
 
 from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SKINS,
                    SKINS, SKIN_FORM, asset_path)
+import anim_engine as anim
 from bubble import BubbleWindow
 from voice_profile import profile_names as voice_profile_names
 
@@ -115,6 +116,9 @@ class PetWindow(QWidget):
         self.anim.setInterval(FRAME_MS)
         self.anim.timeout.connect(self._tick)
         self.anim.start()
+        # v3.0.11：关键帧时间轴（档 A）—— 八个代码动作改由轨道 + 缓动演出，
+        # config["anim_timeline"] 关掉就退回原来的手写公式。
+        self.tl = anim.Timeline()
 
         self.bubble = BubbleWindow(self)
 
@@ -296,6 +300,9 @@ class PetWindow(QWidget):
     def set_state(self, st: str):
         self.state = st
         self.state_t = 0.0
+        # 切到不属于时间轴的状态时，把正在播的 clip 停掉（否则姿态会被旧 clip 拖着）
+        if getattr(self, "tl", None) is not None and st not in anim.TIMELINE_STATES:
+            self.tl.stop()
         if st == "jump":
             self.jump_x0 = self.x()
             self.jump_y0 = self.y()
@@ -305,6 +312,8 @@ class PetWindow(QWidget):
             self._run_timer.stop()
         if self._action_timer is not None:
             self._action_timer.stop()
+        if getattr(self, "tl", None) is not None:
+            self.tl.stop()
         self.restore_base_expression()
         self.rot = 0.0
         self.sx = 1.0
@@ -318,6 +327,8 @@ class PetWindow(QWidget):
     def _tick(self):
         self.state_t += FRAME_MS / 1000.0
         st = self.state
+        if self.tl.playing:
+            self.tl.step(FRAME_MS / 1000.0)
 
         # 步态相位：走路 1 循环/秒，奔跑 1.8 倍速、摆幅更大
         self.gait_on = st in GAIT_STATES
@@ -640,7 +651,33 @@ class PetWindow(QWidget):
             self.bob = -2 * abs(math.sin(self.state_t * 30)) * self.scale
             self.sy = 1 - 0.04 * abs(math.sin(self.state_t * 30))
 
+        # v3.0.11：时间轴姿态覆盖（放在所有分支之后，引擎优先）
+        if self.tl.playing and self.tl.covers(st):
+            pose = self.tl.pose_now()
+            if pose is not None:
+                self.bob = pose.bob * self.scale
+                self.rot = pose.rot
+                if pose.sx is not None:
+                    self.sx = pose.sx
+                if pose.sy is not None:
+                    self.sy = pose.sy
+                if pose.alpha is not None:
+                    self.alpha = pose.alpha
+                if pose.flip is not None:
+                    self.mirror = bool(round(pose.flip))
+            for ev in self.tl.pop_events():
+                self._on_anim_event(ev)
+
         self.update()
+
+    def _on_anim_event(self, name: str):
+        """时间轴事件点（落脚 / 恢复）：现在用来配脚步音和落地的一顿。"""
+        if name == "land":
+            try:
+                self._controller.audio.play("step", priority=1)
+            except Exception:  # noqa: BLE001
+                pass
+            self.bob += 1.5 * self.scale
 
     # ================= 互动入口（由 controller 转发） =================
     def do_pat(self):
@@ -752,6 +789,14 @@ class PetWindow(QWidget):
         elif key in ("brawl", "hop"):
             self.set_expression("happy", 0)
         self.set_state(key)
+        # v3.0.11：八个代码动作交给时间轴引擎演出（config 可关，退回旧公式）
+        try:
+            if key in anim.CLIPS and self._controller.config.get("anim_timeline", True):
+                self.tl.play(key)
+            else:
+                self.tl.stop()
+        except Exception:  # noqa: BLE001
+            pass
         self._controller.on_action(key)
         if duration_ms > 0:
             self._action_timer = QTimer(self)
