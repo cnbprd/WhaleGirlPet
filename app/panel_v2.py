@@ -8,7 +8,7 @@ import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox,
-                               QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+                               QFileDialog, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                                QListWidget, QProgressBar, QPushButton,
                                QSlider, QTableWidget, QTableWidgetItem, QTextEdit,
                                QVBoxLayout, QWidget)
@@ -301,7 +301,8 @@ def tab_security(panel) -> QWidget:
 
     # ---- v3.0.10 安全管家（自研启发式扫描，只报不杀）----
     head = QLabel("安全管家 · 自研启发式扫描（PE 结构 / 规则引擎 / 持久化 + 进程审计）")
-    head.setStyleSheet("font-weight:600;color:#2b2a33;")
+    # 不写死颜色：深色主题下 #2b2a33 会糊成一条暗线（v3.0.21 目检发现）
+    head.setStyleSheet("font-weight:600;")
     lay.addWidget(head)
     panel.btn_guard = _btn("扫描一遍", panel._guard_scan)
     lay.addWidget(_row(
@@ -312,6 +313,8 @@ def tab_security(panel) -> QWidget:
     ))
     lay.addWidget(_row(
         _btn("导出报告", panel._guard_export),
+        _btn("隔离选中", panel._guard_quarantine),
+        _btn("打开隔离区", panel._open_quarantine),
         _btn("打开报告文件夹", panel._open_guard_reports),
     ))
     panel.lbl_guard = QLabel("还没扫过。扫一遍约 5–10 秒，只读不改系统。")
@@ -322,10 +325,17 @@ def tab_security(panel) -> QWidget:
     panel.tbl_guard.setHorizontalHeaderLabels(["等级", "对象", "原因", "规则"])
     panel.tbl_guard.setEditTriggers(QAbstractItemView.NoEditTriggers)
     panel.tbl_guard.setSelectionBehavior(QAbstractItemView.SelectRows)
+    # 单行 + 中间省略：路径长时能同时看到盘符和文件名，而不是只剩「C...」
+    panel.tbl_guard.setWordWrap(False)
+    panel.tbl_guard.setTextElideMode(Qt.ElideMiddle)
     panel.tbl_guard.verticalHeader().setVisible(False)
-    panel.tbl_guard.setColumnWidth(0, 52)
-    panel.tbl_guard.setColumnWidth(1, 260)
-    panel.tbl_guard.setColumnWidth(2, 300)
+    panel.tbl_guard.setColumnWidth(0, 76)
+    panel.tbl_guard.setColumnWidth(2, 220)
+    panel.tbl_guard.setColumnWidth(3, 108)
+    # 对象列吃掉剩余宽度：原来是平均分配，长路径被压成「C...」，看不出是哪个文件
+    hh = panel.tbl_guard.horizontalHeader()
+    hh.setStretchLastSection(False)
+    hh.setSectionResizeMode(1, QHeaderView.Stretch)
     panel.tbl_guard.setMinimumHeight(150)
     lay.addWidget(panel.tbl_guard, 2)
     return w

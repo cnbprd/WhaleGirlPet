@@ -144,6 +144,50 @@ class Clip:
         return (not self.loop) and t >= self.duration
 
 
+HERMITE_CH = ("bob", "rot", "dx", "dy")
+
+
+def _speeds(prev_pose, now_pose, dt: float) -> dict:
+    """两帧之间的通道速度（每秒）。用于 Hermite 的端点切线。"""
+    if prev_pose is None or dt <= 0:
+        return {}
+    out = {}
+    for ch in HERMITE_CH:
+        a, b = getattr(prev_pose, ch), getattr(now_pose, ch)
+        if a is not None and b is not None:
+            out[ch] = (b - a) / dt
+    return out
+
+
+def blend_hermite(a: Pose, b: Pose, w: float, sa: dict, sb: dict, remain: float) -> Pose:
+    """v3.0.21「进入速度匹配」：位置 + 速度一起插（三次 Hermite）。
+
+    为什么不用线性/smoothstep：那两种只保证「位置不跳」，中段仍会生出一个额外的速度脉冲
+    （实测 crab→hop 速度突变 11.15 px/帧，硬切 15.20，只降 27%）。
+    Hermite 让起点速度 = 旧动作速度、终点速度 = 新动作速度，脉冲被切线吸收。
+    只对位移/旋转类通道生效；缩放与透明度仍走线性，避免过冲出负缩放。
+    """
+    w = max(0.0, min(1.0, w))
+    w2, w3 = w * w, w * w * w
+    h00 = 2 * w3 - 3 * w2 + 1
+    h10 = w3 - 2 * w2 + w
+    h01 = -2 * w3 + 3 * w2
+    h11 = w3 - w2
+    values = {}
+    for ch in CHANNELS:
+        va, vb = getattr(a, ch), getattr(b, ch)
+        if ch == "flip":
+            values[ch] = va if vb is None else (vb if w >= 0.5 else va)
+        elif va is None or vb is None:
+            values[ch] = vb if vb is not None else va
+        elif ch in HERMITE_CH:
+            values[ch] = (h00 * va + h10 * sa.get(ch, 0.0) * remain
+                          + h01 * vb + h11 * sb.get(ch, 0.0) * remain)
+        else:
+            values[ch] = va + (vb - va) * w
+    return Pose(values)
+
+
 def blend(a: Pose, b: Pose, w: float) -> Pose:
     """两帧姿态按权重混合（v3.0.20）。w=0 全是 a，w=1 全是 b。
 
@@ -194,6 +238,9 @@ class Timeline:
         self.time_scale = 1.0
         self._queue = []
         self._last_pose = None
+        self._last_a = None
+        self._last_b = None
+        self._last_dt = 1.0 / 60.0
 
     # ---- 控制 ----
     def play(self, clip, mix: float = 0.0) -> None:
@@ -213,10 +260,16 @@ class Timeline:
             self.prev_t = cur_t
             self._mix_total = float(mix)
             self._mix_left = float(mix)
+            # Hermite 需要端点速度：起手用旧 clip 的前一帧、新 clip 的第 0 帧
+            self._last_dt = 1.0 / 60.0
+            self._last_a = cur.pose(max(0.0, cur_t - self._last_dt))
+            self._last_b = clip.pose(0.0)
         else:
             self.prev_clip = None
             self._mix_left = 0.0
             self._mix_total = 0.0
+            self._last_a = None
+            self._last_b = None
 
     def queue(self, clip) -> None:
         """排队：当前动作放完（非循环）后再播它。"""
@@ -242,6 +295,8 @@ class Timeline:
         self._mix_total = 0.0
         self._queue = []
         self._last_pose = None
+        self._last_a = None
+        self._last_b = None
 
     # ---- 查询 ----
     def covers(self, state: str) -> bool:
@@ -286,10 +341,14 @@ class Timeline:
             if self._mix_total > 0:
                 self._mix_left = max(0.0, self._mix_left - dt)
                 w = 1.0 - self._mix_left / self._mix_total
-                # smoothstep：线性权重会在混合两端留下加速度突变（视觉上是"轻微一顿"），
-                # 3w²-2w³ 让起止斜率为 0，实测 jerk 从 5.25 降到 1.6 左右。
-                w = w * w * (3.0 - 2.0 * w)
-                pose = blend(self.prev_clip.pose(self.prev_t), pose, w)
+                a_pose = self.prev_clip.pose(self.prev_t)
+                b_raw = pose
+                sa = _speeds(self._last_a, a_pose, self._last_dt)
+                sb = _speeds(self._last_b, b_raw, self._last_dt)
+                pose = blend_hermite(a_pose, b_raw, w, sa, sb, self._mix_left)
+                self._last_a = a_pose
+                self._last_b = b_raw
+                self._last_dt = dt
             if self._mix_left <= 0:
                 self.prev_clip = None
 
@@ -298,7 +357,7 @@ class Timeline:
             nxt = self._queue.pop(0)
             # 收尾那一帧的事件（如最后一次 land）不能被 play() 重置掉
             pend = self._events
-            self.play(nxt, mix=0.12)
+            self.play(nxt, mix=0.25)
             self._events = pend
             pose = self.clip.pose(0.0)
             if self.prev_clip is not None:

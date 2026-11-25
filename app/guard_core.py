@@ -103,6 +103,20 @@ DEFAULT_RULES = [
      "scope": "file", "kind": "str",
      "pattern": "EICAR-STANDARD-ANTIVIRUS-TEST-FILE",
      "why": "业界通用杀毒能力测试样本，正常文件不会出现此串；命中即证明检测链路有效"},
+    # v3.0.21：多条件规则——三个特征必须同时出现，避免「脚本里提到 download 就报警」
+    {"id": "AV-DROPPER", "name": "下载→落临时→起进程三段式", "level": "high", "weight": 30,
+     "scope": "file", "kind": "all_of",
+     "patterns": [r"(?i)(downloadstring|invoke-webrequest|urlretrieve|bitsadmin)",
+                  r"(?i)(\\temp\\|\\appdata\\|%temp%|/tmp/|env:temp|env:tmp|tempfile)",
+                  r"(?i)(start-process|shell32|wscript|\.exe)"],
+     "why": "下载器脚本的典型三段：拉载荷、落到临时目录、再拉起执行"},
+    {"id": "AV-RANSOM-SCRIPT", "name": "脚本式批量加密", "level": "high", "weight": 36,
+     "scope": "file", "kind": "all_of",
+     "patterns": [r"(?i)(encrypt|encryptfile|cryptfile)",
+                  r"(?i)(\.docx|\.xlsx|\.pdf|\.jpg|\.jpeg|\.png)",
+                  r"(?i)(os\.walk|glob\.glob|for\s+\w+\s+in\s+.*files|listdir)"],
+     "exclude_ext": [".js", ".json", ".md"],
+     "why": "遍历文件 + 命中常见文档扩展 + 加密动作，三者同时出现才判——单看 encrypt 会误伤正常备份脚本"},
 ]
 
 
@@ -270,6 +284,31 @@ def load_rules(data_dir: str = "") -> list:
             except re.error as e:
                 _log(f"规则 {r['id']} 正则无效：{e}")
                 continue
+        elif r["kind"] == "all_of":
+            # v3.0.21：一条规则里要求「多个特征同时出现」，误报能压一个量级
+            pats = r.get("patterns") or []
+            if not pats or not isinstance(pats, list):
+                _log(f"规则 {r['id']} 缺 patterns，已跳过")
+                continue
+            compiled, bad = [], ""
+            for p in pats:
+                try:
+                    compiled.append(re.compile(str(p)))
+                except re.error as e:
+                    bad = f"{p}（{e}）"
+                    break
+            if bad:
+                _log(f"规则 {r['id']} 的 all_of 含非法正则：{bad}")
+                continue
+            r["_res"] = compiled
+        # 数值/扩展名条件先做类型校验，坏值直接丢掉这条规则而不是在扫描时炸
+        for k in ("size_gt", "size_lt"):
+            if k in r:
+                try:
+                    r[k] = int(r[k])
+                except (TypeError, ValueError):
+                    _log(f"规则 {r['id']} 的 {k} 不是整数，已忽略该条件")
+                    r.pop(k, None)
         out.append(r)
     return out
 
@@ -279,6 +318,9 @@ def _match(r: dict, text: str) -> bool:
     if kind == "regex":
         rx = r.get("_re")
         return bool(rx and rx.search(text))
+    if kind == "all_of":
+        res = r.get("_res") or []
+        return bool(res) and all(rx.search(text) for rx in res)
     if kind == "str":
         return str(r.get("pattern", "")) in text
     if kind == "hex":
@@ -286,20 +328,50 @@ def _match(r: dict, text: str) -> bool:
     return False
 
 
-def _hex_hit(r: dict, path: str) -> bool:
-    if r.get("kind") != "hex":
+def _ctx_ok(r: dict, path: str, size: int) -> bool:
+    """规则的文件级前置条件：大小区间、扩展名。不满足就不必跑正则。"""
+    gt, lt = r.get("size_gt"), r.get("size_lt")
+    if gt is not None and size <= gt:
         return False
+    if lt is not None and size >= lt:
+        return False
+    exts = r.get("ext")
+    if exts:
+        if isinstance(exts, str):
+            exts = [exts]
+        low = path.lower()
+        if not any(low.endswith(str(e).lower()) for e in exts):
+            return False
+    return True
+
+
+def _hex_pattern(r: dict):
+    if r.get("kind") != "hex":
+        return b""
     try:
         pat = bytes.fromhex(str(r.get("pattern", "")).replace(" ", "").replace("0x", ""))
     except ValueError:
-        return False
-    if not pat:
-        return False
+        return b""
+    return pat
+
+
+def _file_blob(path: str, cap_mb: int = 8) -> bytes:
+    """一次读盘，供多条 hex 规则复用（原来每条规则各读一遍，规则越多越慢）。"""
     try:
         with open(path, "rb") as f:
-            return pat in f.read(min(os.path.getsize(path), 8 * 1024 * 1024))
+            return f.read(min(os.path.getsize(path), cap_mb * 1024 * 1024))
     except OSError:
-        return False
+        return b""
+
+
+def _hex_hit_bytes(r: dict, blob: bytes) -> bool:
+    pat = _hex_pattern(r)
+    return bool(pat) and pat in blob
+
+
+def _hex_hit(r: dict, path: str) -> bool:
+    pat = _hex_pattern(r)
+    return bool(pat) and pat in _file_blob(path)
 
 
 # ---------------- 哈希名单（借鉴 Loki / ClamAV 的 hash IOC 思路） ----------------
@@ -399,6 +471,16 @@ def ensure_hash_dirs(data_dir: str = "") -> dict:
     return paths
 
 
+def eicar_verdict(rule_match: bool, hits: list, blocked: str, clean: list) -> dict:
+    """EICAR 自测的唯一判定口径（v3.0.21 提取成纯函数，便于回归覆盖两条分支）。
+
+    「自家规则命中」和「系统引擎先拦/先删」都算检测生效——对用户而言结论一致，
+    差别只在谁先动手。任何其它错误（err13/其它）都不算通过，避免把故障当能力。
+    """
+    detected = bool(hits) or str(blocked or "").startswith("system")
+    return {"ok": bool(rule_match and detected and not clean), "detected": bool(detected)}
+
+
 def eicar_selftest(data_dir: str = "", rules: list = None) -> dict:
     """分两层自证检测能力：
 
@@ -426,8 +508,17 @@ def eicar_selftest(data_dir: str = "", rules: list = None) -> dict:
             with open(bad, "rb") as f:
                 f.read()
             hits = scan_file(bad, rules, data_dir=data_dir)
+            if not hits and not os.path.exists(bad):
+                # 读到了、但在扫描的瞬间被系统删掉：同样是系统引擎先动手
+                blocked = "system-removed"
         except OSError as e:
-            blocked = "system" if getattr(e, "errno", 0) in (13, 22) else f"err{getattr(e, 'errno', '')}"
+            en = getattr(e, "errno", 0)
+            if en in (13, 22):
+                blocked = "system"
+            elif en == 2 or not os.path.exists(bad):
+                blocked = "system-removed"
+            else:
+                blocked = f"err{en}"
         clean = scan_file(good, rules, data_dir=data_dir)
     finally:
         for p in (bad, good):
@@ -440,8 +531,8 @@ def eicar_selftest(data_dir: str = "", rules: list = None) -> dict:
         except OSError:
             pass
     ms = (time.perf_counter() - t0) * 1000
-    detected = bool(hits) or blocked == "system"
-    return {"ok": rule_match and detected and not clean,
+    v = eicar_verdict(rule_match, hits, blocked, clean)
+    return {"ok": v["ok"], "detected": v["detected"],
             "rule_match": rule_match, "eicar_hits": len(hits),
             "eicar_score": score_of(hits), "eicar_rules": [h.get("rule") for h in hits],
             "blocked": blocked, "clean_hits": len(clean),
@@ -468,6 +559,13 @@ def scan_file(path: str, rules: list, deep: bool = True, data_dir: str = "") -> 
                  "why": f"SHA256 {hv['sha'][:16]}…" + (f"｜{hv['label']}" if hv["label"] else "")}]
     ext = os.path.splitext(path)[1].lower()
     is_pe = _read_head(path, 2) == b"MZ"
+    # 二进制样本只读一次，后面多条 hex 规则共用（规则越多越省，原来每条规则各读一遍）
+    blob = {"bytes": None}
+
+    def hex_hit_any(r: dict) -> bool:
+        if blob["bytes"] is None:
+            blob["bytes"] = _file_blob(path)
+        return _hex_hit_bytes(r, blob["bytes"])
     # 1) 文本类：脚本/批处理，读前 2MB 匹配规则
     if ext in (".ps1", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse", ".hta", ".txt", ""):
         try:
@@ -488,7 +586,11 @@ def scan_file(path: str, rules: list, deep: bool = True, data_dir: str = "") -> 
             if skip and any(os.path.basename(path).lower().endswith(str(ext).lower())
                             for ext in skip):
                 continue
-            if _match(r, text) or _hex_hit(r, path):
+            if not _ctx_ok(r, path, size):
+                continue
+            if size <= 2 * 1024 * 1024:
+                blob["bytes"] = raw
+            if _match(r, text) or hex_hit_any(r):
                 findings.append({"level": r["level"], "score": int(r["weight"]),
                                  "kind": "file", "target": path,
                                  "rule": r["id"], "title": r["name"],
@@ -790,6 +892,14 @@ def scan_roots() -> list:
     return out
 
 
+def _is_reparse(path: str) -> bool:
+    """junction / 符号链接：可能指回父目录，递归进去会绕圈扫不完。"""
+    try:
+        return bool(getattr(os.lstat(path), "st_file_attributes", 0) & 0x400)
+    except OSError:
+        return True  # 拿不到属性就当作不可进，宁可少扫不要卡死
+
+
 def collect_targets(roots: list = None, limit: int = MAX_FILES,
                     max_mb: int = MAX_FILE_MB) -> list:
     """收集候选文件。
@@ -805,7 +915,8 @@ def collect_targets(roots: list = None, limit: int = MAX_FILES,
         try:
             for dirpath, dirnames, filenames in os.walk(root):
                 dirnames[:] = [d for d in dirnames
-                               if not d.startswith("$") and d.lower() not in skip_names][:40]
+                               if not d.startswith("$") and d.lower() not in skip_names
+                               and not _is_reparse(os.path.join(dirpath, d))][:40]
                 skip_here = any(s in os.path.normcase(dirpath) + "\\" for s in
                                 ("\\node_modules\\", "\\site-packages\\", "\\.git\\"))
                 if skip_here:
@@ -821,6 +932,8 @@ def collect_targets(roots: list = None, limit: int = MAX_FILES,
                     except OSError:
                         continue
                     if st.st_size == 0 or st.st_size > max_mb * 1024 * 1024:
+                        continue
+                    if getattr(st, "st_file_attributes", 0) & 0x400:
                         continue
                     got.append((st.st_mtime, p))
                 if len(got) >= limit * 3:

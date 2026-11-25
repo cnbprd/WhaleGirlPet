@@ -9,6 +9,7 @@
 - 带风险模式的脚本直接判为不可运行，只留源码给用户自己看；
 - 执行超时 20 秒，输出截断，跑完把结果贴回聊天。
 """
+import ast
 import os
 import re
 import shutil
@@ -57,13 +58,93 @@ def extract_code(text: str) -> str:
 
 
 def check_code(code: str) -> list:
-    """返回命中的风险说明列表；空列表 = 可以运行。"""
+    """返回命中的风险说明列表；空列表 = 可以运行。
+
+    v3.0.21：正则之后再加一道 AST 检查。正则只能看见字面写法，
+    `__import__("o"+"s").system(...)`、`getattr(__import__("os"),"sys"+"tem")` 这类拼装
+    能整段绕过黑名单——由模型写出来的代码恰恰可能长出这种形状。
+    """
     hits = []
     for pat, why in DANGER_PATTERNS:
         if re.search(pat, code, re.I):
             hits.append(why)
+    hits += check_code_ast(code)
     if len(code) > 20000:
         hits.append("脚本过长（>20000 字符）")
+    # 去重但保序
+    seen = set()
+    out = []
+    for h in hits:
+        if h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out
+
+
+_AST_DANGER_CALLS = {
+    "os.system": "直接调 shell",
+    "os.popen": "直接调 shell",
+    "os.exec": "替换当前进程",
+    "os.execl": "替换当前进程",
+    "os.spawn": "拉起外部进程",
+    "os.remove": "删除文件",
+    "os.unlink": "删除文件",
+    "os.rmdir": "删除目录",
+    "os.removedirs": "删除目录",
+    "shutil.rmtree": "递归删目录",
+    "shutil.move": "移动/覆盖文件",
+    "subprocess.run": "执行外部命令",
+    "subprocess.Popen": "执行外部命令",
+    "subprocess.call": "执行外部命令",
+    "subprocess.check_output": "执行外部命令",
+    "ctypes.CDLL": "加载原生库",
+    "ctypes.WinDLL": "加载原生库",
+    "ctypes.windll": "调用 Win32 API",
+    "winreg.SetValue": "写注册表",
+    "winreg.DeleteKey": "删注册表",
+    "socket.socket": "主动建 socket",
+    "socket.create_connection": "主动联网",
+    "urllib.request.urlopen": "联网下载",
+    "urllib.request.urlretrieve": "联网下载",
+    "eval": "动态执行字符串",
+    "exec": "动态执行字符串",
+    "compile": "动态编译代码",
+    "__import__": "动态导入模块",
+}
+_AST_BANNED_MODULES = ("ctypes", "winreg", "telnetlib", "ftplib", "pty")
+
+
+def _chain(node) -> str:
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def check_code_ast(code: str) -> list:
+    """AST 层风险检查：按「完整调用链」匹配，拼装字符串也逃不掉。"""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return [f"语法错误，不能运行：{e.msg}（第 {e.lineno} 行）"]
+    hits = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, (ast.Attribute, ast.Name)):
+            ch = _chain(node.func)
+            for bad, why in _AST_DANGER_CALLS.items():
+                if ch == bad or ch.startswith(bad + "."):
+                    hits.append(f"{why}（{ch}，第 {node.lineno} 行）")
+                    break
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.split(".")[0] in _AST_BANNED_MODULES:
+                    hits.append(f"导入敏感模块 {a.name}（第 {node.lineno} 行）")
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.split(".")[0] in _AST_BANNED_MODULES:
+                hits.append(f"导入敏感模块 {node.module}（第 {node.lineno} 行）")
     return hits
 
 

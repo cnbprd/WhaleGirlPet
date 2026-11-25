@@ -72,17 +72,16 @@ def main():
 
     print("[1] 硬切 vs 交叉淡入（crab → hop，bob 通道）")
     hj = switch_jump(0.0)[0]
-    sj = switch_jump(0.15)[0]
+    sj = switch_jump(0.30)[0]
     hv = vel_jump(0.0)
-    sv = vel_jump(0.15)
+    sv = vel_jump(0.30)
     print(f"  硬切：切换帧位移 {hj:.2f}px，速度突变 {hv:.2f}px/帧")
-    print(f"  0.15s 混合：切换帧位移 {sj:.2f}px，速度突变 {sv:.2f}px/帧")
+    print(f"  0.30s 混合(Hermite)：切换帧位移 {sj:.2f}px，速度突变 {sv:.2f}px/帧")
     ck("硬切确有切换阶跃", hj > 4, f"{hj:.2f}px")
     ck("混合把切换位移压到 1/3 以内", sj < hj / 3,
        f"{sj:.2f}px vs {hj:.2f}px（降 {100 * (1 - sj / hj):.0f}%）")
-    ck("混合把速度突变小于硬切", sv < hv,
-       f"{sv:.2f} vs {hv:.2f}px/帧（仅降 {100 * (1 - sv / hv):.0f}%，"
-       f"说明 0.15s 窗口只能压住位置、压不住爆发动作的速度）")
+    ck("速度突变压到硬切的 1/4 以内", sv < hv * 0.25,
+       f"{sv:.2f} vs {hv:.2f}px/帧（降 {100 * (1 - sv / hv):.0f}%）")
     soft = sample_end(0.15)
     ck("混合结束回到新动作末帧", isinstance(soft, float), f"{soft:.2f}")
 

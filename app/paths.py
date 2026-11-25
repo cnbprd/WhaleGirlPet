@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "3.0.20"
+APP_VERSION = "3.0.21"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -83,9 +83,22 @@ def cleanup_pending() -> int:
         return 0
     src = info.get("src") or ""
     names = [n for n in (info.get("names") or []) if n and n != "data_root.txt"]
+    # v3.0.21 审计：这个 json 是外部可写的，旧实现直接 os.path.join(src, name) 后 rmtree，
+    # 一条 "names": ["..\\..\\Desktop"] 就能借桌宠的权限删掉用户任意目录。
+    # 现在只接受「纯文件名」且解析后仍落在 src 之内。
+    src_abs = os.path.abspath(src) if src else ""
     left, removed = [], 0
     for name in names:
-        p = os.path.join(src, name)
+        if os.path.basename(str(name)) != str(name) or ".." in str(name):
+            continue
+        p = os.path.abspath(os.path.join(src_abs, str(name))) if src_abs else ""
+        try:
+            inside = bool(p) and os.path.normcase(
+                os.path.commonpath([p, src_abs])) == os.path.normcase(src_abs)
+        except ValueError:
+            inside = False
+        if not inside:
+            continue
         try:
             if os.path.isdir(p):
                 shutil.rmtree(p)
@@ -105,13 +118,28 @@ def cleanup_pending() -> int:
     return removed
 
 
+def _safe_slug(slug: str) -> str:
+    """账号 slug 只接受纯名字：accounts.json 被外部改动时不能变成路径穿越。"""
+    s = str(slug or "").strip()
+    if not s or s in (".", "..") or s.startswith(".."):
+        return ""
+    if any(ch in s for ch in ("/", "\\", ":", "*", "?", '"', "<", ">", "|")):
+        return ""
+    return s
+
+
 def account_dir(slug: str = "") -> str:
     """账号独立目录；slug 为空时回退到旧版单档案目录。"""
-    slug = slug or _ACTIVE["slug"]
+    raw = slug or _ACTIVE["slug"]
     root = data_dir()
-    if not slug:
+    if not raw:
         return root
-    d = os.path.join(root, "accounts", slug)
+    safe = _safe_slug(raw)
+    if not safe:
+        # 非法 slug 不返回数据根：调用方（accounts.delete）会 rmtree 返回值，
+        # 回退到根等于把整个数据目录删掉
+        return os.path.join(root, "accounts", "_invalid_slug")
+    d = os.path.join(root, "accounts", safe)
     try:
         os.makedirs(d, exist_ok=True)
     except OSError:

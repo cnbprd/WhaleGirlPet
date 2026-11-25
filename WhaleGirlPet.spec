@@ -6,6 +6,9 @@ binaries = []
 # v3.0.17 瘦身：v3.0.1 已删原生 Splash（Tk），这里去掉 tkinter —— 它会把整个
 #   tcl90/tk90 数据目录拖进包（未压缩约 15MB）。app 下全项目 0 次 import tkinter。
 hiddenimports = ['PySide6.QtMultimedia', 'edge_tts', 'skills', 'secscan', 'local_llm', 'voice_cmd', 'tasks', 'hwinfo', 'sysvol', 'pycaw', 'comtypes', 'gpu_guard', 'psutil', 'ambient', 'awareness', 'voice_profile', 'theme',
+                 # v3.0.21：这三个都在函数里局部 import（面板点击 / 托盘开关才用），
+                 # 显式列进来，避免打包时被静态分析漏掉
+                 'quarantine', 'realtime', 'perf',
                  'asyncio', 'unicodedata']
 tmp_ret = collect_all('edge_tts')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]

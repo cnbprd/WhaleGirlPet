@@ -114,8 +114,18 @@ class PetWindow(QWidget):
         self.run_dir = 1
         self.follow = False
 
+        # v3.0.21：按机器能力选渲染档 + 帧间隔（无独显/远程桌面自动降档）
+        try:
+            import perf as perf_mod
+            cfgq = self._controller.config.get("render_quality", "auto")
+            self.render_quality = perf_mod.resolve_quality(cfgq)
+            self.frame_ms = perf_mod.frame_ms_for(
+                self.render_quality, self._controller.config.get("frame_ms", 0))
+        except Exception:  # noqa: BLE001
+            self.render_quality = "high"
+            self.frame_ms = FRAME_MS
         self.anim = QTimer(self)
-        self.anim.setInterval(FRAME_MS)
+        self.anim.setInterval(self.frame_ms)
         self.anim.timeout.connect(self._tick)
         self.anim.start()
         # v3.0.11：关键帧时间轴（档 A）—— 八个代码动作改由轨道 + 缓动演出，
@@ -333,16 +343,16 @@ class PetWindow(QWidget):
         self.set_state("follow" if self.follow else "idle")
 
     def _tick(self):
-        self.state_t += FRAME_MS / 1000.0
+        self.state_t += self.frame_ms / 1000.0
         st = self.state
         if self.tl.playing:
-            self.tl.step(FRAME_MS / 1000.0)
+            self.tl.step(self.frame_ms / 1000.0)
 
         # 步态相位：走路 1 循环/秒，奔跑 1.8 倍速、摆幅更大
         self.gait_on = st in GAIT_STATES
         if self.gait_on:
             self.gait_amp = 11.0 if st == "run" else 6.0
-            step = (FRAME_MS / 1000.0) * (1.8 if st == "run" else 1.0)
+            step = (self.frame_ms / 1000.0) * (1.8 if st == "run" else 1.0)
             self.gait = (self.gait + step) % 1.0
 
         if st in ("idle", "walk", "follow", "sleep", "run", "wave", "dance", "type",
@@ -772,8 +782,12 @@ class PetWindow(QWidget):
     # ================= 动作体系 =================
     DEFAULT_ACTION_MS = {"tumble": 2400, "brawl": 2600, "hop": 2200}
 
-    def do_action(self, key: str, duration_ms: int = 0, then: str = "", mix: float = 0.15):
-        """播动作。v3.0.20：`mix` 是切过去的淡入时长（秒），`then` 是接着排队的下一个动作。"""
+    def do_action(self, key: str, duration_ms: int = 0, then: str = "", mix: float = 0.30):
+        """播动作。v3.0.21：`mix` 是切过去的淡入时长（秒），`then` 是接着排队的下一个动作。
+
+        0.30s 是实测出来的：0.15s 只能压住位置（速度突变仍 10.30px/帧），
+        0.30s 配合 Hermite 才把速度突变压到 1.14px/帧（硬切 15.20）。
+        """
         if key not in ALL_ACTIONS:
             return
         if duration_ms <= 0:
@@ -1086,9 +1100,10 @@ class PetWindow(QWidget):
         pix = self._pix
         if pix.isNull() or pix.width() < 8 or pix.height() < 8:
             return None
-        key = (pix.cacheKey(), pix.width(), pix.height())
+        key = (pix.cacheKey(), pix.width(), pix.height(),
+               getattr(self, "render_quality", "high"))
         if self._skel is None or self._skel_key != key:
-            self._skel = sk_mod.SkeletalSprite(pix)
+            self._skel = sk_mod.SkeletalSprite(pix, getattr(self, "render_quality", "high"))
             self._skel_key = key
         return self._skel
 

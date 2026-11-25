@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from PySide6.QtCore import QThread, Signal
@@ -18,6 +19,38 @@ from paths import APP_VERSION, data_dir
 DEFAULT_REPO = "cnbprd/WhaleGirlPet"
 API_LATEST = "https://api.github.com/repos/{repo}/releases/latest"
 UA = "WhaleGirlPet-Updater"
+
+
+def url_is_safe(url: str) -> bool:
+    """只允许 https 下载；http 仅放行本机回环（自建清单本地调试）。
+
+    起因（v3.0.21 审计）：更新包是会被直接执行的 exe，明文 http 下载等于把安装过程
+    交给中间人；老版本只做了 SHA 校验，而 SHA 只在 release 带 .sha256 时才有。
+    """
+    try:
+        p = urllib.parse.urlsplit(str(url or "").strip())
+    except ValueError:
+        return False
+    if p.scheme == "https" and p.hostname:
+        return True
+    if p.scheme == "http" and p.hostname in ("127.0.0.1", "localhost"):
+        return True
+    return False
+
+
+def parse_sha_text(text: str) -> str:
+    """从 .sha256 文件里取哈希：兼容 `hash  file`、`SHA256 (file) = hash`、纯 hash。"""
+    for line in str(text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "=" in line:
+            line = line.rsplit("=", 1)[-1].strip()
+        token = line.split()[0].strip().lower()
+        if len(token) == 64 and all(c in "0123456789abcdef" for c in token):
+            return token
+    return ""
+
 
 
 def parse_version(v: str):
@@ -147,6 +180,7 @@ class DownloadWorker(QThread):
         self.dest_name = os.path.basename(dest_name or "WhaleGirlPet-Setup.exe")
         self.sha_url = (sha_url or "").strip()
         self._stop = False
+        self.verified = False
 
     def stop(self):
         self._stop = True
@@ -154,6 +188,12 @@ class DownloadWorker(QThread):
     def run(self):
         if not self.url:
             self.failed.emit("下载地址为空")
+            return
+        if not url_is_safe(self.url):
+            self.failed.emit("下载地址不是 https，已拒绝（更新包会被执行，不接受明文传输）")
+            return
+        if self.sha_url and not url_is_safe(self.sha_url):
+            self.failed.emit("校验文件地址不是 https，已拒绝")
             return
         dest = os.path.join(download_dir(), self.dest_name)
         part = dest + ".part"
@@ -177,12 +217,17 @@ class DownloadWorker(QThread):
                 with urllib.request.urlopen(
                         urllib.request.Request(self.sha_url, headers={"User-Agent": UA}),
                         timeout=15) as r:
-                    expect = r.read().decode("utf-8", "ignore").split()[0].strip().lower()
+                    expect = parse_sha_text(r.read().decode("utf-8", "ignore"))
                 actual = _sha256(part)
-                if expect and actual != expect:
+                if not expect:
+                    os.remove(part)
+                    self.failed.emit("校验文件里找不到合法 SHA256，已拒绝安装")
+                    return
+                if actual != expect:
                     os.remove(part)
                     self.failed.emit(f"SHA256 校验失败（期望 {expect[:12]}…，实际 {actual[:12]}…）")
                     return
+                self.verified = True
             os.replace(part, dest)
             self.done.emit(dest)
         except Exception as e:  # noqa: BLE001

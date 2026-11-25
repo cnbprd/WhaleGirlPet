@@ -98,6 +98,9 @@ class ControlPanel(QWidget):
             self.side.addItem(QListWidgetItem(label))
             self.stack.addWidget(page)
         self.side.currentRowChanged.connect(self.stack.setCurrentIndex)
+        # v3.0.21：外部用 tabs.setCurrentIndex 切页时侧栏也要跟着高亮，
+        # 否则代码切页后左侧还停在「养成」，用户看不出自己在哪一页（目检发现）
+        self.stack.currentChanged.connect(self.side.setCurrentRow)
         self.side.setCurrentRow(0)
         # 外部（shot_panel 等）按 tabs.setCurrentIndex / tabs.widget 访问，QStackedWidget 同名接口兼容
         self.tabs = self.stack
@@ -2806,7 +2809,10 @@ class ControlPanel(QWidget):
                 f.get("level", ""), f.get("level", ""))
             c0 = QTableWidgetItem(f"{lvl} {int(f.get('score', 0))}")
             c0.setForeground(QColor(colors.get(f.get("level", ""), "#333")))
-            c1 = QTableWidgetItem(str(f.get("target", ""))[:160])
+            c1 = QTableWidgetItem(os.path.basename(str(f.get("target", ""))) or str(f.get("target", "")))
+            # 完整对象存进 UserRole：显示只放文件名（长路径在窄列里会被省略成「C...」），
+            # 隔离/定位都用 UserRole 里的真值，不能依赖可见文字
+            c1.setData(Qt.UserRole, str(f.get("target", "")))
             c1.setToolTip(str(f.get("target", "")))
             c2 = QTableWidgetItem(str(f.get("why", ""))[:200])
             c3 = QTableWidgetItem(str(f.get("rule", "")))
@@ -2820,6 +2826,31 @@ class ControlPanel(QWidget):
             f" · 查了 {rep.get('files_scanned', 0)} 个文件、{rep.get('processes_checked', 0)} 个进程"
             f" · {rep.get('elapsed_s', 0)}s{tail}")
         self.lbl_guard.setToolTip(str(saved.get("md", "")) or "报告目录：数据目录\\reports")
+
+    def _guard_quarantine(self):
+        """把表格当前行的对象移进隔离区（移走可恢复，不删文件）。"""
+        row = self.tbl_guard.currentRow()
+        if row < 0:
+            self.lbl_guard.setText("先在表格里点一条要隔离的记录。")
+            return
+        it = self.tbl_guard.item(row, 1)
+        target = (it.data(Qt.UserRole) if it else "") or (it.text() if it else "")
+        if not target:
+            self.lbl_guard.setText("这一行没有可隔离的文件对象（进程/注册表项不支持隔离）。")
+            return
+        import quarantine as qz
+        res = qz.quarantine_file(target, reason="面板手动隔离")
+        if res.get("ok"):
+            self.lbl_guard.setText(f"已隔离并在隔离区留了可恢复副本：{target}")
+        else:
+            self.lbl_guard.setText(f"隔离没成：{res.get('error')}")
+
+    def _open_quarantine(self):
+        import quarantine as qz
+        try:
+            os.startfile(qz.qdir())  # noqa: S606
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"打不开隔离区：{e}")
 
     def _guard_defender(self):
         try:

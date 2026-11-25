@@ -97,6 +97,11 @@ DEFAULT_CONFIG = {
     "llm_mmproj": "",
     # v3.0.19：看屏幕时图片的长边（512 = 实测最快且能判断场景；768 更清楚但更慢）
     "vision_max_side": 512,
+    # v3.0.21：渲染档 auto/high/mid/low（auto = 有独显 high、无独显/远程桌面 low）
+    # 以及帧间隔（0 = 按档位默认：low 40ms/25fps，其余 33ms/30fps）
+    "render_quality": "auto", "frame_ms": 0,
+    # v3.0.21：实时监控默认关（后台轮询会常驻 IO + 可能误报，交给用户在托盘里开）
+    "realtime_guard": False,
     # v3.0.17：三档分工（大脑 / 快反 / 工具人）。留空 = 不强制切模型，用默认候选。
     #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 负责看图（多模态）。
     #   注意：换模型要重启引擎（实测 4~24s），所以每个角色只在对应任务上才切。
@@ -361,8 +366,15 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
         try:
-            with open(config_file(), "w", encoding="utf-8") as f:
+            # v3.0.21：改成「临时文件 + fsync + 原子替换」。旧写法直接覆盖，
+            # 写到一半断电/被杀进程会把 config.json 变成半截 JSON，下次启动全部设置丢失。
+            target = config_file()
+            tmp = target + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, target)
         except OSError:
             pass
 
@@ -1060,9 +1072,17 @@ class Controller:
         self.panel and self.panel.set_update_status("下载完成，准备安装。")
         box = QMessageBox(self.panel)
         box.setWindowTitle("安装新版本")
-        box.setText("新版本已下载并校验通过。现在安装吗？（安装时桌宠会退出，装好后自动启动）")
+        verified = bool(getattr(self.update_dl, "verified", False))
+        if verified:
+            box.setText("新版本已下载并校验通过。现在安装吗？（安装时桌宠会退出，装好后自动启动）")
+        else:
+            # v3.0.21 审计：发布方没给 .sha256 时旧版照样显示「校验通过」并直接执行，
+            # 这里改成明确警告，按钮也降级成「不推荐」。
+            box.setIcon(QMessageBox.Warning)
+            box.setText("新版本下载完成，但这次发布没有提供 .sha256，无法校验完整性。仍要安装吗？")
         box.setInformativeText(path)
-        ok = box.addButton("现在安装", QMessageBox.AcceptRole)
+        ok = box.addButton("现在安装" if verified else "仍要安装（不推荐）",
+                           QMessageBox.AcceptRole if verified else QMessageBox.DestructiveRole)
         box.addButton("稍后", QMessageBox.RejectRole)
         box.exec()
         if box.clickedButton() is not ok:
@@ -2929,6 +2949,88 @@ class Controller:
         except Exception as e:  # noqa: BLE001
             self.pet.bubble.show_text(f"看图的脑子没叫起来：{str(e)[:40]}", 4200)
 
+    # ---- v3.0.21 实时监控（只报不杀） ----
+    def set_realtime_guard(self, on: bool):
+        on = bool(on)
+        self.config["realtime_guard"] = on
+        self.save_config()
+        if on:
+            self._start_realtime()
+        else:
+            self._stop_realtime()
+        act = getattr(self, "act_rt", None)
+        if act is not None and act.isChecked() != on:
+            act.setChecked(on)
+        try:
+            self.pet.bubble.show_text(
+                "实时监控开了：下载 / 临时 / 启动目录里新落地的程序，我每 2 秒看一眼。"
+                if on else "实时监控关了。", 3000)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _start_realtime(self):
+        import realtime as rt
+        import guard_core
+        if getattr(self, "_rt", None) is not None:
+            return
+        self._rt_hits = []
+        try:
+            rules = guard_core.load_rules()
+        except Exception:  # noqa: BLE001
+            rules = []
+
+        def on_new(path):
+            # 跑在工作线程：只做计算，结果排队，由主线程定时取走（不碰任何界面对象）
+            try:
+                hits = guard_core.scan_file(path, rules)
+                score = guard_core.score_of(hits)
+            except Exception:  # noqa: BLE001
+                return
+            if score >= 30:
+                title = (hits[0].get("title") if hits else "") or "可疑"
+                self._rt_hits.append((path, title, score))
+
+        self._rt = rt.DirWatcher(on_new=on_new, interval=2.0)
+        self._rt.start()
+        self._rt_timer = QTimer()
+        self._rt_timer.timeout.connect(self._drain_realtime)
+        self._rt_timer.start(1500)
+
+    def _drain_realtime(self):
+        hits = getattr(self, "_rt_hits", None)
+        if not hits:
+            return
+        path, title, score = hits.pop(0)
+        try:
+            self.pet.bubble.show_text(
+                f"刚落地一个可疑文件：{os.path.basename(path)}（{title}，{score} 分）"
+                f"，面板「安全体检」可以隔离它。", 5000)
+            self.set_expression_safe("worried")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def set_expression_safe(self, name: str):
+        try:
+            self.pet.set_expression(name, 2500)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _stop_realtime(self):
+        t = getattr(self, "_rt_timer", None)
+        if t is not None:
+            try:
+                t.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._rt_timer = None
+        w = getattr(self, "_rt", None)
+        if w is not None:
+            try:
+                w.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._rt = None
+
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self.app)
         # v2.9.6 托盘统一用透明底 Q 版大肥鱼图标
@@ -2955,6 +3057,12 @@ class Controller:
         # v3.0.18：本地视觉入口（截图 → 快反档多模态模型）
         act_look = QAction("看看我屏幕上是什么", menu)
         act_look.triggered.connect(self.act_look_screen)
+        # v3.0.21：实时监控（下载/临时/启动目录，只报不杀，命中给气泡）
+        act_rt = QAction("实时监控新落地文件", menu)
+        act_rt.setCheckable(True)
+        act_rt.setChecked(bool(self.config.get("realtime_guard", False)))
+        act_rt.toggled.connect(self.set_realtime_guard)
+        self.act_rt = act_rt
         # v2.9.3 静音模式：没任务时的闲聊/播报只出字不出声
         act_mute = QAction("静音模式（闲聊不发声）", menu)
         act_mute.setCheckable(True)
@@ -2972,12 +3080,16 @@ class Controller:
         menu.addAction(act_mute)
         menu.addSeparator()
         menu.addAction(act_look)
+        menu.addAction(act_rt)
         menu.addSeparator()
         menu.addAction(act_quit)
         self.tray.setContextMenu(menu)
         # v2.9.3 修 bug：activated 会连右键(Context)一起触发，原先右键托盘图标就顺手把桌宠藏了
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
+        # v3.0.21：上次开着就接着开（关着不动，避免没人要的后台轮询）
+        if bool(self.config.get("realtime_guard", False)):
+            self._start_realtime()
 
     def _on_tray_activated(self, reason):
         """只有左键单击才切换显示；右键只弹菜单，不碰桌宠。"""
@@ -3087,6 +3199,7 @@ class Controller:
             self.pet.raise_()
 
     def quit_app(self):
+        self._stop_realtime()
         for w in (self.worker, self.know_worker, self.clean_worker, self.update_worker,
                   self.llm_worker, self.scan_worker, self.ambient_worker, self.update_dl,
                   self.guard_worker, self.defender_worker):

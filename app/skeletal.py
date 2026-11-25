@@ -289,13 +289,26 @@ class Player:
 
 
 class SkeletalSprite:
-    """把一张立绘 + 骨架 + 蒙皮 + 动作库拼成"能出帧"的东西。"""
+    """把一张立绘 + 骨架 + 蒙皮 + 动作库拼成"能出帧"的东西。
 
-    def __init__(self, pix: QPixmap):
+    v3.0.21：加 quality 档。低配机（核显 / 无独显 / 远程桌面）用 low 档：
+    网格 6×12（三角形 320→144）且关掉三角形内双线性采样，靠 CPU 直接拷贝。
+    """
+
+    QUALITY = {
+        "high": ((8, 20), True),   # 267x512 立绘：320 三角 + 平滑采样
+        "mid": ((8, 16), True),    # 256 三角
+        "low": ((6, 12), False),   # 144 三角 + 硬采样
+    }
+
+    def __init__(self, pix: QPixmap, quality: str = "high"):
         self.pix = pix
         self.W, self.H = pix.width(), pix.height()
+        self.quality = quality if quality in self.QUALITY else "high"
+        grid, smooth = self.QUALITY[self.quality]
+        self._smooth = smooth
         self.skeleton = Skeleton(self.W, self.H)
-        self.skin = Skin(self.W, self.H, GRID)
+        self.skin = Skin(self.W, self.H, grid)
         self.player = Player()
         self._cells = []
         for j in range(self.skin.gy):
@@ -317,7 +330,7 @@ class SkeletalSprite:
         canvas = QPixmap(self.W, self.H)
         canvas.fill(Qt.transparent)
         p = QPainter(canvas)
-        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, self._smooth)
         # 网格逐三角形绘制时若开抗锯齿，三角形外扩重叠处的半透明边缘会叠出一层细横纹；
         # 这里关掉 AA，靠 0.18px 外扩消缝，代价是极边缘有轻微锯齿。
         p.setRenderHint(QPainter.Antialiasing, False)
