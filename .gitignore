@@ -1,11 +1,18 @@
 # 运行/构建产物不进仓库
-runtime/
 dist/
 build/
 __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+# runtime：只把推理引擎 dafeiyu 入库（CI 打安装包要用它，约 63MB），
+# 模型、下载缓存、日志、配置备份一律不进仓库
+runtime/models/
+runtime/_dl/
+runtime/*.log
+runtime/*.txt
+runtime/backup_config_*.json
 
 # 项目自带虚拟环境（本地自建，见 PROJECT.md 第一节）
 venv/
