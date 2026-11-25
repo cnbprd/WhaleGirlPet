@@ -95,6 +95,8 @@ DEFAULT_CONFIG = {
     "llm_model_file": "",
     # v3.0.18：多模态投影文件。留空 = 自动在同目录找 mmproj*.gguf 按模型名匹配
     "llm_mmproj": "",
+    # v3.0.19：看屏幕时图片的长边（512 = 实测最快且能判断场景；768 更清楚但更慢）
+    "vision_max_side": 512,
     # v3.0.17：三档分工（大脑 / 快反 / 工具人）。留空 = 不强制切模型，用默认候选。
     #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 负责看图（多模态）。
     #   注意：换模型要重启引擎（实测 4~24s），所以每个角色只在对应任务上才切。
@@ -2908,7 +2910,8 @@ class Controller:
             self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
             return
         self.pet.bubble.show_text("我看看屏幕上是什么…", 2600)
-        path = vision.capture_screen()
+        side = int(self.config.get("vision_max_side", 512) or 512)
+        path = vision.capture_screen(max_side=side)
         if not path:
             self.pet.bubble.show_text("截图没成功，可能是屏幕权限的问题。", 3600)
             return
@@ -2916,7 +2919,7 @@ class Controller:
         msgs = [{"role": "system", "content": self._system_text(ask, True)}]
         if self.config.get("memory_on", True):
             msgs.extend(self.memory.recent(4))
-        msgs.append(vision.vision_message(ask, path))
+        msgs.append(vision.vision_message(ask, path, max_side=side))
         try:
             self.llm_worker = local_llm.LocalChatWorker(
                 self.llm, msgs, max_tokens=200, temperature=0.6, role="fast")

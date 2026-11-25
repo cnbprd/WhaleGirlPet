@@ -2,6 +2,17 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.19（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 真实首帧探针 | 新增 `tools/first_frame.py`：Win32 `EnumWindows` 找可见窗口（onefile 连父/子进程一起查）+ `ImageGrab` 算灰度 std（>8 算画出来了） | onedir 三次 0.64/0.59/0.78（中位 **0.64s**） vs onefile 3.82/3.72/3.72（中位 **3.72s**），省约 3.1s |
+| 2 音频（做不通） | 新增 `tools/probe_audio.py` 试三种写法 | `input_audio` 对象 200 但模型答「无法处理音频」；`audio_url` 400；字符串 500。引擎日志：`init_audio: experimental stage` → 音频没被编码 |
+| 3 图片上限澄清 | 新增 `tools/probe_image_limit.py`（默认 / max-tokens 8192 / 16384 三组参数 × 5 尺寸） | `--image-max-tokens` 不影响成败；512~1280px 全过（data url 28~99KB）；卡的是**请求体 ~100KB**（156KB 那次失败） |
+| 4 读字能力边界 | 同图 5 档分辨率都读不出 `EdgeOne Makers` | 回答是「0 0 0…」「方块符号」→ 4B 视觉不是 OCR，读字应走专门 OCR |
+| 5 清晰度可调 | `vision.py` 的 `capture_screen/to_data_url/vision_message` 加 `max_side`；新增 `config["vision_max_side"]`（默认 512） | 512 看图 4~5s；本次实验 768→21.8s（长输出条件下） |
+| 6 版本 3.0.19 | `paths.APP_VERSION` + iss 六处 + 标题「首帧实测 + 视觉可调」 | 六处 3.0.19 |
+
 ## v3.0.18（2026-11-25）
 
 | 项 | 改动 | 实测 |

@@ -15,13 +15,13 @@ MIN_SIDE = 256
 JPEG_Q = 80             # 实测 PNG 原图 2.42MB 直接 400，必须转 JPEG
 
 
-def _scale(pm):
-    """等比缩到 MAX_SIDE 以内（返回 QPixmap；失败就原样返回）。"""
+def _scale(pm, max_side=MAX_SIDE):
+    """等比缩到 max_side 以内（返回 QPixmap；失败就原样返回）。"""
     try:
         w, h = pm.width(), pm.height()
-        if max(w, h) <= MAX_SIDE:
+        if max(w, h) <= max_side:
             return pm
-        k = MAX_SIDE / float(max(w, h))
+        k = max_side / float(max(w, h))
         from PySide6.QtCore import Qt
         return pm.scaled(max(MIN_SIDE, int(w * k)), max(MIN_SIDE, int(h * k)),
                          Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -29,7 +29,7 @@ def _scale(pm):
         return pm
 
 
-def capture_screen(path: str = "") -> str:
+def capture_screen(path: str = "", max_side: int = MAX_SIDE) -> str:
     """截整屏 → 存 JPEG（不是 PNG），返回路径（失败返回空串）。"""
     try:
         from PySide6.QtWidgets import QApplication
@@ -42,7 +42,7 @@ def capture_screen(path: str = "") -> str:
         pm = screen.grabWindow(0)
         if pm.isNull():
             return ""
-        pm = _scale(pm)
+        pm = _scale(pm, max_side)
         if not path:
             d = tempfile.gettempdir()
             path = os.path.join(d, f"whale_shot_{int(time.time())}.jpg")
@@ -52,8 +52,8 @@ def capture_screen(path: str = "") -> str:
         return ""
 
 
-def _small_jpeg(path: str) -> bytes:
-    """任何图片 → 长边 ≤ MAX_SIDE 的 JPEG 字节。体积要小，否则引擎直接 400。"""
+def _small_jpeg(path: str, max_side: int = MAX_SIDE) -> bytes:
+    """任何图片 → 长边 ≤ max_side 的 JPEG 字节。体积要小，否则引擎直接 400。"""
     try:
         from PySide6.QtGui import QImage
         from PySide6.QtCore import Qt
@@ -61,8 +61,8 @@ def _small_jpeg(path: str) -> bytes:
         if img.isNull():
             with open(path, "rb") as f:
                 return f.read()
-        if max(img.width(), img.height()) > MAX_SIDE:
-            img = img.scaled(MAX_SIDE, MAX_SIDE, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        if max(img.width(), img.height()) > max_side:
+            img = img.scaled(max_side, max_side, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         out = os.path.join(tempfile.gettempdir(), "whale_vis_tmp.jpg")
         img.save(out, "JPG", JPEG_Q)
         with open(out, "rb") as f:
@@ -72,20 +72,20 @@ def _small_jpeg(path: str) -> bytes:
             return f.read()
 
 
-def to_data_url(path: str) -> str:
+def to_data_url(path: str, max_side: int = MAX_SIDE) -> str:
     """图片文件 → data:image/jpeg;base64,...（llama-server 只认 image_url 对象里的这个）。"""
     try:
         if not path or not os.path.exists(path):
             return ""
-        raw = _small_jpeg(path)
+        raw = _small_jpeg(path, max_side)
         return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
     except Exception:  # noqa: BLE001
         return ""
 
 
-def vision_message(text: str, image_path: str) -> dict:
+def vision_message(text: str, image_path: str, max_side: int = MAX_SIDE) -> dict:
     """构一条完整的 OpenAI vision user 消息（返回值直接 append 到 messages 列表）。"""
-    url = to_data_url(image_path)
+    url = to_data_url(image_path, max_side)
     if not url:
         return {"role": "user", "content": text}
     return {"role": "user", "content": [
