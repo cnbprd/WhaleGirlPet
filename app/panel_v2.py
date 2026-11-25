@@ -173,13 +173,19 @@ def tab_models(panel) -> QWidget:
     panel.lbl_cur_model.setWordWrap(True)
     lay.addWidget(panel.lbl_cur_model)
 
-    # v3.0.8：本地推理后端显式可选（默认自动）。Ollama 坏掉时「只用自带引擎」能立刻避开
+    # v3.0.9：去掉「只用 Ollama」——Ollama 那套在这台机上反复出问题，
+    # 只留「自动」（Ollama 活着才用它、坏了自动退回）和「只用自带引擎」两项。
     panel.cmb_backend = QComboBox()
-    panel.cmb_backend.addItem("自动（有 Ollama 就先试 Ollama，坏了自动退回自带引擎）", "auto")
+    panel.cmb_backend.addItem("自动（有可用的 Ollama 就用它，坏了/跑不动自动退回自带引擎）", "auto")
     panel.cmb_backend.addItem("只用自带引擎 dafeiyu（不经过 Ollama，推荐）", "dafeiyu_cpp")
-    panel.cmb_backend.addItem("只用 Ollama", "ollama")
     panel.cmb_backend.currentIndexChanged.connect(lambda _: panel._on_backend_change())
     lay.addWidget(_row(QLabel("本地推理后端"), panel.cmb_backend))
+
+    # v3.0.9：调度状态一行看全（当前模型/端口/是否排队/上次错误/有没有自动降级）
+    panel.lbl_engine = QLabel("")
+    panel.lbl_engine.setWordWrap(True)
+    panel.lbl_engine.setStyleSheet("color:#555;font-size:12px;")
+    lay.addWidget(panel.lbl_engine)
 
     panel.lst_models = QListWidget()
     panel.lst_models.setMinimumHeight(268)

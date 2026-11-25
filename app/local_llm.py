@@ -10,7 +10,9 @@
 """
 import json
 import os
+import socket
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -155,6 +157,22 @@ def resolve_model(name: str = "", config: dict = None) -> str:
     return found[0]["path"] if found else ""
 
 
+def _port_free(port: int) -> bool:
+    """端口能不能绑（用来判断被谁占了）。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.settimeout(0.35)
+        s.bind(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            s.close()
+        except OSError:
+            pass
+
+
 def model_path(name: str = "", config: dict = None) -> str:
     """兼容老调用：不给名字时取首选模型 / 第一个模型。"""
     return resolve_model(name, config)
@@ -227,6 +245,49 @@ def ollama_alive(host: str = OLLAMA_HOST) -> bool:
     return isinstance(data, dict) and "models" in data
 
 
+_RT_CACHE = {"t": 0.0, "ok": True}
+
+
+def ollama_runtime_ok() -> bool:
+    """Ollama 的运行库（llama-server.exe）还在不在。
+
+    v3.0.7 实测：这台机 Ollama 0.40.16 的 llama-server.exe 缺失，/api/tags 正常但
+    /api/chat 直接 500。这里先做零成本的文件检查，坏的就别让「自动」先白打一次请求
+    （省掉那 1～3 秒的首答延迟和一次报错）。找不到安装目录时放行，交给运行时判断。
+    """
+    now = time.monotonic()
+    if now - _RT_CACHE["t"] < 60:
+        return _RT_CACHE["ok"]
+    roots = []
+    home = os.environ.get("OLLAMA_HOME", "")
+    if home:
+        roots.append(home)
+    la = os.environ.get("LOCALAPPDATA", "")
+    if la:
+        roots.append(os.path.join(la, "Programs", "Ollama"))
+    for env in ("PROGRAMFILES", "PROGRAMFILES(X86)"):
+        v = os.environ.get(env, "")
+        if v:
+            roots.append(os.path.join(v, "Ollama"))
+    found_dir = False
+    ok = False
+    for r in roots:
+        if not os.path.isdir(r):
+            continue
+        found_dir = True
+        for cand in (os.path.join(r, "lib", "ollama", "llama-server.exe"),
+                     os.path.join(r, "llama-server.exe")):
+            if os.path.exists(cand):
+                ok = True
+                break
+        if ok:
+            break
+    if not found_dir:
+        ok = True          # 没装/位置特殊，不误判
+    _RT_CACHE.update({"t": now, "ok": ok})
+    return ok
+
+
 def ollama_models(host: str = OLLAMA_HOST) -> list:
     data = _http_json(host + "/api/tags", timeout=3.0) or {}
     out = []
@@ -268,13 +329,48 @@ class ServerManager:
         self.last_used = 0.0
         # Ollama 装了但运行库缺失时会 500；记下来，后续直接用自带 dafeiyu 引擎
         self.ollama_broken = False
+        # v3.0.9 调配机制：同一时刻只放一个推理请求（引擎只有 1 个 slot），
+        # 其余请求排队，避免两路并发互相抢 slot 导致双双超时。
+        self._chat_lock = threading.Lock()
+        self.active_model = ""       # 实际加载成功的模型
+        self.fallback_note = ""      # 降级说明（首选模型起不来时写这里）
+        self.port_auto = False       # 端口被占用时自动换过
 
     @property
     def model_file(self) -> str:
         return str(self.config.get("llm_model_file", "") or "")
 
     def model(self) -> str:
-        return model_path(self.model_file, self.config)
+        return self.active_model or model_path(self.model_file, self.config)
+
+    def candidates(self) -> list:
+        """启动时的模型候选：用户指定 → 首选名单 → 其余（小的优先，越容易起来）。
+
+        调配的目的：某个模型因内存不足/文件损坏起不来时，自动换下一个能用的，
+        而不是让用户看到「本地模型没反应」就没了下文。
+        """
+        out, sizes = [], []
+
+        def _add(path: str):
+            if not path or path in out:
+                return
+            try:
+                sz = os.path.getsize(path)
+            except OSError:
+                sz = 0
+            # 同一份权重的不同文件名（体积几乎相同）不重复当候选，免得白等一轮
+            if any(abs(sz - s) < 5 * 1048576 for s in sizes):
+                return
+            out.append(path)
+            sizes.append(sz)
+
+        _add(model_path(self.model_file, self.config) if self.model_file else "")
+        for name in PREFERRED_MODELS:
+            _add(model_path(name, self.config))
+        rest = sorted(scan_models(self.config), key=lambda m: m["size_mb"])
+        for m in rest:
+            _add(m["path"])
+        return out
 
     # ---------- 后端选择 ----------
     @property
@@ -283,24 +379,21 @@ class ServerManager:
 
     @property
     def backend(self) -> str:
-        """auto: 有 Ollama 用 Ollama（GPU），否则 dafeiyu.cpp（CPU）；也可强制 ollama / dafeiyu_cpp。
+        """auto: 有 Ollama 用 Ollama（GPU），否则 dafeiyu.cpp（CPU）；也可强制 dafeiyu_cpp。
 
-        空闲调度：config.gpu_when_idle 为真时，一旦检测到游戏在跑就把推理退回 CPU 引擎，
-        不跟游戏抢显存；否则用 Ollama 吃 GPU。
+        v3.0.9：界面去掉了「只用 Ollama」，老配置里的 ollama 一律按 auto 处理
+        （Ollama 坏过一次就固定走自带引擎，不再反复撞墙）。
         """
         want = str(self.config.get("llm_backend", "auto") or "auto")
-        if want == "llama_cpp":          # v2.9.7 前的老配置值，认成同一后端
-            want = "dafeiyu_cpp"
-        if want in ("ollama", "dafeiyu_cpp"):
-            # v3.0.7 实测：Ollama 的 llama-server.exe 缺失时，它的 /api/tags 仍然正常，
-            # 只有真正生成才报错。这种“假活的 Ollama”即使配置里强制 ollama，也必须退回自带引擎，
-            # 否则请求会全打在 11434 上拿到 404/500，用户看到的就是“模型扫到了但不说话”。
-            if want == "ollama" and self.ollama_broken:
-                return "dafeiyu_cpp"
-            return want
+        if want in ("llama_cpp", "ollama"):   # 老配置值统一降级为自动
+            want = "auto"
+        if want == "dafeiyu_cpp":
+            return "dafeiyu_cpp"
         if self.ollama_broken:
             return "dafeiyu_cpp"
         if not ollama_alive(self.ollama_host):
+            return "dafeiyu_cpp"
+        if not ollama_runtime_ok():
             return "dafeiyu_cpp"
         if self.config.get("gpu_when_idle", True):
             try:
@@ -341,15 +434,54 @@ class ServerManager:
             return False
         if self.is_running() and self.health():
             self.ready = True
+            self.active_model = self.active_model or self.model()
             return True
         if not available(self.config):
             self.last_error = ("没找到推理程序（runtime/dafeiyu/dafeiyu-server.exe）"
                                "或任何可用的 .gguf 模型")
             return False
-        exe, model = server_exe(), self.model()
-        if not model:
+        exe = server_exe()
+        if not os.path.exists(exe):
+            self.last_error = f"推理程序不存在：{exe}"
+            return False
+        cands = self.candidates()
+        if not cands:
             self.last_error = "模型的目录里没有找到可用的 .gguf（会扫 runtime/models、数据目录的 models/workspace）"
             return False
+        self._ensure_port()
+        # 调配：最多试 2 个候选，第一个起不来（缺内存/文件坏）就换下一个，别让用户干等 2 分钟
+        errs = []
+        tried = []
+        for model in cands[:2]:
+            tried.append(model)
+            if self._spawn_and_wait(exe, model):
+                self.active_model = model
+                if model != cands[0]:
+                    self.fallback_note = (
+                        f"首选 {os.path.basename(cands[0])} 起不来，已自动换成 "
+                        f"{os.path.basename(model)}")
+                return True
+            errs.append(f"{os.path.basename(model)}：{self.last_error}")
+        self.last_error = "；".join(errs) if errs else "没有可加载的模型"
+        self.active_model = ""
+        self.fallback_note = self.last_error
+        return False
+
+    def _ensure_port(self) -> int:
+        """配置端口被别的程序占了就自动换一个，避免「本地模型连不上」其实只是端口冲突。"""
+        if _port_free(self.port):
+            return self.port
+        for p in range(DEFAULT_PORT, DEFAULT_PORT + 30):
+            if p != self.port and _port_free(p):
+                self.port_auto = True
+                self.fallback_note = (self.fallback_note + "；" if self.fallback_note else "") + \
+                    f"端口被占用，已改用 {p}"
+                self.port = p
+                return p
+        return self.port
+
+    def _spawn_and_wait(self, exe: str, model: str) -> bool:
+        """起一个引擎进程并等它加载完（最多 60 秒）。"""
         ctx = str(int(self.config.get("llm_ctx", 4096)))
         threads = str(max(2, min(8, (os.cpu_count() or 4) // 2)))
         args = [exe, "-m", model, "-c", ctx, "-t", threads, "--port", str(self.port),
@@ -378,14 +510,67 @@ class ServerManager:
         # 最多等 60 秒加载模型
         for _ in range(120):
             if self.proc.poll() is not None:
-                self.last_error = "dafeiyu-server 进程已退出，详见 runtime/dafeiyu-server.log"
+                self.last_error = (f"{os.path.basename(model)} 加载时进程退出"
+                                   "（多半是内存不够或模型文件损坏，详见 runtime/dafeiyu-server.log）")
+                self.stop()
                 return False
             if self.health():
                 self.ready = True
+                self.last_error = ""
                 return True
             time.sleep(0.5)
-        self.last_error = "加载超时（60s）"
+        self.last_error = f"{os.path.basename(model)} 加载超时（60s）"
+        self.stop()
         return False
+
+    def dispatch(self, messages: list, max_tokens: int = 220, temperature: float = 0.7,
+                 timeout: int = 90, fmt: str | None = None, retry: bool = True):
+        """统一调度入口（v3.0.9）：串行化 + 确保就绪 + 失败自愈。
+
+        为什么要串行：引擎只开 1 个 slot（-np 1），聊天和指令解析两路同时打进来时，
+        后到的会排队到超时。这里加锁排队，先来的先答，第二个等它答完再发。
+        为什么要自愈：引擎进程活着但连接断了（比如被系统回收显卡上下文），
+        重启一次通常就好，比直接给用户报错强。
+        """
+        with self._chat_lock:
+            if self.backend == "ollama":
+                if not self.health():
+                    self.start()
+            elif not self.is_running() or not self.health():
+                # 进程活着但 /health 不通（显卡上下文被回收、端口被抢）也当没起来，重启一轮
+                self.stop()
+                if not self.start():
+                    return False, self.last_error or "local_start_failed"
+            ok, out = self.chat(messages, max_tokens, temperature, timeout, fmt)
+            if ok:
+                return True, out
+            if retry and out in ("local_offline", "local_http_500", "local_http_404",
+                                 "local_error", "local_empty", "local_not_ready"):
+                self.stop()
+                time.sleep(0.4)
+                if self.start():
+                    ok2, out2 = self.chat(messages, max_tokens, temperature, timeout, fmt)
+                    if ok2:
+                        return True, out2
+                    return False, out2
+            return False, out
+
+    def status(self) -> dict:
+        """给面板看的调度状态：用哪个模型、端口、有没有降级或排队。"""
+        m = self.model()
+        return {
+            "backend": self.backend,
+            "model": os.path.basename(m) if m else "",
+            "model_path": m,
+            "running": self.is_running(),
+            "ready": self.ready,
+            "port": self.port,
+            "port_auto": self.port_auto,
+            "fallback": self.fallback_note,
+            "last_error": self.last_error,
+            "busy": self._chat_lock.locked(),
+            "idle_min": round(self.idle_minutes(), 1),
+        }
 
     def is_running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -543,11 +728,9 @@ class LocalChatWorker(QThread):
     def run(self):
         if self._stop:
             return
-        if not self.manager.is_running() and not self.manager.start():
-            self.failed.emit(self.manager.last_error or "local_start_failed")
-            return
-        ok, out = self.manager.chat(self.messages, self.max_tokens, self.temperature,
-                                    fmt=self.fmt)
+        # v3.0.9：统一走 dispatch（串行排队 + 起不来先拉起 + 断了重启一次）
+        ok, out = self.manager.dispatch(self.messages, self.max_tokens, self.temperature,
+                                        fmt=self.fmt)
         if self._stop:
             return
         if ok:

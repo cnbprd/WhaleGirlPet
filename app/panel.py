@@ -2022,7 +2022,9 @@ class ControlPanel(QWidget):
             host = ctl.config.get("ollama_host", local_llm.OLLAMA_HOST)
             om = local_llm.ollama_models(host) if local_llm.ollama_alive(host) else []
             backend = "ollama" if (om and local_llm.ollama_alive(host)
-                                   and ctl.config.get("llm_backend", "auto") in ("auto", "ollama")) else "dafeiyu_cpp"
+                                   and local_llm.ollama_runtime_ok()
+                                   and ctl.config.get("llm_backend", "auto") == "auto"
+                                   and not ctl.llm.ollama_broken) else "dafeiyu_cpp"
         except Exception:  # noqa: BLE001
             om, backend = [], "dafeiyu_cpp"
         by_name = {m["name"]: m for m in local}
@@ -2040,16 +2042,43 @@ class ControlPanel(QWidget):
             + "\n".join(ctl.model_search_dirs()[:6])
             + "\n\n把 .gguf 丢进任意一个目录，点「刷新已安装」就能看到。\n"
             "本机装并启动着 Ollama 的话，Ollama 里的模型也会列在最上面。")
-        # 后端下拉框同步实际配置
+        # 后端下拉框同步实际配置（v3.0.9：老配置里的 ollama 一律显示成「自动」）
         try:
             _b = str(ctl.config.get("llm_backend", "auto") or "auto")
-            if _b == "llama_cpp":
-                _b = "dafeiyu_cpp"
+            if _b in ("llama_cpp", "ollama"):
+                _b = "auto"
+                if str(ctl.config.get("llm_backend", "")) != "auto":
+                    ctl.config["llm_backend"] = "auto"
             _i = self.cmb_backend.findData(_b)
             if _i >= 0 and self.cmb_backend.currentIndex() != _i:
                 self.cmb_backend.blockSignals(True)
                 self.cmb_backend.setCurrentIndex(_i)
                 self.cmb_backend.blockSignals(False)
+        except Exception:  # noqa: BLE001
+            pass
+        # v3.0.9：调度状态一行看全
+        try:
+            st = ctl.llm.status()
+            _bits = [f"引擎：{'已加载' if st['running'] else '未加载'}"]
+            if st["model"]:
+                _bits.append(st["model"])
+            _bits.append(f"端口 {st['port']}" + ("（自动换的）" if st["port_auto"] else ""))
+            if st["busy"]:
+                _bits.append("正在推理（其它请求排队中）")
+            if st["fallback"]:
+                _bits.append("降级：" + st["fallback"][:80])
+            if st["last_error"]:
+                _bits.append("上次错误：" + st["last_error"][:80])
+            if st["backend"] != "ollama":
+                try:
+                    if local_llm.ollama_alive(host) and not local_llm.ollama_runtime_ok():
+                        _bits.append("Ollama：运行库缺失，已自动跳过")
+                except Exception:  # noqa: BLE001
+                    pass
+            self.lbl_engine.setText(" · ".join(_bits))
+            self.lbl_engine.setToolTip(
+                "调配机制：同一时刻只跑一个请求（其余排队）；当前模型起不来会自动换下一个；"
+                "端口被占用会自动换端口；连接断了会自动重启一次；空闲超时会自动卸载。")
         except Exception:  # noqa: BLE001
             pass
         self.lst_models.clear()
@@ -2221,10 +2250,12 @@ class ControlPanel(QWidget):
         self.ed_model_url.clear()
 
     def _on_backend_change(self):
-        """切本地推理后端（auto / dafeiyu_cpp / ollama），立刻生效下一次对话。"""
+        """切本地推理后端（v3.0.9 只剩 auto / dafeiyu_cpp 两项）。"""
         try:
             v = self.cmb_backend.currentData() or "auto"
         except Exception:  # noqa: BLE001
+            v = "auto"
+        if v == "ollama":      # 老界面/老配置残留，一律当自动
             v = "auto"
         self.ctl.config["llm_backend"] = v
         self.ctl.save_config()
@@ -2234,8 +2265,7 @@ class ControlPanel(QWidget):
             pass
         self.lbl_dl.setText({
             "auto": "已切「自动」：有可用 Ollama 先用它，跑不动会自己退回自带引擎。",
-            "dafeiyu_cpp": "已切「只用自带引擎」：以后不碰 Ollama，直接用 local gguf。",
-            "ollama": "已切「只用 Ollama」：Ollama 修好前会报错，建议先别选这个。",
+            "dafeiyu_cpp": "已切「只用自带引擎」：以后不碰 Ollama，直接用本地 gguf。",
         }.get(v, "已切换。"))
         self._refresh_v2()
 
