@@ -13,6 +13,7 @@
 | 5 引擎单 slot | 启动参数加 `-np 1`（4 slot 白占 KV） | RSS 4647.6 → 4492.4MB |
 | 6 聊天历史 | 改为 deque 流式读，只留最近 240 条在内存 | 编译通过，面板加载正常 |
 | 7 portable 带引擎 | CI 打 portable 时把 `runtime/dafeiyu` 一起打进 zip | workflow 已改，待 CI 验证 |
+| 8 内存构成核实 | 用 `VirtualQueryEx` + `GetMappedFileNameW` 遍历引擎地址空间：`2525.9MB MEM_MAPPED qwen35-4b-Q4_K_M.gguf`；`EmptyWorkingSet` 后私有提交 2348MB 不变 | 见 `tools/mem_big_regions.py` |
 | 版本 3.0.4 | `paths.APP_VERSION`、iss 五处同步 | — |
 
 ## v3.0.3（2026-11-25）
