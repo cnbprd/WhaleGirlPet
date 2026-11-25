@@ -72,7 +72,9 @@ jobs:
 
       - name: Upload assets to Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          # 用仓库 owner 的令牌发布，Release 页面上显示成 cnbprd 本人，
+          # 而不是 github-actions[bot]。没配这个 secret 时退回默认令牌。
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           $ver = $env:VER
           $tag = "v$ver"
