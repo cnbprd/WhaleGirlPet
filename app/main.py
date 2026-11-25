@@ -1284,8 +1284,40 @@ class Controller:
         else:
             self._on_ai_failed(f"local_{reason}")
 
+    def _polish_reply(self, text: str) -> str:
+        """v3.0.14：把模型输出里那些「乱」的东西收掉，只留人话。
+
+        处理六类：markdown 记号、代码块、列表符号/小标题、链接地址、
+        整句复读、多余空白与残破标点；顺带剥掉 assistant: 这类前缀。
+        只做清字，不改语义，清洗后的文本同时用于气泡、聊天记录和 TTS。
+        """
+        t = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        t = re.sub(r"^\s*(?:assistant|user|bot|AI|Reply|Answer)\s*[:：]\s*", "", t, flags=re.I)
+        t = re.sub(r"```.*?```", " ", t, flags=re.S)
+        t = re.sub(r"`([^`\n]{0,60})`", r"\1", t)
+        t = re.sub(r"\*\*([^*\n]{1,80})\*\*", r"\1", t)
+        t = re.sub(r"\*([^*\n]{1,80})\*", r"\1", t)
+        t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)
+        t = re.sub(r"^\s{0,3}(?:[-+*•·]|\d{1,2}[.、)])\s+", "", t, flags=re.M)
+        t = re.sub(r"\[([^\]\n]{1,60})\]\((?:https?://|www\.)[^)\n]*\)", r"\1", t)
+        t = re.sub(r"https?://\S+", "", t)
+        t = re.sub(r"^\s{0,3}>\s*", "", t, flags=re.M)
+        t = re.sub(r"^\s*[-—=]{3,}\s*$", "", t, flags=re.M)
+        t = re.sub(r"\n\s*\n+", "\n", t)
+        t = re.sub(r"[ \t\u3000]{2,}", " ", t)
+        # 整句复读：同一句连着三遍以上，折成一遍
+        t = re.sub(r"([^\n。！？!?]{3,30}[。！？!?])(?:\s*\1){2,}", r"\1", t)
+        # 半截括号/引号收尾、结尾挂着的逗号
+        t = re.sub(r"([「『（(\[【])\s*$", "", t, flags=re.M)
+        t = re.sub(r"[，、,;；]\s*$", "。", t)
+        # 短回复（<=100 字）把换行也抹平：气泡里本来就是一段话，分行只会显得碎
+        t = t.strip()
+        if len(t) <= 100:
+            t = re.sub(r"\n+", " ", t).strip()
+        return t
+
     def _finish_reply(self, content: str, source: str = ""):
-        content = (content or "").strip()
+        content = self._polish_reply(content)
         if not content:
             self._on_ai_failed("empty")
             return
@@ -2804,16 +2836,14 @@ class Controller:
         act_mute.toggled.connect(self.set_mute_idle)
         act_quit = QAction("退出程序", menu)
         act_quit.triggered.connect(self.quit_app)
-        # v2.9.7：主题整体搬进「设置 → 桌宠行为」，托盘只留跳转
-        act_theme_goto = QAction("设置…", menu)
-        act_theme_goto.triggered.connect(self.open_theme_settings)
+        # v3.0.14：菜单里「设置」（顶部带图标）与「设置…」重复，删掉后者。
+        # 主题等设置都在控制面板里，点「设置」直达即可。
         menu.addAction(act_panel)
         menu.addSeparator()
         menu.addAction(act_show)
         menu.addSeparator()
         menu.addAction(act_auto)
         menu.addAction(act_mute)
-        menu.addAction(act_theme_goto)
         menu.addSeparator()
         menu.addAction(act_quit)
         self.tray.setContextMenu(menu)
