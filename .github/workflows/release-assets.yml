@@ -44,6 +44,16 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Assert local engine present
+        run: |
+          # v3.0.22：iss 里 runtime 用的是 skipifsourcedoesntexist，缺了不会报错、
+          # 只会静默做出一个更小的安装包。构建前先卡一道。
+          if (-not (Test-Path runtime\dafeiyu\dafeiyu-server.exe)) {
+            throw "runtime\dafeiyu 不在 checkout 里，Setup/portable 都会缺引擎"
+          }
+          $n = (Get-ChildItem runtime\dafeiyu -File -Recurse | Measure-Object).Count
+          Write-Output "runtime\dafeiyu: $n 个文件"
+
       - name: Build installer
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\whale_pet.iss
@@ -60,6 +70,14 @@ jobs:
             Copy-Item -Recurse runtime\dafeiyu pkg\runtime\dafeiyu
             Write-Output "portable 已带 runtime\dafeiyu"
           }
+          # v3.0.22：引擎在 git 里是入库的（52 个文件 / 62.9MB），CI 若漏拷就会做出
+          # 比本地小一大截的包。这里硬性断言，宁可构建失败也别发残缺产物。
+          if (-not (Test-Path pkg\runtime\dafeiyu\dafeiyu-server.exe)) {
+            throw "packaging 缺少 runtime\dafeiyu\dafeiyu-server.exe —— CI 产物会小于本地构建版"
+          }
+          $engineMB = [math]::Round(((Get-ChildItem pkg\runtime\dafeiyu -File -Recurse |
+            Measure-Object Length -Sum).Sum / 1MB), 1)
+          Write-Output "runtime\dafeiyu 已打包：$engineMB MB"
           $ver = $env:VER
           Compress-Archive -Path pkg\* -DestinationPath "dist\WhaleGirlPet-$ver-portable.zip" -Force -CompressionLevel Optimal
           git archive --format=zip --prefix="WhaleGirlPet-$ver/" -o "dist\WhaleGirlPet-$ver-source.zip" HEAD

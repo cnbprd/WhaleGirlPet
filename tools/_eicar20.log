@@ -1,0 +1,39 @@
+判定分支覆盖（不依赖系统是否出手）
+  ok   自家命中
+  ok   系统锁住内容
+  ok   系统直接删除
+  ok   其它错误不算通过
+  ok   无害对照被咬=失败
+  ok   规则层没命中=失败
+分支覆盖：6/6
+
+EICAR 稳定性：20 轮（授权真实触发 Defender）
+  #   ok   自家命中  系统拦截        耗时ms
+  1   True  1         self            35.1
+  2   True  1         self            44.4
+  3   True  1         self            7.8
+  4   True  1         self            9.5
+  5   True  1         self            7.4
+  6   True  1         self            8.7
+  7   True  1         self            7.9
+  8   True  1         self            7.6
+  9   True  1         self            8.2
+  10  True  1         self            9.5
+  11  True  1         self            7.5
+  12  True  1         self            8.2
+  13  True  1         self            10.6
+  14  True  1         self            10.8
+  15  True  1         self            9.4
+  16  True  1         self            8.5
+  17  True  1         self            8.0
+  18  True  1         self            8.1
+  19  True  1         self            9.5
+  20  True  1         self            10.5
+
+汇总
+  ok 20/20 · 自家命中 20 次 · 系统拦截 0 次
+  耗时 p50 8.7ms / max 44.4ms
+  误报（无害对照被咬）0 次
+  落盘→读不动：readable @ Nonems（errno=None）
+
+结论：稳定

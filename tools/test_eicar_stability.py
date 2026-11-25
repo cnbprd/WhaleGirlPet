@@ -77,7 +77,7 @@ def branch_cover() -> int:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rounds", type=int, default=10)
+    ap.add_argument("--rounds", type=int, default=20)
     ap.add_argument("--gap", type=float, default=0.5, help="每轮间隔秒，让 Defender 状态复位")
     a = ap.parse_args()
 

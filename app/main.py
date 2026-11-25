@@ -100,8 +100,12 @@ DEFAULT_CONFIG = {
     # v3.0.21：渲染档 auto/high/mid/low（auto = 有独显 high、无独显/远程桌面 low）
     # 以及帧间隔（0 = 按档位默认：low 40ms/25fps，其余 33ms/30fps）
     "render_quality": "auto", "frame_ms": 0,
-    # v3.0.21：实时监控默认关（后台轮询会常驻 IO + 可能误报，交给用户在托盘里开）
-    "realtime_guard": False,
+    # v3.0.22：立绘放大 >1.2 倍时用 2 倍超采样平滑 alpha 边缘（关掉更省 CPU）
+    "alpha_supersample": True,
+    # v3.0.22：实时监控默认开（用户要求）；后台每 2 秒扫一眼三个热门目录，只报不杀
+    "realtime_guard": True,
+    # v3.0.22：监控命中高危（≥40 分）时自动进隔离区（移走 + 可恢复，不删）
+    "auto_quarantine": True,
     # v3.0.17：三档分工（大脑 / 快反 / 工具人）。留空 = 不强制切模型，用默认候选。
     #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 负责看图（多模态）。
     #   注意：换模型要重启引擎（实测 4~24s），所以每个角色只在对应任务上才切。
@@ -359,14 +363,30 @@ class Controller:
         return cfg
 
     def save_config(self):
+        """合并保存（v3.0.22）。
+
+        fsync 在本机实测一次 ~210ms；面板刷新一次会连写 7 次（改开关、存状态、存情绪…），
+        光落盘就 1.5 秒。这里改成 600ms 内多次改动合并成一次原子写，
+        退出时再强制 flush 一次，断电丢的也只是最后 0.6 秒内的改动。
+        """
         self.pet.save_position()
         self.config["save"] = self.state.to_dict()
         try:
             self.config["emotion"] = self.emotion.to_dict()
         except Exception:  # noqa: BLE001
             pass
+        if getattr(self, "_save_timer", None) is None:
+            self._save_timer = QTimer()
+            self._save_timer.setSingleShot(True)
+            self._save_timer.timeout.connect(self._flush_config)
+        self._save_timer.start(600)
+
+    def _flush_config(self):
+        timer = getattr(self, "_save_timer", None)
+        if timer is not None:
+            timer.stop()
         try:
-            # v3.0.21：改成「临时文件 + fsync + 原子替换」。旧写法直接覆盖，
+            # v3.0.21：临时文件 + fsync + 原子替换。旧写法直接覆盖，
             # 写到一半断电/被杀进程会把 config.json 变成半截 JSON，下次启动全部设置丢失。
             target = config_file()
             tmp = target + ".tmp"
@@ -375,7 +395,7 @@ class Controller:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, target)
-        except OSError:
+        except (OSError, TypeError, ValueError):
             pass
 
     # ================= 角色名 =================
@@ -770,7 +790,9 @@ class Controller:
             self.panel and self.panel.append_chat(
                 "assistant", f"（小软件）已保存 {path}，检测到风险：{'、'.join(risks)}，未运行。")
             return
-        self.panel and self.panel.append_chat("assistant", f"（小软件）已保存到 {path}")
+        self.panel and self.panel.append_chat(
+            "assistant",
+            f"（小软件）已保存到 {path}。本地模型能力有限，复杂脚本建议先自己过一遍再跑。")
         self._ask_run_tool(path, code)
 
     def _ask_run_tool(self, path: str, code: str):
@@ -989,6 +1011,11 @@ class Controller:
                     "latest": latest, "notes": (info.get("notes") or "")[:600],
                     "setup": info.get("setup") or "", "url": info.get("url") or "",
                     "size": int(info.get("size") or 0), "sha": info.get("sha") or "",
+                    # v3.0.22：下载要用的资产 id 与仓库名一起存，静默检查后手动下载也能走 API
+                    "setup_id": int(info.get("setup_id") or 0),
+                    "exe_id": int(info.get("exe_id") or 0),
+                    "sha_id": int(info.get("sha_id") or 0),
+                    "repo": info.get("repo") or "",
                 }
                 try:
                     self.tray.showMessage(
@@ -1051,15 +1078,30 @@ class Controller:
 
     def start_update_download(self, info: dict):
         url = info.get("setup") or info.get("exe") or ""
-        name = url.split("/")[-1].split("?")[0] or "WhaleGirlPet-Setup.exe"
+        if not url and not info.get("setup_id"):
+            msg = "发布里没有可下载的安装包，只能手动去发布页下载。"
+            self.panel and self.panel.set_update_status(msg)
+            self.pet.bubble.show_text(msg, 4200)
+            return
+        name = url.split("/")[-1].split("?")[0]
         if not name.lower().endswith(".exe"):
             name = "WhaleGirlPet-Setup.exe"
-        self.update_dl = DownloadWorker(url, name, info.get("sha", ""))
+        if getattr(self, "update_dl", None) is not None and self.update_dl.isRunning():
+            self.pet.bubble.show_text("上一份还在下，等它下完。", 2600)
+            return
+        self.update_dl = DownloadWorker(
+            url, name, info.get("sha", ""),
+            asset_id=int(info.get("setup_id") or info.get("exe_id") or 0),
+            repo=str(info.get("repo") or ""),
+            sha_asset_id=int(info.get("sha_id") or 0))
         self.update_dl.progress.connect(self._on_update_progress)
         self.update_dl.done.connect(self._on_update_done)
         self.update_dl.failed.connect(self._on_update_failed)
         self.update_dl.start()
-        self.pet.bubble.show_text("开始下载新版本，别急着关我。", 3000)
+        size = int(info.get("size") or 0)
+        self.pet.bubble.show_text(
+            f"开始下载 {name}" + (f"（{size / 1048576:.0f}MB）" if size else "") + "，别急着关我。",
+            3600)
 
     def _on_update_progress(self, pct: int, got: int, total: int):
         mb = got / 1048576
@@ -1090,21 +1132,43 @@ class Controller:
         self._launch_installer(path)
 
     def _on_update_failed(self, why: str):
-        self.panel and self.panel.set_update_status(f"下载失败：{why}")
-        self.pet.bubble.show_text("下载没成功，等会儿再试试。", 2800)
+        # v3.0.22：面板没开的时候用户看不到状态栏，必须补气泡 + 托盘，并给一条退路
+        msg = f"更新下载失败：{why}"
+        self.panel and self.panel.set_update_status(msg)
+        info = getattr(self, "_pending_info", None) or self.config.get("pending_update") or {}
+        page = str(info.get("url") or "")
+        hint = f"　可以自己去发布页下载：{page}" if page else "　可以稍后重试，或在设置里换网络/代理。"
+        try:
+            self.pet.bubble.show_text(msg[:60] + "…" + hint, 6200)
+            self.tray.showMessage(APP_NAME, msg + "\n" + hint.strip(),
+                                  QSystemTrayIcon.MessageIcon.Warning, 8000)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _launch_installer(self, path: str):
+        started = False
         try:
             if os.path.basename(path).lower().endswith(".exe"):
-                QProcess.startDetached(path, ["/SILENT", "/CLOSEAPPLICATIONS",
-                                             "/RESTARTAPPLICATIONS"])
+                res = QProcess.startDetached(path, ["/SILENT", "/CLOSEAPPLICATIONS",
+                                                   "/RESTARTAPPLICATIONS"])
+                started = bool(res[0]) if isinstance(res, tuple) else bool(res)
             else:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
-        except Exception:  # noqa: BLE001
-            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+                started = False   # 只是打开了文件夹，不能因此退出
+        except Exception as e:  # noqa: BLE001
+            self.panel and self.panel.set_update_status(f"安装器没起来：{e}")
+        if not started:
+            # v3.0.22：原来无条件 1.2 秒后退出，安装器没起来时用户会看到「app 自己关了」
+            self.panel and self.panel.set_update_status(
+                "安装器没有启动（可能被安全软件拦了）。文件已下好，可以手动双击安装。")
+            try:
+                self.pet.bubble.show_text("安装器没启动，文件已经下好了，你手动双击一下就行。", 5200)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+            except Exception:  # noqa: BLE001
+                pass
             return
         # 安装器需要覆盖正在运行的 exe，先退场
-        QTimer.singleShot(1200, self.quit_app)
+        QTimer.singleShot(3000, self.quit_app)
 
     # ================= 外观 =================
     def set_skin(self, key: str):
@@ -2196,6 +2260,10 @@ class Controller:
             pass
 
     def local_llm_info(self) -> dict:
+        now = time.time()
+        cache = getattr(self, "_llm_info_cache", None)
+        if cache and now - cache[0] < 5.0:
+            return dict(cache[1])
         m = self.llm.model()
         backend = ""
         ollama = []
@@ -2210,7 +2278,7 @@ class Controller:
             use = self.llm.ollama_model
             if not any(x["name"] == use for x in ollama):
                 use = self.llm._pick_ollama_model()
-        return {
+        info = {
             "available": local_llm.available(self.config),
             "running": self.local_llm_ready(),
             "model": os.path.basename(m) if (m and backend == "dafeiyu_cpp") else use,
@@ -2220,6 +2288,8 @@ class Controller:
             "ollama_host": self.llm.ollama_host,
             "loaded": local_llm.ollama_loaded(self.llm.ollama_host) if backend == "ollama" else [],
         }
+        self._llm_info_cache = (now, info)
+        return dict(info)
 
     # ================= 模型库 =================
     def local_models(self):
@@ -3001,10 +3071,23 @@ class Controller:
         if not hits:
             return
         path, title, score = hits.pop(0)
+        # v3.0.22：高危自动隔离（用户要求）。隔离 = 复制校验后移走，随时可恢复，不是删除。
+        auto = bool(self.config.get("auto_quarantine", True)) and score >= 40
+        queued = ""
+        if auto:
+            try:
+                import quarantine as qz
+                res = qz.quarantine_file(path, reason=f"实时监控自动隔离：{title}")
+                if res.get("ok"):
+                    queued = "，已自动移进隔离区（可在面板里恢复）"
+                else:
+                    queued = f"，但自动隔离没成（{str(res.get('error'))[:30]}）"
+            except Exception as e:  # noqa: BLE001
+                queued = f"，自动隔离出错（{type(e).__name__}）"
         try:
             self.pet.bubble.show_text(
                 f"刚落地一个可疑文件：{os.path.basename(path)}（{title}，{score} 分）"
-                f"，面板「安全体检」可以隔离它。", 5000)
+                f"{queued}。", 5200)
             self.set_expression_safe("worried")
         except Exception:  # noqa: BLE001
             pass
@@ -3199,6 +3282,10 @@ class Controller:
             self.pet.raise_()
 
     def quit_app(self):
+        try:
+            self._flush_config()          # 退出前把合并保存的改动落盘
+        except Exception:  # noqa: BLE001
+            pass
         self._stop_realtime()
         for w in (self.worker, self.know_worker, self.clean_worker, self.update_worker,
                   self.llm_worker, self.scan_worker, self.ambient_worker, self.update_dl,

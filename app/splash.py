@@ -61,6 +61,7 @@ class LoadingSplash(QWidget):
             self._pixs = [QPixmap(asset_path("ui/qwhale.png"))]
 
         self._tm = QTimer(self)
+        self._tm.setTimerType(Qt.PreciseTimer)   # v3.0.22：默认 CoarseTimer 会被拉到 31ms，实测 32fps
         self._tm.setInterval(24)          # ≈42fps，动作看起来是连续的
         self._tm.timeout.connect(self._tick)
         self._tm.start()

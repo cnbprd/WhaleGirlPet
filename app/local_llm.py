@@ -433,15 +433,29 @@ class ServerManager:
             return self.ollama_host
         return f"http://127.0.0.1:{self.port}"
 
-    def health(self) -> bool:
-        if self.backend == "ollama":
-            return ollama_alive(self.ollama_host)
+    def health(self, force: bool = False) -> bool:
+        """v3.0.22：带 3 秒缓存 + 0.6 秒超时。
+
+        原来每次 refresh 都要在 UI 线程连一次本地服务（超时 3 秒，一次刷新调 2~4 次），
+        服务没起来时面板就卡在 1.9~4 秒。健康检查是"状态展示"，不值得阻塞界面。
+        """
+        now = time.time()
+        cached = getattr(self, "_health_cache", None)
+        if (not force) and cached is not None and now - getattr(self, "_health_at", 0) < 3.0:
+            return cached
+        ok = False
         try:
-            with urllib.request.urlopen(self.base_url() + "/health", timeout=3) as r:
-                data = json.loads(r.read().decode("utf-8"))
-            return (data.get("status") or "") in ("ok", "no slot available")
+            if self.backend == "ollama":
+                ok = ollama_alive(self.ollama_host)
+            else:
+                with urllib.request.urlopen(self.base_url() + "/health", timeout=0.6) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                ok = (data.get("status") or "") in ("ok", "no slot available")
         except Exception:
-            return False
+            ok = False
+        self._health_cache = ok
+        self._health_at = now
+        return ok
 
     def start(self) -> bool:
         if self.backend == "ollama":

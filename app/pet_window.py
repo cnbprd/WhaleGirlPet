@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """桌宠主窗口：透明无边框置顶，拖拽 / 单击摸头 / 双击面板 / 右键菜单 / 滚轮缩放 / 状态机动画。"""
 import math
+import os
 import random
+import time
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import (QAction, QColor, QCursor, QGuiApplication, QImage, QPainter,
@@ -15,6 +17,31 @@ import rig as rig_mod
 import skeletal as sk_mod
 from bubble import BubbleWindow
 from voice_profile import profile_names as voice_profile_names
+
+
+def supersampled(src, bw: int, bh: int, factor: int = 2):
+    """2 倍超采样缩放：先放大 2 倍再压回目标尺寸，让 alpha 边缘有中间值。
+
+    直接把 267×512 的立绘画到 1.5~2 倍大小时，Qt 的平滑缩放只做一次采样，
+    半透明边缘会出现 1px 台阶；先上采样再下采样等于对 alpha 做了一次平均。
+    """
+    f = max(2, int(factor))
+    mid = src.scaled(max(1, bw * f), max(1, bh * f),
+                     Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return mid.scaled(bw, bh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+
+def jelly_scale(age: float, dur: float = 0.55, amp: float = 0.06, freq: float = 3.2):
+    """形态/换装切换的果冻回弹：阻尼正弦，横向拉伸同时纵向压扁（体积近似不变）。
+
+    age 秒：0 → (1,1)；峰值约 ±amp；dur 之后恒为 (1,1)。
+    """
+    if age is None or age < 0 or age >= dur:
+        return (1.0, 1.0)
+    k = 1.0 - age / dur
+    osc = math.sin(age * 2 * math.pi * freq)
+    j = amp * k * osc
+    return (1.0 + j, 1.0 - j)
 
 FRAME_MS = 33
 # v2.9.2 动起来被裁边：窗口比立绘大一圈，给 bob/旋转/缩放留出活动余量
@@ -63,6 +90,10 @@ class PetWindow(QWidget):
         self._pix = QPixmap()
         self._pad = 0
         self.scale = float(controller.config.get("scale", 1.0))
+        # v3.0.22 果冻回弹：切形态/换装时给一个短促的挤压-拉伸，抵消「硬切」感
+        self._jelly_t0 = None
+        self._jelly_dur = 0.55
+        self._jelly_amp = 0.06
 
         # 动画状态
         self.state = "idle"
@@ -149,10 +180,19 @@ class PetWindow(QWidget):
 
     # ================= 素材 =================
     def _load_pix(self, rel: str) -> QPixmap:
-        if rel not in self.pix_cache:
-            pm = QPixmap(asset_path(rel))
-            self.pix_cache[rel] = pm
-        return self.pix_cache[rel]
+        """放大超过 1.2 倍时优先用 `@2x` 超采样版本（离线 Lanczos 生成）。
+
+        实测：直接放大 267×512，alpha 过渡只有 ~4px；用 2× 源压回来是 ~8.8px，
+        斜边台阶肉眼可见地消失。找不到 @2x 就退回原图，不影响功能。
+        """
+        scale = float(getattr(self, "scale", 1.0))
+        two = scale > 1.2 and os.path.exists(asset_path(rel[:-4] + "@2x.png"))
+        key = (rel, "2x" if two else "1x")
+        if key not in self.pix_cache:
+            path = asset_path(rel[:-4] + "@2x.png") if two else asset_path(rel)
+            self.pix_cache[key] = QPixmap(path)
+        self.base_is_2x = two
+        return self.pix_cache[key]
 
     def _load_skin(self, skin_key: str) -> QPixmap:
         rel = SKINS.get(skin_key, SKINS["default"])[1]
@@ -163,6 +203,7 @@ class PetWindow(QWidget):
         self.base = self._load_skin(skin_key)
         self.restore_base_expression()
         self._update_pix()
+        self._jelly_t0 = time.monotonic()
 
     # ---------- 形态（成熟 / 萝莉） ----------
     def current_form(self) -> str:
@@ -179,6 +220,7 @@ class PetWindow(QWidget):
         self.base = self._load_skin(skin)
         self.restore_base_expression()
         self._update_pix()
+        self._jelly_t0 = time.monotonic()
         self._controller.on_form_change(form, skin)
 
     def set_expression(self, expr: str, revert_ms: int = 2600):
@@ -223,16 +265,21 @@ class PetWindow(QWidget):
         self._foot_cache[key] = row
         return row
 
-    def _update_pix(self):
-        base = self.base
+    def _update_pix(self, base=None):
+        base = base if base is not None else self.base
         # v2.8 脚底对齐：裁掉底部透明边，窗口底边即脚底，换皮肤不再上下漂
         if self._controller.config.get("anchor_crop", True):
             foot = self._foot_row(base)
             if 0 < foot < base.height():
                 base = base.copy(0, 0, base.width(), foot)
-        bw = max(1, int(base.width() * self.scale))
-        bh = max(1, int(base.height() * self.scale))
-        self._pix = base.scaled(bw, bh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        bw = max(1, int(base.width() * self.scale / (2 if getattr(self, "base_is_2x", False) else 1)))
+        bh = max(1, int(base.height() * self.scale / (2 if getattr(self, "base_is_2x", False) else 1)))
+        # v3.0.22：放大超过 1.2 倍时走 2 倍超采样源，消除 alpha 边缘台阶（可关）
+        if (self.scale > 1.2 and not getattr(self, "base_is_2x", False)
+                and bool(self._controller.config.get("alpha_supersample", True))):
+            self._pix = supersampled(base, bw, bh, 2)
+        else:
+            self._pix = base.scaled(bw, bh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         pw, ph = self._pix.width(), self._pix.height()
         # 活动余量：动作时人物会 bob/旋转/横向摆出立绘边界，窗口必须比立绘大一圈
         pad = max(12, int(ph * PAD_RATIO))
@@ -726,6 +773,24 @@ class PetWindow(QWidget):
             self._run_timer.timeout.connect(self.finish_state)
             self._run_timer.start(duration_ms)
 
+    def _sleep_rel(self) -> str:
+        """v3.0.22：各皮肤都有 `<名>_sleep.png`（闭眼差分），找不到就靠姿态装睡。"""
+        skin = self._controller.config.get("skin", "default")
+        rel = SKINS.get(skin, SKINS["default"])[1]
+        cand = rel[:-4] + "_sleep.png"
+        return cand if os.path.exists(asset_path(cand)) else ""
+
+    def _set_sleep_face(self, on: bool):
+        if on:
+            rel = self._sleep_rel()
+            if not rel:
+                return False
+            self._update_pix(base=self._load_pix(rel))
+            return True
+        self.base = self._load_skin(self._controller.config.get("skin", "default"))
+        self._update_pix()
+        return True
+
     def do_sleep(self):
         self.follow = False
         # v2.9.8：先收掉正在播的动作，别让动作帧盖在睡眠姿态上
@@ -733,8 +798,10 @@ class PetWindow(QWidget):
             self._action_timer.stop()
         self._action_timer = None
         self.action_key = ""
-        if self._controller.config.get("skin", "default") == "default":
-            self.set_expression("sleep", 0)     # 只有默认装带闭眼差分
+        # v3.0.22：优先换闭眼差分；默认装仍走表情（兼容旧素材逻辑）
+        if not self._set_sleep_face(True):
+            if self._controller.config.get("skin", "default") == "default":
+                self.set_expression("sleep", 0)
         self.set_state("sleep")
         self._controller.on_sleep()
 
@@ -742,6 +809,7 @@ class PetWindow(QWidget):
         if self.state == "sleep":
             self._controller.on_wake()
         self.follow = False
+        self._set_sleep_face(False)
         self.restore_base_expression()
         self.set_state("idle")
 
@@ -1000,6 +1068,13 @@ class PetWindow(QWidget):
         if self.mirror:
             p.scale(-1.0, 1.0)
         p.rotate(self.rot)
+        if self._jelly_t0 is not None:
+            age = time.monotonic() - self._jelly_t0
+            jx, jy = jelly_scale(age, self._jelly_dur, self._jelly_amp)
+            if jx != 1.0 or jy != 1.0:
+                p.scale(jx, jy)
+            else:
+                self._jelly_t0 = None
         p.scale(self.sx, self.sy)
         if (self.state in ("walk", "run")
                 and self._controller.config.get("skeletal", True)):

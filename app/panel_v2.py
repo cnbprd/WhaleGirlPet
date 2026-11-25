@@ -321,6 +321,12 @@ def tab_security(panel) -> QWidget:
     panel.lbl_guard.setWordWrap(True)
     panel.lbl_guard.setStyleSheet("color:#666;font-size:12px;")
     lay.addWidget(panel.lbl_guard)
+    # v3.0.22（第 25 条）：Defender 的深扫/自动隔离属于系统级动作，得用户在本设备授权
+    note_def = QLabel("提示：交给 Defender 深扫或自动隔离时，需要在「Windows 安全中心 → 病毒和威胁防护」"
+                      "里允许本程序在本设备运行；自家规则命中的文件只在本地处理，不上传。")
+    note_def.setWordWrap(True)
+    note_def.setStyleSheet("color:#666;font-size:11px;")
+    lay.addWidget(note_def)
     panel.tbl_guard = QTableWidget(0, 4)
     panel.tbl_guard.setHorizontalHeaderLabels(["等级", "对象", "原因", "规则"])
     panel.tbl_guard.setEditTriggers(QAbstractItemView.NoEditTriggers)

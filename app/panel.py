@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QSpinBox, QTextEdit, QVBoxLayout, QWidget)
 
 import ambient
+import migrate
 import models_catalog
 import panel_v2
 import paths
@@ -71,13 +72,13 @@ class ControlPanel(QWidget):
         # v2.9.3 macOS 风格：左侧 QListWidget 侧边栏 + 右侧 QStackedWidget 内容区
         # （QTabWidget 的 West 模式会把中文标签挤成竖排、宽度又不可控，换成列表侧栏）
         pages = [
-            (self._tab_status(), "养成"),
+            (self._scrollable(self._tab_status()), "养成"),
             (self._tab_tasks(), "打工"),
             # v2.9.8：番茄钟/提醒与定时任务合并，统一叫「定时任务」
             (self._tab_remind(), "定时任务"),
             (self._tab_chat(), "聊天"),
             # v2.9.9：设置拆成 5 个模块，直接排到左侧导航（不再做页内子标签）
-            (self._tab_about(), "关于与更新"),
+            (self._scrollable(self._tab_about()), "关于与更新"),
             (self._tab_store(), "储存位置"),
             (self._tab_wake(), "语音唤醒"),
             (self._tab_ambient(), "天气资讯"),
@@ -134,7 +135,8 @@ class ControlPanel(QWidget):
         body.addWidget(self.side)
         body.addWidget(self.stack, 1)
         root.addLayout(body)
-        self.apply_theme()
+        # 构造时不套 refresh：open_panel() 后面会统一 refresh 一次（原来这里白刷一遍，2 秒）
+        self.apply_theme(refresh=False)
 
         # v3.0.0：历史气泡延迟到布局完成后再加载——构造时 viewport 宽度还是 0，
         # 会按 200px 把长句子压窄裁掉。
@@ -161,7 +163,7 @@ class ControlPanel(QWidget):
             grip.move(self.width() - grip.width() - 2, self.height() - grip.height() - 2)
             grip.raise_()
 
-    def apply_theme(self):
+    def apply_theme(self, refresh: bool = True):
         """按 config["theme"]（auto/light/dark）套整套配色，包括写死颜色的聊天区。
 
         v2.9.9：同一套主题不重复套。全局 setStyleSheet 会递归 re-polish 上百个控件，
@@ -188,7 +190,7 @@ class ControlPanel(QWidget):
                     widget.setStyleSheet(style)
                 except Exception:
                     pass
-        self.refresh()
+        self.refresh() if refresh else None
 
     # ---------- 养成页 ----------
     def _tab_status(self):
@@ -692,8 +694,14 @@ class ControlPanel(QWidget):
         sv.addLayout(row_dir)
         row_act = QHBoxLayout()
         row_act.setSpacing(6)
-        for text, slot in (("迁移到这里", self._migrate_store),
-                           ("打开数据目录", self._open_data_dir),
+        self.btn_migrate = QPushButton("迁移到这里")
+        self.btn_migrate.clicked.connect(self._migrate_store)
+        row_act.addWidget(self.btn_migrate)
+        self.btn_migrate_stop = QPushButton("停止迁移")
+        self.btn_migrate_stop.setEnabled(False)
+        self.btn_migrate_stop.clicked.connect(self._stop_migrate)
+        row_act.addWidget(self.btn_migrate_stop)
+        for text, slot in (("打开数据目录", self._open_data_dir),
                            ("迁回默认位置", self._reset_store)):
             b = QPushButton(text)
             b.clicked.connect(slot)
@@ -1115,8 +1123,7 @@ class ControlPanel(QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(p))
 
     def _migrate_store(self):
-        import shutil
-
+        """v3.0.22：后台复制 + 断点续传（原来 shutil.copytree 同步复制，中断就从头来）。"""
         target = self.ed_store.text().strip()
         if not target:
             self.lbl_store_msg.setText("先点「浏览…」选一个文件夹。")
@@ -1125,24 +1132,54 @@ class ControlPanel(QWidget):
         if os.path.normcase(os.path.abspath(target)) == os.path.normcase(os.path.abspath(src)):
             self.lbl_store_msg.setText("这就是现在的位置，不用迁。")
             return
+        th = getattr(self, "mig_thread", None)
+        if th is not None and th.isRunning():
+            self.lbl_store_msg.setText("上一次迁移还在跑，等它结束或先点「停止迁移」。")
+            return
         try:
             os.makedirs(target, exist_ok=True)
-            moved = 0
-            for name in os.listdir(src):
-                if name == "data_root.txt":
-                    continue
-                s = os.path.join(src, name)
-                d = os.path.join(target, name)
-                if os.path.isdir(s):
-                    shutil.copytree(s, d, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(s, d)
-                moved += 1
+        except OSError as e:
+            self.lbl_store_msg.setText(f"迁移失败：{e}")
+            return
+        self._mig_src, self._mig_dst = src, target
+        self.btn_migrate.setEnabled(False)
+        self.btn_migrate_stop.setEnabled(True)
+        self.lbl_store_msg.setText("开始复制…（可断点续传：中途停了，再点一次「迁移到这里」会接着传）")
+        self.mig_thread = migrate.MigrateThread(src, target, self)
+        self.mig_thread.progressed.connect(self._on_migrate_progress)
+        self.mig_thread.finished_ok.connect(self._on_migrate_done)
+        self.mig_thread.failed.connect(self._on_migrate_failed)
+        self.mig_thread.start()
+
+    def _on_migrate_progress(self, done: int, total: int, rel: str):
+        pct = (done / total * 100) if total else 100
+        self.lbl_store_msg.setText(
+            f"已复制 {done / 1048576:.0f} / {total / 1048576:.0f} MB（{pct:.0f}%）｜{rel}")
+
+    def _stop_migrate(self):
+        th = getattr(self, "mig_thread", None)
+        if th is not None and th.isRunning():
+            th.stop()
+            self.lbl_store_msg.setText("正在停…已复制的文件会保留，下次接着传。")
+
+    def _on_migrate_failed(self, msg: str):
+        self.btn_migrate.setEnabled(True)
+        self.btn_migrate_stop.setEnabled(False)
+        self.lbl_store_msg.setText(f"迁移失败：{msg}（已复制的部分保留，再点一次会续传）")
+
+    def _on_migrate_done(self, stats: dict):
+        src, target = self._mig_src, self._mig_dst
+        self.btn_migrate.setEnabled(True)
+        self.btn_migrate_stop.setEnabled(False)
+        if stats.get("copied_files", 0) == 0 and stats.get("skipped_files", 0) == 0:
+            self.lbl_store_msg.setText("没有可迁移的内容。")
+            return
+        try:
             with open(os.path.join(src, "data_root.txt"), "w", encoding="utf-8") as f:
                 f.write(target)
-            # v2.9.8：复制完立即删旧文件（用户要求「迁移完自动删除旧文件」）。
-            # data_root.txt 指针留在原地给下次启动读；删不掉的（数据库、语音缓存被进程占用）
-            # 记进 pending_cleanup.json，下次启动成功后自动再删一遍。
+            # v2.9.8：复制完删旧；删不掉的（被占用的库/缓存）记进 pending_cleanup.json
+            import json
+            import shutil
             removed, failed = 0, []
             for name in os.listdir(src):
                 if name == "data_root.txt":
@@ -1155,18 +1192,19 @@ class ControlPanel(QWidget):
                     failed.append(name)
             if failed:
                 try:
-                    import json
                     with open(os.path.join(paths.default_data_dir(), "pending_cleanup.json"),
                               "w", encoding="utf-8") as f:
                         json.dump({"src": src, "names": failed}, f, ensure_ascii=False)
                 except OSError:
                     pass
-            msg = (f"已复制 {moved} 项到 {target}，旧目录删掉 {removed} 项。重启后生效。")
+            mb = stats.get("copied_bytes", 0) / 1048576
+            msg = (f"已复制 {stats['copied_files']} 个文件（{mb:.0f} MB）、"
+                   f"续传跳过 {stats['skipped_files']} 个｜旧目录删掉 {removed} 项。重启后生效。")
             if failed:
                 msg += f" 还有 {len(failed)} 项被占用（{', '.join(failed[:3])}），下次启动会自动清掉。"
             self.lbl_store_msg.setText(msg)
         except OSError as e:
-            self.lbl_store_msg.setText(f"迁移失败：{e}")
+            self.lbl_store_msg.setText(f"复制完成但收尾失败：{e}")
 
     def _reset_store(self):
         try:
@@ -1230,9 +1268,12 @@ class ControlPanel(QWidget):
         sc.setFrameShape(QFrame.NoFrame)
         sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         sc.setWidget(page)
+        # 页面里没写颜色的控件走调色板，别用系统默认（浅色系统上会变成深字压深底）
+        pal = theme.palette(self.ctl.config.get("theme", theme.DEFAULT))
         sc.setStyleSheet(
             "QScrollArea{background:transparent;border:none;}"
-            "QScrollArea > QWidget > QWidget{background:transparent;}")
+            "QScrollArea > QWidget > QWidget{background:transparent;}"
+            f"QLabel, QCheckBox, QRadioButton, QGroupBox{{color:{pal['label']};}}")
         return sc
 
     def _tab_settings(self):
@@ -2016,6 +2057,30 @@ class ControlPanel(QWidget):
         self.lbl_tomato.setText(text)
 
     # ================= v2.0.0：语音人格 / 记忆知识 / 安全 / 账号 / 定时 =================
+    def _apply_llm_status(self, info: dict):
+        """把本地模型状态填进标签（可能晚一拍执行，见 refresh 里的延迟查询）。"""
+        try:
+            if info.get("running"):
+                state = "运行中"
+            elif info.get("available"):
+                state = "可启动（还没加载）"
+            else:
+                # v3.0.3：绝大多数用户装完是"没装模型"这个状态，得把话说清楚
+                state = "还没装本地模型（不影响使用，聊天走云端或台词）"
+            backend = {"ollama": "Ollama", "dafeiyu_cpp": "dafeiyu.cpp",
+                       "llama_cpp": "dafeiyu.cpp"}.get(
+                info.get("backend", ""), info.get("backend", "") or "未定")
+            extra = ""
+            if info.get("backend") == "ollama":
+                extra = "（Ollama 里还有：" + "、".join(
+                    m["name"] for m in info.get("ollama", [])[:3]) + "）"
+            self.lbl_llm.setText(
+                f"状态：{state}｜后端：{backend}｜模型：{info.get('model') or '无'}"
+                f"｜端口 {info.get('port', '')}{extra}")
+            self.chk_llm.setChecked(bool(self.ctl.config.get("llm_on", True)))
+        except Exception:  # noqa: BLE001
+            pass
+
     def _refresh_v2(self):
         ctl = self.ctl
         # 人格与语音
@@ -2036,25 +2101,13 @@ class ControlPanel(QWidget):
             pass
         # 本地模型
         try:
-            info = ctl.local_llm_info()
-            if info["running"]:
-                state = "运行中"
-            elif info["available"]:
-                state = "可启动（还没加载）"
+            if getattr(ctl, "_llm_info_cache", None):
+                self._apply_llm_status(ctl.local_llm_info())
             else:
-                # v3.0.3：绝大多数用户装完是"没装模型"这个状态，得把话说清楚，
-                # 别让人以为坏了；同时指到下面能一键下载的地方
-                state = "还没装本地模型（不影响使用，聊天走云端或台词）"
-            backend = {"ollama": "Ollama", "dafeiyu_cpp": "dafeiyu.cpp", "llama_cpp": "dafeiyu.cpp"}.get(
-                info.get("backend", ""), info.get("backend", "") or "未定")
-            extra = ""
-            if info.get("backend") == "ollama":
-                extra = "（Ollama 里还有：" + "、".join(
-                    m["name"] for m in info.get("ollama", [])[:3]) + "）"
-            self.lbl_llm.setText(
-                f"状态：{state}｜后端：{backend}｜模型：{info['model'] or '无'}"
-                f"｜端口 {info['port']}{extra}")
-            self.chk_llm.setChecked(bool(ctl.config.get("llm_on", True)))
+                # v3.0.22：查本地模型要连 Ollama/本地服务，实测 0.6s；先让窗口画出来，
+                # 下一轮事件循环再填状态，别让「首次打开」卡在这一行
+                self.lbl_llm.setText("状态：正在查本地模型…")
+                QTimer.singleShot(0, lambda: self._apply_llm_status(ctl.local_llm_info()))
         except Exception:  # noqa: BLE001
             pass
         # 硬件与模型推荐
@@ -2655,7 +2708,10 @@ class ControlPanel(QWidget):
     def _preview_persona(self):
         key = self.cmb_persona.currentData() or pers.DEFAULT_PERSONA
         p = pers.get(key) or {}
-        text = pers.dialectize(p.get("greeting", "你好呀，我是大肥鱼。"), key)
+        text = p.get("greeting", "你好呀，我是大肥鱼。")
+        if isinstance(text, (list, tuple)):     # 自定义人格的 greeting 可能是列表
+            text = text[0] if text else ""
+        text = pers.dialectize(str(text or "你好呀，我是大肥鱼。"), key)
         if not self.chk_tts.isChecked():
             self.chk_tts.setChecked(True)     # 试听要开语音
         self.ctl.config["tts_online"] = self.chk_tts_online.isChecked()
