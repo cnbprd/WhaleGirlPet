@@ -48,6 +48,8 @@ FRAME_MS = 33
 # v2.9.2 动起来被裁边：窗口比立绘大一圈，给 bob/旋转/缩放留出活动余量
 # 0.18 可容下起跳 64px 与中等摆动；摔跤那种 60°+ 翻转仍可能轻擦边（下一步做按动作动态扩容）
 PAD_RATIO = 0.18
+# 脸补丁目前验证过：默认女仆、JK 两张皮肤五官坐标一致；其他皮肤先不硬贴
+PATCH_SKINS = ("default", "jk")
 # 分段步态的关节位置（相对立绘高度，从顶部算）
 HIP_RATIO = 0.60      # 髋（腰以下开始摆）
 ANKLE_RATIO = 0.88    # 踝（脚再做一次反相）
@@ -113,6 +115,10 @@ class PetWindow(QWidget):
 
         # 表情
         self.expr = "idle"
+        self._face_cache = {}          # 默认立绘 + 表情脸补丁的合成缓存
+        self._mouth_pix = None         # 嘴部小块：伪口型纵向缩放
+        self._mouth_level = 0.0
+        self._mouth_meta = (81, 100, 54, 36)   # 默认 267×512 画布上的嘴框
         self._expr_timer = QTimer(self)
         self._expr_timer.setSingleShot(True)
         self._expr_timer.timeout.connect(self.restore_base_expression)
@@ -227,17 +233,56 @@ class PetWindow(QWidget):
         self._jelly_t0 = time.monotonic()
         self._controller.on_form_change(form, skin)
 
+    def _load_face_patch(self, expr: str, sub: str = "") -> QPixmap | None:
+        """加载脸部/嘴部补丁；跟随默认立绘的 1x/2x 选择，找不到返回 None。"""
+        rel = "expressions/patches/" + (sub + "/" if sub else "") + expr
+        two = bool(getattr(self, "base_is_2x", False)) and os.path.exists(
+            asset_path(rel + "@2x.png"))
+        path = asset_path(rel + ("@2x.png" if two else ".png"))
+        if not os.path.exists(path):
+            return None
+        return QPixmap(path)
+
+    def _set_face_patch(self, expr: str, skin_key: str = "default"):
+        """当前皮肤只换脸，不换身体：把羽化脸补丁合成到该皮肤立绘上。"""
+        base = self._load_skin(skin_key)
+        key = (base.cacheKey(), expr, bool(getattr(self, "base_is_2x", False)))
+        hit = self._face_cache.get(key)
+        if hit is None:
+            patch = self._load_face_patch(expr)
+            if patch is None:
+                return False
+            hit = base.copy()
+            p = QPainter(hit)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            p.drawPixmap(0, 0, patch)
+            p.end()
+            self._face_cache[key] = hit
+        self.base = hit
+        self._mouth_pix = self._load_face_patch(expr, "mouth")
+        self._update_pix()
+        return True
+
     def set_expression(self, expr: str, revert_ms: int = 2600):
         rel = EXPRESSIONS.get(expr)
         skin_now = self._controller.config.get("skin", "default")
-        if rel and skin_now == "default":
-            # 表情差分只有默认女仆装有；其他皮肤保留自身立绘，避免切装后被表情跳回女仆装
-            self.base = self._load_pix(rel)
-            self._update_pix()
+        patched = False
+        if rel and skin_now in PATCH_SKINS:
+            # 先试“只换脸”的补丁；吃饭/睡觉等姿势表情没有补丁。
+            patched = self._set_face_patch(expr, skin_now)
+            if not patched and skin_now == "default":
+                # 默认皮肤可以用整套表情图换姿势
+                self.base = self._load_pix(rel)
+                self._mouth_pix = None
+                self._update_pix()
+            elif not patched:
+                self.bob -= 5.0 * self.scale
         elif rel:
-            self.bob -= 5.0 * self.scale      # 轻微一顿，表示有反应
+            self.bob -= 5.0 * self.scale      # 其他皮肤保留自身立绘，只轻微一顿
         if rel:
             self.expr = expr
+            if not patched:
+                self._mouth_pix = None
         if revert_ms > 0:
             self._expr_timer.start(revert_ms)
 
@@ -246,6 +291,8 @@ class PetWindow(QWidget):
         skin = self._controller.config.get("skin", "default")
         self.base = self._load_skin(skin)
         self.expr = "idle"
+        self._mouth_pix = None
+        self._mouth_level = 0.0
         self._update_pix()
 
     # ================= 基础几何 =================
@@ -396,9 +443,23 @@ class PetWindow(QWidget):
         self.mirror = False
         self.set_state("follow" if self.follow else "idle")
 
+    def _update_mouth_level(self):
+        """每帧读 TTS 播放音量，低通一下，避免嘴抖成机关枪。"""
+        if self._mouth_pix is None:
+            self._mouth_level = 0.0
+            return
+        try:
+            target = float(self._controller.audio.speech_level())
+        except Exception:  # noqa: BLE001
+            target = 0.0
+        self._mouth_level += (target - self._mouth_level) * 0.35
+        if self._mouth_level < 0.01:
+            self._mouth_level = 0.0
+
     def _tick(self):
         self.state_t += self.frame_ms / 1000.0
         st = self.state
+        self._update_mouth_level()
         if self.tl.playing:
             self.tl.step(self.frame_ms / 1000.0)
 
@@ -1138,8 +1199,26 @@ class PetWindow(QWidget):
             self._paint_gait(p, pw, ph)
         else:
             p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+        self._paint_mouth(p, pw, ph)
         if self.state in TASK_STATES:
             self._paint_work_prop(p, pw, ph)
+
+    def _paint_mouth(self, p: QPainter, pw: int, ph: int):
+        """伪口型：说话时把嘴部小块纵向放大，音量包络由 AudioManager 提供。"""
+        if self._mouth_pix is None or self.gait_on:
+            return
+        if self.state in TASK_STATES or self.state == "sleep":
+            return
+        mx, my, mw, mh = self._mouth_meta
+        bw = 534 if getattr(self, "base_is_2x", False) else 267
+        bh = 1024 if getattr(self, "base_is_2x", False) else 512
+        rx, ry = pw / float(bw), ph / float(bh)
+        sy = 1.0 + 0.32 * max(0.0, min(1.0, self._mouth_level))
+        w, h = mw * rx, mh * ry * sy
+        cx = -pw / 2.0 + (mx + mw / 2.0) * rx
+        cy = -ph + (my + mh / 2.0) * ry
+        p.drawPixmap(QRectF(cx - w / 2.0, cy - h / 2.0, w, h), self._mouth_pix,
+                     QRectF(self._mouth_pix.rect()))
 
     def _paint_work_prop(self, p: QPainter, pw: int, ph: int):
         """任务道具：书 / 扫帚 / 抹布 / 箱子 / 泡泡，纯代码绘制，不新增素材。"""

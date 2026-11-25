@@ -212,8 +212,16 @@ class ControlPanel(QWidget):
 
     # ---------- 养成页 ----------
     def _tab_status(self):
-        w = QWidget()
-        lay = QVBoxLayout(w)
+        root = QWidget()
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        # v3.0.25：养成主页面 / 打工任务二级页，同一个面板内切换
+        self.status_stack = QStackedWidget()
+        outer.addWidget(self.status_stack)
+
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 0, 0, 0)
 
         name_row = QHBoxLayout()
         name_row.addWidget(QLabel("名字："))
@@ -271,14 +279,49 @@ class ControlPanel(QWidget):
         btn_work.clicked.connect(lambda: self.ctl.open_task_page())
         row_entry.addWidget(btn_work)
         lay.addLayout(row_entry)
-        # v3.0.23（第 5 条）：打工并入养成页，不再单独占一个左侧模块
-        lay.addSpacing(12)
+
+        # v3.0.25：打工任务不再摊在主页面，收进「去打工」的二级页
+        task_hint = QLabel("打工任务收进「去打工」二级页，点上面的按钮进去。")
+        task_hint.setWordWrap(True)
+        task_hint.setStyleSheet("color:#888;font-size:11px;")
+        lay.addWidget(task_hint)
+        work_card = QLabel(
+            f"打工任务 {len(TASK_DEFS)} 个：学习、满屏跑腿、摸鱼休息、清理垃圾、擦桌子、做家务。\n"
+            "完成后结算金币和经验；改写类任务会先问过你，清理只动临时目录。")
+        work_card.setWordWrap(True)
+        work_card.setStyleSheet(
+            "background:#101826;border:1px solid #24344d;border-radius:10px;"
+            "padding:12px;color:#9fb3c8;font-size:12px;line-height:150%;")
+        lay.addWidget(work_card)
+        lay.addStretch()
+        self.status_stack.addWidget(page)
+
+        task_page = QWidget()
+        tlay = QVBoxLayout(task_page)
+        tlay.setContentsMargins(0, 0, 0, 0)
+        back_row = QHBoxLayout()
+        btn_back = QPushButton("← 返回养成")
+        btn_back.setFixedWidth(112)
+        btn_back.clicked.connect(lambda: self.show_status_page(0))
+        back_row.addWidget(btn_back)
+        back_row.addStretch()
+        tlay.addLayout(back_row)
         head_task = QLabel("打工任务")
         head_task.setStyleSheet("font-weight:600;font-size:14px;")
-        lay.addWidget(head_task)
-        lay.addWidget(self._tab_tasks(embed=True))
-        lay.addStretch()
-        return w
+        tlay.addWidget(head_task)
+        tlay.addWidget(self._tab_tasks(embed=True))
+        tlay.addStretch()
+        self.status_stack.addWidget(task_page)
+
+        self.status_stack.setCurrentIndex(0)
+        return root
+
+    def show_status_page(self, idx: int):
+        """0 = 养成主页面，1 = 打工任务二级页。"""
+        try:
+            self.status_stack.setCurrentIndex(1 if int(idx) else 0)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _on_name_edit(self):
         """进入编辑态：露出输入框，藏起名字文本。"""
@@ -1349,8 +1392,11 @@ class ControlPanel(QWidget):
         btn_ref.clicked.connect(self._refresh_llm)
         row_l.addWidget(btn_ref)
         lv.addLayout(row_l)
-        self.chk_llm = QCheckBox("优先用本地模型回答")
-        self.chk_llm.setChecked(bool(self.ctl.config.get("llm_on", True)))
+        self.chk_llm = QCheckBox("优先用本地模型回答（不勾 = 配了 API 就先用 API）")
+        self.chk_llm.setChecked(bool(self.ctl.config.get("llm_prefer_local", False)))
+        self.chk_llm.setToolTip(
+            "勾选：本地模型可用时先走本地；未勾选：只要 API 有 key 就先走 API，"
+            "本地模型仅在没有 API 时兜底。取消勾选不会关闭本地模型。")
         self.chk_llm.toggled.connect(self._on_llm_toggle)
         lv.addWidget(self.chk_llm)
 
@@ -2111,7 +2157,7 @@ class ControlPanel(QWidget):
             self.lbl_llm.setText(
                 f"状态：{state}｜后端：{backend}｜模型：{info.get('model') or '无'}"
                 f"｜端口 {info.get('port', '')}{extra}")
-            self.chk_llm.setChecked(bool(self.ctl.config.get("llm_on", True)))
+            self.chk_llm.setChecked(bool(self.ctl.config.get("llm_prefer_local", False)))
         except Exception:  # noqa: BLE001
             pass
 
@@ -2777,7 +2823,9 @@ class ControlPanel(QWidget):
         self._refresh_v2()
 
     def _on_llm_toggle(self, v: bool):
-        self.ctl.config["llm_on"] = bool(v)
+        # v3.0.25：这个勾只表示“优先本地”，不再兼任“允许本地兜底”
+        self.ctl.config["llm_prefer_local"] = bool(v)
+        self.ctl.config["llm_on"] = True
         self.ctl.save_config()
 
     def _on_unload_changed(self, v: int):

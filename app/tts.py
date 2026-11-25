@@ -139,7 +139,7 @@ class TTSService:
 
         hit = cached_path(text, voice, rate, pitch)
         if hit:
-            return self.audio.play_file(hit, priority, volume)
+            return self.audio.play_file(hit, priority, volume, speech=True)
 
         self._seq += 1
         play_id = str(self._seq)
@@ -162,7 +162,7 @@ class TTSService:
         # 先播这一句（旧逻辑在这里丢弃当前音频，只留 pending，结果连续说话只有第一句有声音）
         prio = self._prios.pop(play_id, 1)
         vol = self._vols.pop(play_id, 100)
-        if self.audio.play_file(path, prio, vol):
+        if self.audio.play_file(path, prio, vol, speech=True):
             self.speak_count += 1
         if self._pending:
             nxt = self._pending.pop(0)

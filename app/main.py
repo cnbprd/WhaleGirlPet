@@ -90,7 +90,7 @@ DEFAULT_CONFIG = {
     "tts_on": True, "tts_online": True,
     # v2.9.2 真人音色提炼：linluo（温柔少女）/ jingjing（元气少女）/ off
     "voice_profile": "linluo",
-    "llm_on": True, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
+    "llm_on": True, "llm_prefer_local": False, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
     # v3.0.4：本地模型空闲多少分钟后自动卸载（省 2.3GB 内存）；0 = 永不卸载
     "llm_idle_unload_min": 20,
     "llm_model_file": "",
@@ -218,6 +218,7 @@ class Controller:
         self._care_last_beg = 0.0
         self._care_last_ask = 0.0
         self._status_shown_at = 0.0
+        self._fallback_local = False     # 云端失败后是否已经切过本地，防来回踢皮球
 
         # ---- 定时器 ----
         self.decay_timer = QTimer()
@@ -619,24 +620,53 @@ class Controller:
         self.refresh_panel()
         return ok, msg
 
-    def beg_snack(self):
-        """撒娇讨零食：背包有货就先吃背包里的，没货就开口讨并亮出商城。"""
+    def beg_snack(self, kind: str = "", show_shop: bool = True):
+        """撒娇讨零食：按当前需求挑（渴了先饮品/水果，饿了先管饱的）。
+
+        背包有货就先吃背包里的；没货再按品类讨，并亮出商城。
+        """
         st = self.state
-        bag = st.bag_list()
+        if not kind:
+            kind = st.critical_need() or st.need_kind() or "hungry"
+
+        def score(it):
+            h = float(it.get("hunger", 0) or 0)
+            w = float(it.get("water", 0) or 0)
+            if kind == "thirsty":
+                return w * 2.0 + h * 0.35
+            if kind == "hungry":
+                return h * 2.0 + w * 0.35
+            return h + w
+
+        bag = [pair for pair in st.bag_list()
+               if pair[0].get("kind") != "toy"
+               and (float(pair[0].get("hunger", 0) or 0)
+                    + float(pair[0].get("water", 0) or 0)) > 0]
         if bag:
-            it, _n = bag[0]
+            it, _n = max(bag, key=lambda pair: score(pair[0]))
             self._speak(random.choice([
                 f"背包里还有{it['emoji']}{it['name']}，我先吃一份～",
                 f"翻到{it['emoji']}{it['name']}了，这个归我。",
             ]), 3000)
             return self.eat_from_bag(it["key"])
         affordable = [s for s in snack_catalog.all_items()
-                      if s["cost"] <= st.coins and s["cost"] <= 25]
-        snack = random.choice(affordable) if affordable else None
+                      if s.get("kind") != "toy"
+                      and (float(s.get("hunger", 0) or 0) + float(s.get("water", 0) or 0)) > 0
+                      and s["cost"] <= st.coins and s["cost"] <= 25]
+        snack = max(affordable, key=score) if affordable else None
         self.pet.set_expression("shy", 2600)
         self.emotion.apply("pat", 0.8)
-        self._speak(companion.beg_line(st, snack), 4200)
-        self.open_shop()
+        if kind == "thirsty":
+            line = "嗓子干得冒烟了…有水、牛奶或者水果吗？"
+        elif kind == "hungry":
+            line = "肚子已经咕咕叫了…想吃点管饱的。"
+        else:
+            line = "又饿又渴…先来点能救命的，什么都行。"
+        if snack:
+            line += f" 我看中{snack['emoji']}{snack['name']}了。"
+        self._speak(line, 4200)
+        if show_shop:
+            self.open_shop()
         if not affordable:
             self.pet.bubble.show_text("不过我现在钱包空空的，先去打份工吧。", 3600)
         return (False, "beg")
@@ -680,6 +710,7 @@ class Controller:
     def open_task_page(self):
         self.open_panel()
         self._goto_panel_page("养成")      # v3.0.23：打工已并入养成页
+        self.panel.show_status_page(1)     # v3.0.25：进「去打工」二级页
 
     def open_settings_page(self):
         self.open_panel()
@@ -704,19 +735,31 @@ class Controller:
     def _on_care_tick(self):
         """每 60 秒看一次她现在缺什么，按情况开口。"""
         try:
-            if self.panel is not None and self.panel.isVisible():
+            st = self.state
+            now = time.time()
+            panel_open = self.panel is not None and self.panel.isVisible()
+            # v3.0.25：归零级需求独立于面板/背包/任务；面板开着就只冒泡，不抢窗口
+            critical = st.critical_need(8)
+            if critical and not self.task_active and now - self._care_last_beg > 180:
+                self._care_last_beg = now
+                self.beg_snack(critical, show_shop=not panel_open)
+                return
+            if panel_open:
                 return
             if self.task_active:
                 return
-            st = self.state
-            now = time.time()
             if st.need_kind() and now - self._status_shown_at > 600:
                 if self.maybe_status_bar():
                     return
-            if st.is_hungry(50) and not st.bag_list() and now - self._care_last_beg > 600:
+            if st.is_thirsty(45) and now - self._care_last_beg > 300:
                 if random.random() < 0.5:
                     self._care_last_beg = now
-                    self.beg_snack()
+                    self.beg_snack("thirsty")
+                    return
+            if st.is_hungry(50) and now - self._care_last_beg > 300:
+                if random.random() < 0.5:
+                    self._care_last_beg = now
+                    self.beg_snack("hungry")
                     return
             if now - self._care_last_ask > random.randint(720, 1200):
                 self._care_last_ask = now
@@ -1193,6 +1236,7 @@ class Controller:
         if self.panel is None:
             self.panel = ControlPanel(self)
         self.panel.refresh()
+        self.panel.show_status_page(0)     # 从托盘/菜单进面板，默认回养成主页面
         self.panel.show()
         self.panel.raise_()
         self.panel.activateWindow()
@@ -1383,7 +1427,11 @@ class Controller:
         return any(h in t for h in self.CODE_HINTS)
 
     def _chat_plain(self, text: str):
-        if self.config.get("llm_on", True) and local_llm.available(self.config):
+        self._fallback_local = False
+        prof = self.active_profile()
+        has_api = bool(prof.get("api_key") or read_zhipu_key())
+        route = local_llm.chat_route(self.config, has_api)
+        if route == "local":
             try:
                 role = "tool" if self._looks_like_code(text) else "brain"
                 if role == "tool":
@@ -1397,8 +1445,13 @@ class Controller:
                 self.llm_worker.start()
                 return
             except Exception:  # noqa: BLE001
-                pass
-        self._chat_cloud(text)
+                if has_api:
+                    self._chat_cloud(text)
+                    return
+        if route == "cloud":
+            self._chat_cloud(text)
+            return
+        self._on_ai_failed("no_key" if not has_api else "local_off")
 
     def _chat_cloud(self, text: str):
         prof = self.active_profile()
@@ -1420,10 +1473,10 @@ class Controller:
         self._finish_reply(content, "本地 Qwen3")
 
     def _on_local_failed(self, reason: str):
-        self.panel and self.panel.set_chat_status(f"本地模型没答上来（{reason}），换云端试试……")
+        self.panel and self.panel.set_chat_status(f"本地模型没答上来（{reason}）……")
         text = self.history[-1]["content"] if self.history else ""
         prof = self.active_profile()
-        if prof.get("api_key") or read_zhipu_key():
+        if not self._fallback_local and (prof.get("api_key") or read_zhipu_key()):
             self._chat_cloud(text)
         else:
             self._on_ai_failed(f"local_{reason}")
@@ -1555,11 +1608,30 @@ class Controller:
         self._finish_reply(draft, "本地草稿")
 
     def _on_ai_failed(self, reason: str):
+        # v3.0.25：API 没通时单向切一次本地，别让用户对着“没接上话”干等
+        if (not self._fallback_local and not str(reason).startswith("local_")
+                and self.config.get("llm_on", True) and local_llm.available(self.config)):
+            text = self.history[-1]["content"] if self.history else ""
+            if text:
+                try:
+                    self._fallback_local = True
+                    self.panel and self.panel.set_chat_status(
+                        f"API 没通（{reason}），先切本地模型试试……")
+                    self.llm_worker = local_llm.LocalChatWorker(
+                        self.llm, self._build_messages(text), max_tokens=260,
+                        temperature=0.8, role="brain")
+                    self.llm_worker.reply_ready.connect(self._on_local_reply)
+                    self.llm_worker.failed.connect(self._on_local_failed)
+                    self.llm_worker.start()
+                    return
+                except Exception:  # noqa: BLE001
+                    self._fallback_local = False
         fallback = {
             "no_key": lines.pick(lines.NO_KEY),
             "offline": lines.pick(lines.OFFLINE),
             "http_401": "密钥好像不对，去设置页检查一下 API Key。",
             "http_429": "问的人太多啦，本鱼被限流了，稍后再试。",
+            "local_off": "本地模型没启动，API 也还没配 Key；去「自定义模型」页配一个吧。",
         }.get(reason, "本鱼没接上话，先陪你扯两句。")
         self.history.append({"role": "assistant", "content": fallback})
         if self.config.get("memory_on", True):

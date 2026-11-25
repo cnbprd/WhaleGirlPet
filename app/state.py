@@ -21,10 +21,10 @@ def _clamp(v, lo=0, hi=100):
 #   拓麻歌子社区实测：成长期饥饿约 50 分钟掉 1 心；Dilder 设计文档 hunger -1/10min、
 #   happiness -1/15min；MiroPets hunger -2/h、happiness -1/h（偏休闲）；
 #   QQ 宠物：打工/玩耍消耗明显高于空挂，泡温泉反而回状态。
-# 这里取折中：饱食 100 → 0 约 5.5 小时，靠近"早中晚三次打开不会被饿死"的节奏。
-BASE_HUNGER_PER_MIN = 0.30      # 醒着每分钟饱食下降
+# 这里取折中：饱食 100 → 0 约 14 小时，差不多“白天开一天，晚上回来才要饭”的节奏。
+BASE_HUNGER_PER_MIN = 0.12      # 醒着每分钟饱食下降（v3.0.25：从 0.30 调慢，用户反馈掉太快）
 SLEEP_FACTOR = 0.35             # 睡觉时基础代谢降到 35%
-THIRST_RATIO = 0.60             # 水分降速 = 饱食的 60%（用户要求低 40%）
+THIRST_RATIO = 0.55             # 水分降速 = 饱食的 55%（100 → 0 约 25 小时）
 MOOD_IDLE_GRACE_MIN = 25        # 无沟通无互动满 25 分钟后心情才开始掉
 MOOD_PER_MIN = 0.30             # 心情每分钟下降
 MOOD_SLEEP_PAUSE = True         # 睡着时不计心情流失
@@ -254,6 +254,21 @@ class PetState:
         if self.is_broke():
             return "coins"
         return None
+
+    def critical_need(self, threshold: float = 5) -> str:
+        """归零级需求：hungry / thirsty / both / ""。
+
+        单独于 need_kind()，因为 hunger 先判会让“又饿又渴”永远只报饿。
+        """
+        hungry = self.hunger <= threshold
+        thirsty = self.thirst <= threshold
+        if hungry and thirsty:
+            return "both"
+        if thirsty:
+            return "thirsty"
+        if hungry:
+            return "hungry"
+        return ""
 
 
     def earn(self, n):

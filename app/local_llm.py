@@ -194,6 +194,25 @@ def available(config: dict = None) -> bool:
             or ollama_alive())
 
 
+def chat_route(config: dict, has_api: bool, local_ok: bool = None) -> str:
+    """决定普通聊天走哪条路：cloud / local / none。
+
+    v3.0.25：`llm_on` 只管“允许本地兜底”，`llm_prefer_local` 才是“优先用本地”。
+    以前两者混用，只要本地可用，配了 API 也永远轮不到 API。
+    """
+    if local_ok is None:
+        local_ok = available(config)
+    allow_local = bool(config.get("llm_on", True)) and bool(local_ok)
+    prefer_local = bool(config.get("llm_prefer_local", False))
+    if allow_local and (prefer_local or not has_api):
+        return "local"
+    if has_api:
+        return "cloud"
+    if allow_local:
+        return "local"
+    return "none"
+
+
 def kill_stray_servers() -> int:
     """清掉上次异常退出留下的推理进程。
 
