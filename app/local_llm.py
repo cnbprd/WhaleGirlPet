@@ -61,6 +61,39 @@ def available() -> bool:
     return (os.path.exists(server_exe()) and bool(model_path())) or ollama_alive()
 
 
+def kill_stray_servers() -> int:
+    """清掉上次异常退出留下的推理进程。
+
+    v3.0.4：实测发现桌宠被杀掉后 dafeiyu-server 会变成孤儿，2.39GB 内存一直不放，
+    直到重启电脑。程序启动时先把残留的杀掉，再起自己的。
+    """
+    if os.name != "nt":
+        return 0
+    killed = 0
+    flags = 0x08000000  # CREATE_NO_WINDOW
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq dafeiyu-server.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, encoding="oem", errors="ignore",
+            timeout=10, creationflags=flags).stdout or ""
+    except Exception:  # noqa: BLE001
+        return 0
+    for line in out.splitlines():
+        parts = [p.strip().strip('"') for p in line.split(",")]
+        if len(parts) >= 2 and parts[0].lower().endswith("dafeiyu-server.exe"):
+            try:
+                pid = int(parts[1])
+            except ValueError:
+                continue
+            try:
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                               capture_output=True, timeout=10, creationflags=flags)
+                killed += 1
+            except Exception:  # noqa: BLE001
+                pass
+    return killed
+
+
 # ---------------- Ollama 后端 ----------------
 # 有 Ollama 时优先用它：自带显存调度、keep_alive 闲置卸载、模型切换。
 # 没装 Ollama 也照样能跑：回退到 runtime/dafeiyu/dafeiyu-server.exe。
@@ -128,6 +161,8 @@ class ServerManager:
         self.proc = None
         self.ready = False
         self.last_error = ""
+        # v3.0.4：最后一次推理时间，用来做"空闲自动卸载"（4B 模型常驻约 2.3GB）
+        self.last_used = 0.0
         # Ollama 装了但运行库缺失时会 500；记下来，后续直接用自带 dafeiyu 引擎
         self.ollama_broken = False
 
@@ -211,7 +246,9 @@ class ServerManager:
         args = [exe, "-m", model, "-c", ctx, "-t", threads, "--port", str(self.port),
                 "--host", "127.0.0.1",
                 # qwen3.5 / Gemma 默认会先写思考，把 max_tokens 吃光（实测 content 为空）
-                "-rea", "off"]
+                "-rea", "off",
+                # v3.0.4：桌宠只会有一个人说话，4 个 slot 白占 KV 内存（实测 -np 1 省 155MB）
+                "-np", "1"]
         creationflags = 0
         if os.name == "nt":
             creationflags = 0x08000000  # CREATE_NO_WINDOW
@@ -222,6 +259,13 @@ class ServerManager:
         except Exception as e:  # noqa: BLE001
             self.last_error = f"启动失败：{e}"
             return False
+        # v3.0.4：绑进 Job Object，桌宠被杀/崩溃时这个子进程跟着死，不留孤儿进程吃 2.3GB
+        try:
+            import proc_guard
+            proc_guard.attach(self.proc)
+        except Exception:  # noqa: BLE001
+            pass
+        self.last_used = time.monotonic()
         # 最多等 60 秒加载模型
         for _ in range(120):
             if self.proc.poll() is not None:
@@ -304,9 +348,22 @@ class ServerManager:
         """返回 (ok, text_or_reason)。fmt="json" 时强制结构化输出（仅 Ollama 后端支持）。"""
         if not self.ready and not self.health():
             return False, "local_not_ready"
+        self.last_used = time.monotonic()
         if self.backend == "ollama":
             return self._chat_ollama(messages, max_tokens, temperature, timeout, fmt)
         return self._chat_local(messages, max_tokens, temperature, timeout, fmt)
+
+    # ---------- 空闲卸载 ----------
+    def idle_minutes(self) -> float:
+        if not self.last_used:
+            return 0.0
+        return (time.monotonic() - self.last_used) / 60.0
+
+    def should_unload(self, limit_min: float) -> bool:
+        """空闲够了就把自带引擎停掉，把 2.3GB 模型内存还给系统。"""
+        if limit_min <= 0 or not self.is_running():
+            return False
+        return self.idle_minutes() >= limit_min
 
     def _chat_local(self, messages, max_tokens, temperature, timeout, fmt):
         body = {

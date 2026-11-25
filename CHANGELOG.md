@@ -2,6 +2,19 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.4（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 孤儿推理进程 | 实测一个残留 `dafeiyu-server` 从 02:47 活到 17:15，独占 2388.6MB。新增 `app/proc_guard.py`（Windows Job Object + KILL_ON_JOB_CLOSE），子进程随父进程一起死 | 父进程 `os._exit(1)` 后 2 秒子进程消失 |
+| 2 启动清残留 | `local_llm.kill_stray_servers()` 在启动时杀掉上次留下的推理进程（tasklist 用 OEM 编码解析，中文系统不乱码） | 实测杀掉 1 个 |
+| 3 空闲自动卸载 | 引擎闲置超 `llm_idle_unload_min`（默认 20 分钟）自动 stop；0 = 从不卸载 | `should_unload(20)=True` → stop 后引擎 0MB |
+| 4 面板设置项 | 自定义模型页新增「空闲自动卸载 __ 分钟」QSpinBox（0–240，0 显示"从不卸载"），改动即存 | 截图 `v304-model-page.png`，值 20 分钟 |
+| 5 引擎单 slot | 启动参数加 `-np 1`（4 slot 白占 KV） | RSS 4647.6 → 4492.4MB |
+| 6 聊天历史 | 改为 deque 流式读，只留最近 240 条在内存 | 编译通过，面板加载正常 |
+| 7 portable 带引擎 | CI 打 portable 时把 `runtime/dafeiyu` 一起打进 zip | workflow 已改，待 CI 验证 |
+| 版本 3.0.4 | `paths.APP_VERSION`、iss 五处同步 | — |
+
 ## v3.0.3（2026-11-25）
 
 | 项 | 改动 | 实测 |

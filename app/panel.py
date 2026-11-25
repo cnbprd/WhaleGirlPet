@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QLineEdit, QListWidget, QListWidgetItem,
                                QPushButton, QScrollArea, QSizeGrip, QSlider,
                                QStackedWidget, QTabWidget, QTableWidgetItem,
-                               QTextEdit, QVBoxLayout, QWidget)
+                               QSpinBox, QTextEdit, QVBoxLayout, QWidget)
 
 import ambient
 import models_catalog
@@ -1126,6 +1126,24 @@ class ControlPanel(QWidget):
         self.chk_llm.toggled.connect(self._on_llm_toggle)
         lv.addWidget(self.chk_llm)
 
+        # v3.0.4 省内存：本地 4B 模型常驻约 2.3GB，空闲久了自动卸载
+        row_unload = QHBoxLayout()
+        row_unload.addWidget(QLabel("空闲自动卸载："))
+        self.spin_unload = QSpinBox()
+        self.spin_unload.setRange(0, 240)
+        self.spin_unload.setSuffix(" 分钟")
+        self.spin_unload.setSpecialValueText("从不卸载")
+        self.spin_unload.setValue(int(self.ctl.config.get("llm_idle_unload_min", 20) or 0))
+        self.spin_unload.setToolTip(
+            "本地模型加载后常驻内存约 2.3GB（4B/4bit）。闲置超过这个时长就自动停掉，\n"
+            "把内存还给系统；下次聊天会自动重新加载（约 8–15 秒）。设 0 表示一直挂着。")
+        self.spin_unload.valueChanged.connect(self._on_unload_changed)
+        row_unload.addWidget(self.spin_unload)
+        lbl_unload = QLabel("（闲着就卸，省 2.3GB；选了就下次聊天再唤醒）")
+        lbl_unload.setStyleSheet("color:#888;font-size:11px;")
+        row_unload.addWidget(lbl_unload, 1)
+        lv.addLayout(row_unload)
+
         # v2.9.7 硬件适配：按本机显存/内存选最搭的模型
         self.lbl_hw = QLabel("")
         self.lbl_hw.setWordWrap(True)
@@ -1815,6 +1833,9 @@ class ControlPanel(QWidget):
             return
         rows = []
         try:
+            from collections import deque
+            # v3.0.4：只留最后几百条在内存里，历史文件几千行也不用整份读进来
+            rows = deque(maxlen=max(limit * 4, 240))
             with open(path, "r", encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
@@ -1824,6 +1845,7 @@ class ControlPanel(QWidget):
                         rows.append(json.loads(line))
                     except ValueError:
                         continue
+            rows = list(rows)
         except OSError:
             return
         # v3.0.0：老版本「双发」在历史文件里留下了成对的重复条目，加载时把相邻重复合并
@@ -2316,6 +2338,10 @@ class ControlPanel(QWidget):
 
     def _on_llm_toggle(self, v: bool):
         self.ctl.config["llm_on"] = bool(v)
+        self.ctl.save_config()
+
+    def _on_unload_changed(self, v: int):
+        self.ctl.config["llm_idle_unload_min"] = int(v)
         self.ctl.save_config()
 
     # ---- 记忆 / 知识库 ----

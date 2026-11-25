@@ -89,6 +89,8 @@ DEFAULT_CONFIG = {
     # v2.9.2 真人音色提炼：linluo（温柔少女）/ jingjing（元气少女）/ off
     "voice_profile": "linluo",
     "llm_on": True, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
+    # v3.0.4：本地模型空闲多少分钟后自动卸载（省 2.3GB 内存）；0 = 永不卸载
+    "llm_idle_unload_min": 20,
     "llm_model_file": "",
     "llm_backend": "auto",                      # auto / ollama / dafeiyu_cpp（旧值 llama_cpp 自动认）
     "gpu_when_idle": True,                      # 没在跑游戏时用 GPU（Ollama），跑游戏退 CPU
@@ -1593,6 +1595,25 @@ class Controller:
                 self.pet.bubble.show_text(f"到 {now} 了，我去更新一次病毒库。", 4000)
                 self.update_signatures(silent=True)
         self._maybe_firewall_weekly()
+        self._maybe_unload_local_model()
+
+    def _maybe_unload_local_model(self):
+        """v3.0.4：本地 4B 模型常驻要吃 2.3GB。空闲超过 llm_idle_unload_min 分钟就卸掉，
+        下次要用再按需拉起（首次约 8–15 秒）。设 0 表示永不卸载。"""
+        try:
+            limit = float(self.config.get("llm_idle_unload_min", 20) or 0)
+            if limit <= 0:
+                return
+            self.llm.config = self.config
+            if self.llm.should_unload(limit):
+                mins = int(self.llm.idle_minutes())
+                self.llm.stop()
+                # 只在面板开着的时候提示，免得平时乱弹
+                if self.panel is not None and self.panel.isVisible():
+                    self.pet.bubble.show_text(
+                        f"本地模型闲着 {mins} 分钟了，我先卸载腾出内存，下次要用再叫醒它。", 4000)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _maybe_firewall_weekly(self):
         """每 7 天体检一次防火墙（只读，不改任何开关）。"""
@@ -2702,6 +2723,14 @@ def main():
     # v2.9.8：上次储存位置迁移时被占用的旧文件，这里再清一遍（此时数据库还没开）
     try:
         paths.cleanup_pending()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # v3.0.4：清掉上次异常退出留下的 dafeiyu-server 孤儿进程（实测残留 2.39GB 内存）
+    try:
+        killed = local_llm.kill_stray_servers()
+        if killed:
+            print(f"[startup] 清理残留推理进程 {killed} 个")
     except Exception:  # noqa: BLE001
         pass
 
