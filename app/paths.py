@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "3.0.11"
+APP_VERSION = "3.0.12"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -370,4 +370,5 @@ def browser_args(exe: str, url: str) -> list:
     if fam == "firefox":
         return ["-new-window", url]
     return [url]
+
 

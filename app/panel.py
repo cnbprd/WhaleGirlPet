@@ -940,6 +940,10 @@ class ControlPanel(QWidget):
         self.ctl.config["anim_timeline"] = bool(v)
         self.ctl.save_config()
 
+    def _on_rig_toggle(self, v: bool):
+        self.ctl.config["rig_mesh"] = bool(v)
+        self.ctl.save_config()
+
     def _build_pet_box(self) -> QGroupBox:
         """v2.9.7「桌宠行为」：把散在养成页/提醒页/托盘里的零碎开关收在一处。"""
         box = QGroupBox("桌宠行为")
@@ -993,6 +997,12 @@ class ControlPanel(QWidget):
             "关：用旧的手写公式（匀速跳动）。默认开。")
         self.chk_timeline.toggled.connect(self._on_timeline_toggle)
         row_anim.addWidget(self.chk_timeline)
+        self.chk_rig = QCheckBox("走路真屈膝")
+        self.chk_rig.setToolTip(
+            "开：走路/小跑时整张立绘按腿部骨骼扭网格，两条腿真的绕髋、绕膝转。\n"
+            "关：退回旧的条带横移（整段身体倾斜，腿不弯）。默认开。")
+        self.chk_rig.toggled.connect(self._on_rig_toggle)
+        row_anim.addWidget(self.chk_rig)
         row_anim.addStretch()
         pv.addLayout(row_anim)
 
@@ -1760,6 +1770,7 @@ class ControlPanel(QWidget):
                                   (self.chk_topmost, "topmost", True),
                                   (self.chk_scatter, "allow_icon_scatter", False),
                                   (self.chk_timeline, "anim_timeline", True),
+                                  (self.chk_rig, "rig_mesh", True),
                                   (self.chk_follow, "follow_mouse", False)):
             chk.blockSignals(True)
             chk.setChecked(bool(self.ctl.config.get(key, default)))

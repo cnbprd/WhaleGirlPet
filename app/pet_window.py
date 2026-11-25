@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
 from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SKINS,
                    SKINS, SKIN_FORM, asset_path)
 import anim_engine as anim
+import rig as rig_mod
 from bubble import BubbleWindow
 from voice_profile import profile_names as voice_profile_names
 
@@ -119,6 +120,9 @@ class PetWindow(QWidget):
         # v3.0.11：关键帧时间轴（档 A）—— 八个代码动作改由轨道 + 缓动演出，
         # config["anim_timeline"] 关掉就退回原来的手写公式。
         self.tl = anim.Timeline()
+        # v3.0.12：档 B 网格蒙皮骨骼（腿部真屈膝），config["rig_mesh"] 可关
+        self._rig = None
+        self._rig_key = None
 
         self.bubble = BubbleWindow(self)
 
@@ -975,7 +979,10 @@ class PetWindow(QWidget):
             p.scale(-1.0, 1.0)
         p.rotate(self.rot)
         p.scale(self.sx, self.sy)
-        if self.gait_on and self._leg is not None:
+        if (self.gait_on and self.state in ("walk", "run", "trot")
+                and self._controller.config.get("rig_mesh", True)):
+            self._paint_rig(p, pw, ph)
+        elif self.gait_on and self._leg is not None:
             self._paint_gait(p, pw, ph)
         else:
             p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
@@ -1062,6 +1069,34 @@ class PetWindow(QWidget):
                 p.setBrush(QColor(180, 220, 255, aa))
                 p.drawEllipse(QPointF(cx, cy), r, r)
         p.restore()
+
+    def _rig_for(self):
+        """按当前立绘懒建 Rig（换皮肤/表情/形态时重建）。"""
+        pix = self._pix
+        if pix.isNull() or pix.width() < 8 or pix.height() < 8:
+            return None
+        key = (pix.cacheKey(), pix.width(), pix.height())
+        if self._rig is None or self._rig_key != key:
+            self._rig = rig_mod.Rig(pix)
+            self._rig_key = key
+        return self._rig
+
+    def _paint_rig(self, p: QPainter, pw: int, ph: int):
+        """档 B：网格蒙皮骨骼走路——两条腿真的绕髋/膝转，不是整段横移。"""
+        rig = self._rig_for()
+        if rig is None:
+            p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), self._pix)
+            return
+        st = self.state
+        phase = self.gait * 2 * math.pi
+        if st == "run":
+            ang = rig_mod.Rig.walk_angles(phase, amp_thigh=15.0, amp_shin=34.0)
+        elif st == "trot":
+            ang = rig_mod.Rig.walk_angles(phase, amp_thigh=12.0, amp_shin=26.0)
+        else:
+            ang = rig_mod.Rig.walk_angles(phase, amp_thigh=9.0, amp_shin=20.0)
+        frame = rig.frame(*ang)
+        p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), frame)
 
     def _paint_gait(self, p: QPainter, pw: int, ph: int):
         """条带弯曲步态（strip warp）。
