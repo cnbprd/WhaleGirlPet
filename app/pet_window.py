@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QWidget
 from paths import (ACTIONS, EXPRESSIONS, FORM_DEFAULT_SKIN, FORM_LABELS, FORM_SKINS,
                    SKINS, SKIN_FORM, asset_path)
 import anim_engine as anim
+import director as director_mod
 import rig as rig_mod
 import skeletal as sk_mod
 from bubble import BubbleWindow
@@ -98,6 +99,9 @@ class PetWindow(QWidget):
         # 动画状态
         self.state = "idle"
         self.state_t = 0.0
+        # v3.0.24：动作导演。所有 do_action 必须先过仲裁，散落调用不再能互相插队。
+        self.director = director_mod.Director()
+        self._then_action = ""
         self.rot = 0.0
         self.sx = 1.0
         self.sy = 1.0
@@ -377,6 +381,9 @@ class PetWindow(QWidget):
             self._run_timer.stop()
         if self._action_timer is not None:
             self._action_timer.stop()
+        self._then_action = ""
+        if getattr(self, "director", None) is not None:
+            self.director.release()
         if getattr(self, "tl", None) is not None:
             self.tl.stop()
         self.restore_base_expression()
@@ -851,16 +858,31 @@ class PetWindow(QWidget):
     # ================= 动作体系 =================
     DEFAULT_ACTION_MS = {"tumble": 2400, "brawl": 2600, "hop": 2200}
 
-    def do_action(self, key: str, duration_ms: int = 0, then: str = "", mix: float = 0.30):
-        """播动作。v3.0.21：`mix` 是切过去的淡入时长（秒），`then` 是接着排队的下一个动作。
+    def do_action(self, key: str, duration_ms: int = 0, then: str = "", mix: float = 0.30,
+                  priority: int | None = None, source: str = "auto",
+                  force: bool = False, hold: bool = False):
+        """播动作。v3.0.24：先过 Director 仲裁，再交给状态机/时间轴。
 
-        0.30s 是实测出来的：0.15s 只能压住位置（速度突变仍 10.30px/帧），
-        0.30s 配合 Hermite 才把速度突变压到 1.14px/帧（硬切 15.20）。
+        `source`：user / llm / auto / idle / physics / chain；决定默认优先级。
+        `force`：只给物理动作（拖拽、落地）用，绕过 min_hold/不可打断。
+        返回是否真的开始；被仲裁拒绝时不会打断当前动作。
         """
         if key not in ALL_ACTIONS:
-            return
+            return False
         if duration_ms <= 0:
             duration_ms = self.DEFAULT_ACTION_MS.get(key, 3000)
+        if priority is None:
+            priority = director_mod.SOURCE_PRIORITY.get(source, director_mod.P_AUTO)
+        card = director_mod.card_for(key, dur_ms=duration_ms, then=then,
+                                     priority=priority, mix=mix, hold=hold)
+        ok, why = self.director.submit(card, source=source, force=force)
+        if not ok:
+            return False
+        # 新动作已获准：停掉上一个动作的收回计时器，避免旧 timer 把新动作掐掉。
+        if self._action_timer is not None:
+            self._action_timer.stop()
+            self._action_timer = None
+        self._then_action = then or card.then or ""
         self.follow = False
         self.action_key = key
         skin_now = self._controller.config.get("skin", "default")
@@ -882,22 +904,22 @@ class PetWindow(QWidget):
             self.set_expression("happy", 0)
         self.set_state(key)
         # v3.0.11：八个代码动作交给时间轴引擎演出（config 可关，退回旧公式）
-        # v3.0.20：切动作默认给 0.15s 交叉淡入；`then` 交给引擎排队，动作之间不再硬切
+        # v3.0.24：`then` 不再交给 Timeline 队列，由 Director 在动作收回时接力，
+        # 保证“播完 A 自动接 B”也走同一套优先级/冷却。
         try:
             if key in anim.CLIPS and self._controller.config.get("anim_timeline", True):
                 self.tl.play(key, mix=mix)
-                if then and then in anim.CLIPS:
-                    self.tl.queue(then)
             else:
                 self.tl.stop()
         except Exception:  # noqa: BLE001
             pass
         self._controller.on_action(key)
-        if duration_ms > 0:
+        if duration_ms > 0 and not card.hold:
             self._action_timer = QTimer(self)
             self._action_timer.setSingleShot(True)
             self._action_timer.timeout.connect(self.finish_action)
             self._action_timer.start(duration_ms)
+        return True
 
     def do_task_work(self, state: str):
         """打工动作入口：进专用状态并一直表演到任务结束（不设自动收回计时器）。
@@ -908,6 +930,15 @@ class PetWindow(QWidget):
         if state not in TASK_STATES:
             return
         self.follow = False
+        if getattr(self, "director", None) is not None:
+            self.director.release()
+            # 打工是一段持续表演：占住 70 级，自主动作/聊天手势不能中途把她拉去跳舞；
+            # 但用户再点一个动作（90）仍然可以接管。
+            self.director.submit(
+                director_mod.Action(state, priority=director_mod.P_LLM, hold=True,
+                                    interruptible=True, dur_ms=0, min_hold_ms=0),
+                source="llm", force=True)
+        self._then_action = ""
         if getattr(self, "_action_timer", None) is not None:
             self._action_timer.stop()
         self._action_timer = None
@@ -918,10 +949,23 @@ class PetWindow(QWidget):
     def finish_action(self):
         if self._action_timer is not None:
             self._action_timer.stop()
+        key = self.action_key
+        nxt = self._then_action
+        self._then_action = ""
+        if key and getattr(self, "director", None) is not None:
+            self.director.finish(key)
         self.action_key = ""
+        # 动作接力（then）：按自主优先级再走一次仲裁；被拒就正常回 idle。
+        if nxt and nxt in ALL_ACTIONS and self.do_action(nxt, source="chain"):
+            return
         self.finish_state()
 
     def do_panic(self, duration_ms: int = 2600):
+        # 物理级：慌张时任何自主动作/聊天动作都不许插进来。
+        self.director.submit(
+            director_mod.Action("panic", priority=director_mod.P_PHYS, physical=True,
+                                interruptible=False, dur_ms=duration_ms, min_hold_ms=0),
+            source="physics", force=True)
         self.set_expression("angry", 0)
         self.set_state("panic")
         self._controller.on_panic()
@@ -941,6 +985,12 @@ class PetWindow(QWidget):
             self.vx = self.vy = 0
             if self.state == "sleep":
                 self.wake()
+            # 物理动作最高级：拖拽期间任何自动/聊天动作都抢不走。
+            self.director.submit(
+                director_mod.Action("drag", priority=director_mod.P_PHYS, physical=True,
+                                    hold=True, interruptible=False, min_hold_ms=0,
+                                    dur_ms=0),
+                source="physics", force=True)
             self.set_state("drag")
             event.accept()
 
@@ -959,6 +1009,7 @@ class PetWindow(QWidget):
     def mouseReleaseEvent(self, event):  # noqa: N802
         if event.button() == Qt.LeftButton and self.drag_active:
             self.drag_active = False
+            self.director.release("drag")
             if self.drag_moved < 6:
                 self.do_pat()
             else:

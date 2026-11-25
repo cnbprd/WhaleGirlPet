@@ -22,6 +22,7 @@ import ambient
 import awareness
 import care_ui
 import companion
+import director as director_mod
 import emotion as emo
 import hardware
 import knowledge
@@ -558,7 +559,7 @@ class Controller:
         self.state.spend("play")
         self.pet.set_expression("happy", 3000)
         try:
-            self.pet.do_action("hop", 2400)
+            self.pet.do_action("hop", 2400, source="user")
         except Exception:  # noqa: BLE001
             pass
         self.beep("pat")
@@ -689,7 +690,8 @@ class Controller:
         self.open_settings_page()
 
     def do_action(self, key: str):
-        self.pet.do_action(key)
+        # 用户直点：优先级 90，只让物理动作（拖拽/摔跤）抢。
+        return self.pet.do_action(key, source="user")
 
     def ask_action_bubble(self):
         """偶尔冒出来问一句"做哪个动作"，两个选项。"""
@@ -922,7 +924,8 @@ class Controller:
         self.beep("panic")
 
     def perform_random(self):
-        self.pet.do_action(random.choice(ALL_ACTIONS))
+        # 自主行动：优先级 50，会冷却去重，抢不过用户动作和聊天手势。
+        self.pet.do_action(random.choice(ALL_ACTIONS), source="auto")
 
     def toggle_chatter(self, on: bool):
         self.config["chatter_on"] = bool(on)
@@ -2005,7 +2008,7 @@ class Controller:
             (("满屏跑", "跑一圈"), "开始满屏跑", lambda: self.begin_run(15000)),
             (("跑步", "跑起来"), "跑起来", lambda: self.pet.do_run(15000)),
             (("散步", "走两步", "走走"), "散步去", self.pet.do_walk),
-            (("跳舞", "跳个舞"), "跳舞", lambda: self.pet.do_action("dance")),
+            (("跳舞", "跳个舞"), "跳舞", lambda: self.do_action("dance")),
             (("蹦一下", "跳一下"), "跳一下", self.pet.do_jump),
             (("摇一摇", "抖一下"), "晃一晃", self.pet.do_shake),
             (("表演", "来个表演", "随便做点啥"), "表演一个", self.perform_random),
@@ -2737,6 +2740,10 @@ class Controller:
             return
         if self.pet.state in ("sleep", "drag", "run"):
             return
+        # v3.0.24：用户直点/聊天动作正在表演时，自主行动不许切走。
+        if getattr(self.pet, "director", None) is not None:
+            if self.pet.director.current_priority() >= director_mod.P_LLM:
+                return
         self.pet.night = self.is_night()
         pool = self.auto_weights()
         total = sum(pool.values()) or 1.0
