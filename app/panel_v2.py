@@ -173,6 +173,14 @@ def tab_models(panel) -> QWidget:
     panel.lbl_cur_model.setWordWrap(True)
     lay.addWidget(panel.lbl_cur_model)
 
+    # v3.0.8：本地推理后端显式可选（默认自动）。Ollama 坏掉时「只用自带引擎」能立刻避开
+    panel.cmb_backend = QComboBox()
+    panel.cmb_backend.addItem("自动（有 Ollama 就先试 Ollama，坏了自动退回自带引擎）", "auto")
+    panel.cmb_backend.addItem("只用自带引擎 dafeiyu（不经过 Ollama，推荐）", "dafeiyu_cpp")
+    panel.cmb_backend.addItem("只用 Ollama", "ollama")
+    panel.cmb_backend.currentIndexChanged.connect(lambda _: panel._on_backend_change())
+    lay.addWidget(_row(QLabel("本地推理后端"), panel.cmb_backend))
+
     panel.lst_models = QListWidget()
     panel.lst_models.setMinimumHeight(268)
     lay.addWidget(panel.lst_models)
@@ -190,6 +198,24 @@ def tab_models(panel) -> QWidget:
                        _btn("添加模型文件夹", panel._add_model_dir),
                        _btn("刷新已安装", panel._refresh_models)))
     lay.addWidget(_row(_btn("检查 Ollama 能否真正生成", panel._check_ollama)))
+
+    # ---- v3.0.8：Ollama 官方库（联网），下下来的就是 gguf，不用装 Ollama ----
+    o_tip = QLabel("Ollama 官方库（联网）：点「刷新」重新抓 ollama.com/library 的模型清单与下载地址；"
+                   "选中一个会填进下面的输入框，再点「查询并下载」。"
+                   "下下来的是标准 gguf，交给自带引擎跑，全程不需要 Ollama。")
+    o_tip.setWordWrap(True)
+    o_tip.setStyleSheet("color:#666;font-size:12px;")
+    lay.addWidget(o_tip)
+    panel.lst_ollama = QListWidget()
+    panel.lst_ollama.setMinimumHeight(132)
+    panel.lst_ollama.itemClicked.connect(panel._pick_ollama_item)
+    lay.addWidget(panel.lst_ollama)
+    panel.ed_ollama_ref = QLineEdit()
+    panel.ed_ollama_ref.setPlaceholderText("qwen3.5:4b / gemma4:e2b / deepseek-coder:6.7b-instruct")
+    lay.addWidget(panel.ed_ollama_ref)
+    lay.addWidget(_row(_btn("刷新 Ollama 模型库（联网）", panel._refresh_ollama_lib),
+                       _btn("查询并下载", panel._dl_ollama),
+                       _btn("从本机 Ollama 导入", panel._import_ollama)))
 
     panel.pbar_model = QProgressBar()
     panel.pbar_model.setVisible(False)

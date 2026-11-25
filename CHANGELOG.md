@@ -2,6 +2,17 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.8（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 Ollama 官方库 | 新增 `ollama_hub.library()/tags()/manifest()`：抓 ollama.com/library 名单（12h 缓存）、查 registry manifest 拿权重 blob 直链、下载即标准 GGUF（复用断点续传） | 库页抓到 272 个模型；`qwen3.5:4b` manifest 2525.9MB、blob 头 `GGUF`；0.8b tag 774.2MB；不写 tag 时列 8 个可选 tag |
+| 2 本机 Ollama 导入 | `local_installs()/import_all()` 读 `OLLAMA_MODELS` 的 manifests → 复制 model blob 为 `<name>-<tag>.gguf`；`(name,tag)` 去重、已在模型目录同名则跳过；后台线程 | 本机实测：导入 gemma4-e2b-latest（3269MB）+ qwen3.5-4b（2526MB），deepseek 已存在跳过；共复制 6.08GB |
+| 3 三模型落地 | 三个 Ollama 模型均可用自带引擎直接跑 | `qwen3.5-4b.gguf`：backend=dafeiyu_cpp、加载 4.6s、问「你好」答「你好」 |
+| 4 后端下拉 | 模型页新增「本地推理后端」：自动 / 只用自带引擎 / 只用 Ollama，写入 `llm_backend` 并停引擎 | offscreen 冒烟：5 个新面板方法齐全 |
+| 5 下载落地路径 | `_on_dl_done` 改存绝对路径，避免同名模型切错 | — |
+| 6 版本 3.0.8 | `paths.APP_VERSION`、iss 六处同步 | 六处 3.0.8 |
+
 ## v3.0.7（2026-11-25）
 
 | 项 | 改动 | 实测 |

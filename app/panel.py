@@ -2040,6 +2040,18 @@ class ControlPanel(QWidget):
             + "\n".join(ctl.model_search_dirs()[:6])
             + "\n\n把 .gguf 丢进任意一个目录，点「刷新已安装」就能看到。\n"
             "本机装并启动着 Ollama 的话，Ollama 里的模型也会列在最上面。")
+        # 后端下拉框同步实际配置
+        try:
+            _b = str(ctl.config.get("llm_backend", "auto") or "auto")
+            if _b == "llama_cpp":
+                _b = "dafeiyu_cpp"
+            _i = self.cmb_backend.findData(_b)
+            if _i >= 0 and self.cmb_backend.currentIndex() != _i:
+                self.cmb_backend.blockSignals(True)
+                self.cmb_backend.setCurrentIndex(_i)
+                self.cmb_backend.blockSignals(False)
+        except Exception:  # noqa: BLE001
+            pass
         self.lst_models.clear()
 
         # 〇、Ollama 模型
@@ -2207,6 +2219,90 @@ class ControlPanel(QWidget):
         if ok:
             self.pbar_model.setVisible(True)
         self.ed_model_url.clear()
+
+    def _on_backend_change(self):
+        """切本地推理后端（auto / dafeiyu_cpp / ollama），立刻生效下一次对话。"""
+        try:
+            v = self.cmb_backend.currentData() or "auto"
+        except Exception:  # noqa: BLE001
+            v = "auto"
+        self.ctl.config["llm_backend"] = v
+        self.ctl.save_config()
+        try:
+            self.ctl.llm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        self.lbl_dl.setText({
+            "auto": "已切「自动」：有可用 Ollama 先用它，跑不动会自己退回自带引擎。",
+            "dafeiyu_cpp": "已切「只用自带引擎」：以后不碰 Ollama，直接用 local gguf。",
+            "ollama": "已切「只用 Ollama」：Ollama 修好前会报错，建议先别选这个。",
+        }.get(v, "已切换。"))
+        self._refresh_v2()
+
+    def _refresh_ollama_lib(self):
+        """联网抓 Ollama 官方库（ollama.com/library），刷新模型清单与下载地址。"""
+        self.lbl_dl.setText("正在联网抓 ollama.com/library …")
+        self.lbl_dl.repaint()
+        lib = []
+        try:
+            lib = self.ctl.ollama_library(refresh=True)
+        except Exception as e:  # noqa: BLE001
+            self.lbl_dl.setText(f"抓取失败：{e}")
+            return
+        self.lst_ollama.clear()
+        for m in lib[:300]:
+            it = QListWidgetItem(f"{m['name']}　{(m.get('desc') or '')[:60]}")
+            it.setData(Qt.UserRole, m["name"])
+            it.setToolTip(m.get("desc") or m["name"])
+            self.lst_ollama.addItem(it)
+        if lib:
+            self.lbl_dl.setText(f"Ollama 官方库抓到 {len(lib)} 个模型。点一个会填进下面的输入框。")
+        else:
+            self.lbl_dl.setText("没抓到（网络不通或被拦）。也可以直接在输入框里写 名字:tag 下载。")
+
+    def _pick_ollama_item(self, item):
+        name = item.data(Qt.UserRole) or ""
+        if not name:
+            return
+        self.ed_ollama_ref.setText(name)
+        self.lbl_dl.setText(f"已选 {name}：在输入框补上 tag（如 {name}:latest 或 {name}:4b）再点下载。")
+
+    def _dl_ollama(self):
+        ref = (self.ed_ollama_ref.text() or "").strip()
+        if not ref:
+            self.lbl_dl.setText("先在输入框写模型名，比如 qwen3.5:4b。")
+            return
+        if ":" not in ref:
+            # 没写 tag：先把可用 tag 列出来，别替用户默认下一个 6GB 的 latest
+            try:
+                ts = self.ctl.ollama_hub_tags(ref)
+            except Exception:  # noqa: BLE001
+                ts = []
+            if ts:
+                picks = "、".join(f"{ref}:{t['tag']}({t['size_gb']}G)" for t in ts[:6])
+                self.lbl_dl.setText(f"{ref} 有这些 tag：{picks}　—— 在输入框带上 tag 再下载。")
+                return
+        ok, msg = False, ""
+        try:
+            ok, msg = self.ctl.download_ollama(ref)
+        except Exception as e:  # noqa: BLE001
+            msg = f"下载失败：{e}"
+        self.lbl_dl.setText(msg)
+        try:
+            self.pbar_model.setVisible(bool(ok))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _import_ollama(self):
+        """把本机 Ollama 已下载的权重搬成 gguf（不联网、不启动 Ollama）。"""
+        try:
+            started = self.ctl.import_ollama_models()
+        except Exception as e:  # noqa: BLE001
+            self.lbl_dl.setText(f"导入失败：{e}")
+            return
+        self.lbl_dl.setText(
+            "开始从本机 Ollama 搬权重（几个 GB，后台复制，完成后会自动刷新列表）…"
+            if started else "已经有导入任务在跑，等它完成。")
 
     def _check_ollama(self):
         """真打一次小请求，告诉用户 Ollama 是能跑还是假活。"""

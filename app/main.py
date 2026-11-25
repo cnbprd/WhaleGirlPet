@@ -31,6 +31,7 @@ import maker
 import memory as mem
 import model_dl
 import models_catalog
+import ollama_hub
 import paths
 import persona as pers
 import snacks as snack_catalog
@@ -146,6 +147,7 @@ class Controller:
         self.llm_worker = None
         self.scan_worker = None
         self.icon_layout = None
+        self.ollama_import = None
         self.collision_timer = None
         self.history = []
 
@@ -2093,7 +2095,8 @@ class Controller:
         self.dl_speed = 0.0
         it = models_catalog.by_id(item_id) or {}
         name = it.get("file") or os.path.basename(path)
-        self.config["llm_model_file"] = name
+        # v3.0.8：存绝对路径，杜绝不同目录同名模型切错
+        self.config["llm_model_file"] = path if (path and os.path.isabs(path)) else name
         self.save_config()
         self.dl_worker = None
         if self.panel is not None:
@@ -2172,6 +2175,82 @@ class Controller:
             return False, f"Ollama 生成失败（HTTP {e.code}）：{detail or '没有返回内容'}"
         except Exception as e:  # noqa: BLE001
             return False, f"连不上 Ollama：{e}"
+
+    def ollama_library(self, refresh: bool = False) -> list:
+        """Ollama 官方库名单（联网抓 ollama.com/library，带 12 小时缓存）。"""
+        try:
+            return ollama_hub.library(refresh)
+        except Exception:  # noqa: BLE001
+            return []
+
+    def ollama_hub_tags(self, name: str) -> list:
+        try:
+            return ollama_hub.tags(name)
+        except Exception:  # noqa: BLE001
+            return []
+
+    def download_ollama(self, ref: str):
+        """从 Ollama 官方 registry 下载权重 blob（就是标准 GGUF），交给自带引擎跑。
+
+        ref 形如 qwen3.5:4b；不写 tag 就当 latest。
+        """
+        ref = (ref or "").strip().strip("/")
+        if not ref:
+            return False, "先填模型名，比如 qwen3.5:4b、gemma4:e2b。"
+        if ":" in ref:
+            name, tag = ref.split(":", 1)
+        else:
+            name, tag = ref, "latest"
+        if not name:
+            return False, "模型名不能为空。"
+        w = self.dl_worker
+        if w is not None and w.isRunning():
+            return False, "已经有下载任务在跑，先等它完成或点「取消下载」。"
+        m = ollama_hub.manifest(name, tag)
+        if not m or not m.get("model_url"):
+            return False, f"Ollama registry 里没找到 {name}:{tag}（名字或 tag 不对，或是分片模型）。"
+        dest = os.path.join(self.models_dir(), ollama_hub.dest_name(name, tag))
+        if os.path.exists(dest):
+            return False, f"{os.path.basename(dest)} 已经在本地了，直接点「使用此模型」。"
+        size_mb = m.get("model_size", 0) / 1048576
+        self.dl_worker = model_dl.ModelDownloader("ollama:" + ref, m["model_url"], dest)
+        self.dl_worker.progress.connect(self._on_dl_progress)
+        self.dl_worker.done.connect(self._on_dl_done)
+        self.dl_worker.failed.connect(self._on_dl_failed)
+        self.dl_worker.start()
+        return True, (f"开始从 Ollama 官方库下载 {name}:{tag}（{size_mb:.0f} MB）。"
+                      "下完就是普通 gguf，直接用自带引擎跑，不用启动 Ollama。")
+
+    def import_ollama_models(self) -> bool:
+        """把本机 Ollama 已下载的权重复制到模型目录（不联网、不启动 Ollama）。"""
+        w = self.ollama_import
+        if w is not None and w.isRunning():
+            return False
+        try:
+            self.ollama_import = ollama_hub.OllamaImportWorker(
+                self.models_dir(), [os.path.join(paths.runtime_dir(), "models")])
+            self.ollama_import.done_stats.connect(self._on_ollama_imported)
+            self.ollama_import.start()
+            return True
+        except Exception:  # noqa: BLE001
+            self.ollama_import = None
+            return False
+
+    def _on_ollama_imported(self, stats: dict):
+        self.ollama_import = None
+        copied = stats.get("copied", 0)
+        skipped = stats.get("skipped", 0)
+        mb = stats.get("bytes", 0) / 1048576
+        msg = f"从本机 Ollama 导入完成：新增 {copied} 个（{mb:.0f} MB），已存在 {skipped} 个"
+        errs = stats.get("errors") or []
+        if errs:
+            msg += "；跳过 " + "；".join(errs[:3])
+        if self.panel is not None:
+            try:
+                self.panel.lbl_dl.setText(msg)
+                self.panel._refresh_v2()
+            except Exception:  # noqa: BLE001
+                pass
 
     def use_model(self, file_name: str) -> bool:
         """file_name 可以是绝对路径，也可以是文件名（会在所有模型目录里找）。"""
