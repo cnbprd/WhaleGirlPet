@@ -307,6 +307,10 @@ def tab_security(panel) -> QWidget:
     lay.addWidget(_row(
         panel.btn_guard,
         _btn("交给 Defender 深扫", panel._guard_defender),
+        _btn("自测扫描能力", panel._guard_selftest),
+        _btn("哈希名单", panel._open_guard_hashes),
+    ))
+    lay.addWidget(_row(
         _btn("导出报告", panel._guard_export),
         _btn("打开报告文件夹", panel._open_guard_reports),
     ))

@@ -15,6 +15,7 @@
 输出：findings（等级 / 权重 / 理由 / 证据）、0-100 风险分、Markdown + JSON 报告。
 """
 import datetime
+import hashlib
 import json
 import math
 import os
@@ -98,6 +99,10 @@ DEFAULT_RULES = [
      "scope": "file", "kind": "regex",
      "pattern": r"(?i)(stratum\+tcp|minexmr|nanopool|xmrpool|supportxmr)",
      "why": "挖矿木马内置矿池连接串"},
+    {"id": "AV-EICAR", "name": "EICAR 杀毒测试串", "level": "high", "weight": 40,
+     "scope": "file", "kind": "str",
+     "pattern": "EICAR-STANDARD-ANTIVIRUS-TEST-FILE",
+     "why": "业界通用杀毒能力测试样本，正常文件不会出现此串；命中即证明检测链路有效"},
 ]
 
 
@@ -297,7 +302,153 @@ def _hex_hit(r: dict, path: str) -> bool:
         return False
 
 
-def scan_file(path: str, rules: list, deep: bool = True) -> list:
+# ---------------- 哈希名单（借鉴 Loki / ClamAV 的 hash IOC 思路） ----------------
+# Loki 的判定链是「hash → filename → YARA → 行为」，hash 排第一：成本最低、零误报。
+# 本机没有 YARA 引擎，就把第一环直接用上——SHA256 黑名单命中即判高危，白名单直接跳过。
+EICAR_TEXT = ("X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*")
+HASH_DIR_NAME = "hashes"
+_HASH_CACHE = {"stamp": None, "black": {}, "white": {}}
+
+
+def hash_dir(data_dir: str = "") -> str:
+    return os.path.join(data_dir or _data_root(), HASH_DIR_NAME)
+
+
+def sha256_of(path: str) -> str:
+    """流式算 SHA256（大文件不整读进内存）。失败返回空串。"""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            while True:
+                b = f.read(1024 * 1024)
+                if not b:
+                    break
+                h.update(b)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def _list_sig(d: str) -> str:
+    if not os.path.isdir(d):
+        return ""
+    parts = []
+    for fn in sorted(os.listdir(d)):
+        try:
+            parts.append(f"{fn}:{int(os.path.getmtime(os.path.join(d, fn)))}")
+        except OSError:
+            pass
+    return "|".join(parts)
+
+
+def load_hash_lists(data_dir: str = "") -> dict:
+    """读 hashes/black.txt、hashes/white.txt：每行 `<sha256>  # 备注`。按目录 mtime 缓存。"""
+    d = hash_dir(data_dir)
+    sig = _list_sig(d)
+    if _HASH_CACHE["stamp"] == sig:
+        return {"black": _HASH_CACHE["black"], "white": _HASH_CACHE["white"]}
+    out = {"black": {}, "white": {}}
+    for kind in ("black", "white"):
+        fn = os.path.join(d, f"{kind}.txt")
+        if not os.path.isfile(fn):
+            continue
+        try:
+            with open(fn, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    raw = line.strip()
+                    if not raw or raw.startswith("#"):
+                        continue
+                    note = raw.split("#", 1)[1].strip() if "#" in raw else ""
+                    s = raw.split("#", 1)[0].strip().lower()
+                    if len(s) == 64 and all(c in "0123456789abcdef" for c in s):
+                        out[kind][s] = note
+        except OSError:
+            continue
+    _HASH_CACHE.update({"stamp": sig, "black": out["black"], "white": out["white"]})
+    return out
+
+
+def hash_verdict(path: str, data_dir: str = "") -> dict:
+    """命中名单返回 {kind, sha, label}，否则 {}。名单为空时不算哈希（省 IO）。"""
+    lists = load_hash_lists(data_dir)
+    if not lists["black"] and not lists["white"]:
+        return {}
+    sha = sha256_of(path)
+    if not sha:
+        return {}
+    # 白名单优先：用户显式信任的文件应能覆盖旧的黑名单条目（误报修正就是这么来的）
+    if sha in lists["white"]:
+        return {"kind": "white", "sha": sha, "label": lists["white"][sha]}
+    if sha in lists["black"]:
+        return {"kind": "black", "sha": sha, "label": lists["black"][sha]}
+    return {}
+
+
+def ensure_hash_dirs(data_dir: str = "") -> dict:
+    """建好 hashes/black.txt 与 white.txt（带说明头），已存在就不动。返回两个路径。"""
+    d = hash_dir(data_dir)
+    os.makedirs(d, exist_ok=True)
+    paths = {}
+    for kind, desc in (("black", "已知恶意样本 SHA256（每行一个，可跟 # 备注）"),
+                       ("white", "可信文件 SHA256（命中直接跳过扫描，降低误报与耗时）")):
+        fn = os.path.join(d, f"{kind}.txt")
+        if not os.path.isfile(fn):
+            with open(fn, "w", encoding="utf-8") as f:
+                f.write(f"# {desc}\n")
+        paths[kind] = fn
+    return paths
+
+
+def eicar_selftest(data_dir: str = "", rules: list = None) -> dict:
+    """分两层自证检测能力：
+
+    1. 规则层（纯内存）：内置 AV-EICAR 规则必须认出标准串——不落盘，不受系统拦截影响。
+    2. 端到端：真写一个 EICAR 文件再扫。
+       - 能读到 → 必须命中，`source="self"`；
+       - 读不到（Windows Defender 实时防护直接把内容锁住，open 报 Errno 22）
+         → `blocked="system"`，这同样是"检测已生效"的证明，只是生效的是系统引擎。
+    3. 对照组：写一个无害脚本，必须零命中（证明不是见谁咬谁）。
+    """
+    t0 = time.perf_counter()
+    rules = rules if rules is not None else load_rules(data_dir)
+    rule = next((r for r in rules if r.get("id") == "AV-EICAR"), None)
+    rule_match = bool(rule and _match(rule, EICAR_TEXT))
+    d = tempfile.mkdtemp(prefix="whale_guard_selftest_")
+    bad = os.path.join(d, "eicar.txt")
+    good = os.path.join(d, "hello.txt")
+    hits, blocked, clean = [], "", []
+    try:
+        with open(bad, "w", encoding="utf-8") as f:
+            f.write(EICAR_TEXT + "\n")
+        with open(good, "w", encoding="utf-8") as f:
+            f.write("print('hello')\n")
+        try:
+            with open(bad, "rb") as f:
+                f.read()
+            hits = scan_file(bad, rules, data_dir=data_dir)
+        except OSError as e:
+            blocked = "system" if getattr(e, "errno", 0) in (13, 22) else f"err{getattr(e, 'errno', '')}"
+        clean = scan_file(good, rules, data_dir=data_dir)
+    finally:
+        for p in (bad, good):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+    ms = (time.perf_counter() - t0) * 1000
+    detected = bool(hits) or blocked == "system"
+    return {"ok": rule_match and detected and not clean,
+            "rule_match": rule_match, "eicar_hits": len(hits),
+            "eicar_score": score_of(hits), "eicar_rules": [h.get("rule") for h in hits],
+            "blocked": blocked, "clean_hits": len(clean),
+            "ms": round(ms, 1), "rules": len(rules)}
+
+
+def scan_file(path: str, rules: list, deep: bool = True, data_dir: str = "") -> list:
     """扫单个文件：规则命中 + PE 结构异常。返回 findings 列表。"""
     findings = []
     try:
@@ -307,6 +458,14 @@ def scan_file(path: str, rules: list, deep: bool = True) -> list:
                  "title": "读不到文件", "why": str(e)[:100]}]
     if size == 0:
         return []
+    # 0) 哈希名单先行：黑名单直接判高危、白名单直接放过（名单为空时零开销）
+    hv = hash_verdict(path, data_dir)
+    if hv:
+        if hv["kind"] == "white":
+            return []
+        return [{"level": "high", "score": 45, "kind": "hash", "target": path,
+                 "rule": "HASH-BLACK", "title": "命中哈希黑名单",
+                 "why": f"SHA256 {hv['sha'][:16]}…" + (f"｜{hv['label']}" if hv["label"] else "")}]
     ext = os.path.splitext(path)[1].lower()
     is_pe = _read_head(path, 2) == b"MZ"
     # 1) 文本类：脚本/批处理，读前 2MB 匹配规则
@@ -315,8 +474,12 @@ def scan_file(path: str, rules: list, deep: bool = True) -> list:
             with open(path, "rb") as f:
                 raw = f.read(min(size, 2 * 1024 * 1024))
             text = raw.decode("utf-8", "ignore") + raw.decode("utf-16-le", "ignore")
-        except OSError:
+        except OSError as e:
             text = ""
+            if getattr(e, "errno", 0) in (13, 22):
+                findings.append({"level": "info", "score": 0, "kind": "file", "target": path,
+                                 "rule": "READ-BLOCK", "title": "内容读取被安全软件拦截",
+                                 "why": "文件还在但读不开，常见于实时防护已锁定该文件——这条不是漏扫，是系统引擎已经动手了"})
         for r in rules:
             # cmdline 类规则同样扫脚本正文：脚本里通常就是嵌着这些命令行
             if r["scope"] not in ("file", "cmdline"):

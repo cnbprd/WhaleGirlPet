@@ -28,6 +28,24 @@ Spine 运行时**未使用**（许可限制见下）。
 - `app/skeletal.py`（v3.0.13）：通用骨架（Skeleton）+ 顶点权重（Skin）+ 动画剪辑（Clip）
   + 播放器（Player）+ 渲染（LBS 顶点形变 + 逐三角形仿射贴图）
 
+## 三之二、v3.0.20 调研过的项目（只借鉴机制，未引入代码）
+
+安全方向：
+
+- VirusTotal/yara（10062★）：借「strings + condition」的规则形状，未引入 C 库或 yara-python。
+- Cisco-Talos/clamav（7733★，GPLv2）：借「引擎与签名库分离、白名单先行」，未搬引擎（GPL 与本项目分发不兼容）。
+- Neo23x0/Loki（3809★）：借「hash → 路径 → 规则」的判定顺序，代码为自写。
+- Yara-Rules/rules（4966★）、YARA-Rules 社区规则：格式参考，未打包任何规则文件。
+- fire1ce/eicar-standard-antivirus-test-files（266★）：EICAR 串本身是业界公开的测试常量，非版权素材。
+
+动画方向：
+
+- EsotericSoftware/spine-runtimes（5381★）：借 mix duration、track 排队、timeScale 三个概念；
+  Spine Runtime 受商业授权约束，本项目**未使用其任何代码**（v3.0.13 起即此口径）。
+- Inochi2D/inochi2d（1887★，BSD-2）、Inochi2D/inochi-creator（1269★，BSD-2）：只作设计参考，
+  未拷贝代码；本项目骨骼与蒙皮为自写（`app/skeletal.py`）。
+
+
 ## 四、素材
 
 立绘、表情、皮肤图均为本项目自制（AI 生成 + 手工挑选），不含第三方版权素材。

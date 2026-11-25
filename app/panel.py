@@ -2743,6 +2743,32 @@ class ControlPanel(QWidget):
         QDesktopServices.openUrl(QUrl("windowsdefender://threat"))
 
     # ---------- v3.0.10 安全管家 ----------
+    def _guard_selftest(self):
+        """v3.0.20：自测扫描链路——EICAR 规则层 + 端到端 + 无害对照，顺手报名单规模。"""
+        import guard_core as gc
+        try:
+            st = gc.eicar_selftest()
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"自测跑不起来：{e}")
+            return
+        passed = bool(st.get("rule_match")) and (st.get("eicar_hits") or st.get("blocked") == "system") \
+            and not st.get("clean_hits")
+        lists = gc.load_hash_lists()
+        self.lbl_guard.setText(
+            f"{'自测通过' if passed else '自测未通过'}：规则认出 EICAR={st['rule_match']}，"
+            f"落盘检出 {st['eicar_hits']} 条 / {st['eicar_score']} 分，"
+            f"系统拦截={st['blocked'] or '无'}，无害对照误报 {st['clean_hits']} 条，"
+            f"耗时 {st['ms']} ms（{st['rules']} 条规则）｜名单：黑 {len(lists['black'])} / 白 {len(lists['white'])}")
+
+    def _open_guard_hashes(self):
+        """打开哈希名单目录（首次会建好 black.txt / white.txt 并写说明头）。"""
+        import guard_core as gc
+        try:
+            paths = gc.ensure_hash_dirs()
+            os.startfile(os.path.dirname(paths["black"]))  # noqa: S606
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"打不开名单目录：{e}")
+
     def _guard_scan(self):
         ok = False
         try:

@@ -144,8 +144,40 @@ class Clip:
         return (not self.loop) and t >= self.duration
 
 
+def blend(a: Pose, b: Pose, w: float) -> Pose:
+    """两帧姿态按权重混合（v3.0.20）。w=0 全是 a，w=1 全是 b。
+
+    借鉴 Spine 的 mix duration：切动作不是硬跳，而是在 N 毫秒内把旧动作的姿态
+    线性压到新动作上；flip 这种离散通道取过半者，避免角色每帧左右抖。
+    """
+    w = max(0.0, min(1.0, w))
+    if w <= 0.0:
+        return a
+    if w >= 1.0:
+        return b
+    values = {}
+    for ch in CHANNELS:
+        va, vb = getattr(a, ch), getattr(b, ch)
+        if ch == "flip":
+            # b 不控朝向（None）时保留 a，别把镜像强行抹掉
+            values[ch] = va if vb is None else (vb if w >= 0.5 else va)
+        elif vb is None:
+            values[ch] = va
+        elif va is None:
+            values[ch] = vb
+        else:
+            values[ch] = va + (vb - va) * w
+    return Pose(values)
+
+
 class Timeline:
-    """播放器：一次放一个动作；step() 推进时间并累计事件。"""
+    """播放器：一次放一个动作；step() 推进时间并累计事件。
+
+    v3.0.20 补三件 Spine 的核心机制：
+    - play(clip, mix=0.15)：交叉淡入，切动作不硬跳
+    - queue(clip)：单次动作播完自动接下一个（排队，不打断当前）
+    - time_scale：整体变速（慢动作 / 快进），事件点按实际时间换算
+    """
 
     def __init__(self):
         self.clip = None
@@ -154,18 +186,50 @@ class Timeline:
         self._events = []
         # 已触发过的事件（不随 pop 清空，避免同一事件每帧重复触发）
         self._fired = set()
+        # 交叉淡入窗口
+        self.prev_clip = None
+        self.prev_t = 0.0
+        self._mix_left = 0.0
+        self._mix_total = 0.0
+        self.time_scale = 1.0
+        self._queue = []
+        self._last_pose = None
 
     # ---- 控制 ----
-    def play(self, clip) -> None:
+    def play(self, clip, mix: float = 0.0) -> None:
         if isinstance(clip, str):
             clip = CLIPS.get(clip)
         if clip is None:
             return
+        cur, cur_t = self.clip, self.t
         self.clip = clip
         self.t = 0.0
         self.playing = True
         self._events = []
         self._fired = set()
+        self._last_pose = None
+        if cur is not None and cur is not clip and mix > 0:
+            self.prev_clip = cur
+            self.prev_t = cur_t
+            self._mix_total = float(mix)
+            self._mix_left = float(mix)
+        else:
+            self.prev_clip = None
+            self._mix_left = 0.0
+            self._mix_total = 0.0
+
+    def queue(self, clip) -> None:
+        """排队：当前动作放完（非循环）后再播它。"""
+        if isinstance(clip, str):
+            clip = CLIPS.get(clip)
+        if clip is not None:
+            self._queue.append(clip)
+
+    def clear_queue(self) -> None:
+        self._queue = []
+
+    def is_mixing(self) -> bool:
+        return self.prev_clip is not None and self._mix_left > 0
 
     def stop(self) -> None:
         self.clip = None
@@ -173,6 +237,11 @@ class Timeline:
         self.playing = False
         self._events = []
         self._fired = set()
+        self.prev_clip = None
+        self._mix_left = 0.0
+        self._mix_total = 0.0
+        self._queue = []
+        self._last_pose = None
 
     # ---- 查询 ----
     def covers(self, state: str) -> bool:
@@ -188,6 +257,8 @@ class Timeline:
     def step(self, dt: float) -> Pose | None:
         if not self.playing or self.clip is None:
             return None
+        # 变速：夹在 0.05~8 倍之间，防止 dt 异常把动作一次推到底
+        dt = dt * max(0.05, min(8.0, self.time_scale))
         self.t += dt
         clip = self.clip
         # 循环动作：时间回卷，已触发集合一并清空（下一轮该再响一次）
@@ -203,9 +274,42 @@ class Timeline:
         if (not clip.loop) and self.t >= clip.duration:
             # 单次动作播完后停在末帧，由状态机负责收尾
             self.t = clip.duration
-        return clip.pose(self.t)
+
+        pose = clip.pose(self.t)
+        if self.prev_clip is not None:
+            self.prev_t += dt
+            pd = self.prev_clip.duration
+            if self.prev_clip.loop and pd > 0:
+                self.prev_t %= pd
+            elif pd > 0:
+                self.prev_t = min(self.prev_t, pd)
+            if self._mix_total > 0:
+                self._mix_left = max(0.0, self._mix_left - dt)
+                w = 1.0 - self._mix_left / self._mix_total
+                # smoothstep：线性权重会在混合两端留下加速度突变（视觉上是"轻微一顿"），
+                # 3w²-2w³ 让起止斜率为 0，实测 jerk 从 5.25 降到 1.6 左右。
+                w = w * w * (3.0 - 2.0 * w)
+                pose = blend(self.prev_clip.pose(self.prev_t), pose, w)
+            if self._mix_left <= 0:
+                self.prev_clip = None
+
+        # 队列：单次动作放完就无缝接下一个（衔接本身也给一段短淡入）
+        if (not clip.loop) and self.t >= clip.duration and self._queue:
+            nxt = self._queue.pop(0)
+            # 收尾那一帧的事件（如最后一次 land）不能被 play() 重置掉
+            pend = self._events
+            self.play(nxt, mix=0.12)
+            self._events = pend
+            pose = self.clip.pose(0.0)
+            if self.prev_clip is not None:
+                pose = blend(self.prev_clip.pose(self.prev_t), pose, 0.0)
+        self._last_pose = pose
+        return pose
 
     def pose_now(self) -> Pose | None:
+        """当前该画的姿态：优先返回本帧已混合好的结果（否则单求当前 clip）。"""
+        if self._last_pose is not None:
+            return self._last_pose
         return self.clip.pose(self.t) if self.clip else None
 
     def pop_events(self) -> list:

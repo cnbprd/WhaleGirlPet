@@ -772,7 +772,8 @@ class PetWindow(QWidget):
     # ================= 动作体系 =================
     DEFAULT_ACTION_MS = {"tumble": 2400, "brawl": 2600, "hop": 2200}
 
-    def do_action(self, key: str, duration_ms: int = 0):
+    def do_action(self, key: str, duration_ms: int = 0, then: str = "", mix: float = 0.15):
+        """播动作。v3.0.20：`mix` 是切过去的淡入时长（秒），`then` 是接着排队的下一个动作。"""
         if key not in ALL_ACTIONS:
             return
         if duration_ms <= 0:
@@ -798,9 +799,12 @@ class PetWindow(QWidget):
             self.set_expression("happy", 0)
         self.set_state(key)
         # v3.0.11：八个代码动作交给时间轴引擎演出（config 可关，退回旧公式）
+        # v3.0.20：切动作默认给 0.15s 交叉淡入；`then` 交给引擎排队，动作之间不再硬切
         try:
             if key in anim.CLIPS and self._controller.config.get("anim_timeline", True):
-                self.tl.play(key)
+                self.tl.play(key, mix=mix)
+                if then and then in anim.CLIPS:
+                    self.tl.queue(then)
             else:
                 self.tl.stop()
         except Exception:  # noqa: BLE001
