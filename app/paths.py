@@ -6,7 +6,7 @@ import sys
 APP_NAME = "鲸鱼娘桌宠"
 APP_KEY = "WhaleGirlPet_2026"
 ORG_NAME = "WhaleGirlPet"
-APP_VERSION = "3.0.6"
+APP_VERSION = "3.0.7"
 
 # 当前活跃账号 slug；空表示使用旧版单档案目录（向后兼容）
 _ACTIVE = {"slug": ""}
@@ -221,7 +221,19 @@ AUDIO_ACTIONS = [
 ]
 AUDIO_ACTION_LABELS = dict(AUDIO_ACTIONS)
 
-# ---- 外部浏览器（可选集成：把搜索交给本机装好的 Chromium 系浏览器）----
+# ---- 外部浏览器（把搜索交给用户本机装的浏览器）----
+# v3.0.7 实测教训：旧版只硬编码了 Tabbit 一个浏览器，换台电脑（用户装的是 Chrome /
+# Edge / 360 / QQ 浏览器）就一个都找不到，只能退回默认浏览器。
+# 现在的顺序：① 系统默认浏览器（注册表 UserChoice）② App Paths 注册表 ③ 常见安装路径。
+
+# 同名品牌 → 家族，决定开新窗口的参数
+_CHROMIUM_KEYS = ("chrome", "msedge", "brave", "opera", "vivaldi", "tabbit",
+                  "360se", "360chrome", "qqbrowser", "sogouexplorer", "2345explorer",
+                  "yandex", "chromium")
+_APP_PATH_EXES = ("chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe",
+                  "vivaldi.exe", "360se.exe", "360Chrome.exe", "QQBrowser.exe",
+                  "sogouexplorer.exe", "2345Explorer.exe", "Tabbit Browser.exe")
+
 BROWSER_CANDIDATES = [
     r"D:\Tabbit Browser\Application\Tabbit Browser.exe",
     os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Tabbit\Application\Tabbit Browser.exe"),
@@ -229,9 +241,132 @@ BROWSER_CANDIDATES = [
 ]
 
 
-def find_browser() -> str:
-    """返回可用的外部浏览器路径（优先 Tabbit）；都没装则返回空串。"""
-    for p in BROWSER_CANDIDATES:
-        if p and os.path.exists(p):
-            return p
+def _browser_family(exe: str) -> str:
+    low = (exe or "").lower()
+    if "firefox" in low:
+        return "firefox"
+    if any(k in low for k in _CHROMIUM_KEYS):
+        return "chromium"
+    return "other"
+
+
+def _exe_from_command(cmd: str) -> str:
+    """从 '"C:\\...\\chrome.exe" -- "%1"' 这样的注册表命令行里抠出 exe 路径。"""
+    import re
+    cmd = (cmd or "").strip()
+    if not cmd:
+        return ""
+    if cmd.startswith('"'):
+        end = cmd.find('"', 1)
+        if end > 1:
+            return cmd[1:end]
+    m = re.match(r"(.+?\.exe)", cmd, re.I)
+    return m.group(1).strip() if m else ""
+
+
+def _reg_value(root, path: str, name: str = ""):
+    try:
+        import winreg
+        with winreg.OpenKey(root, path) as k:
+            return winreg.QueryValueEx(k, name)[0]
+    except (OSError, ImportError):
+        return None
+
+
+def default_browser() -> str:
+    """系统当前默认浏览器 exe（打不开 http 链接的那个）。拿不到返回空串。"""
+    try:
+        import winreg
+    except ImportError:
+        return ""
+    for proto in ("http", "https"):
+        prog = _reg_value(
+            winreg.HKEY_CURRENT_USER,
+            rf"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\{proto}\UserChoice",
+            "ProgId")
+        if not prog:
+            continue
+        cmd = _reg_value(winreg.HKEY_CLASSES_ROOT, rf"{prog}\shell\open\command")
+        exe = _exe_from_command(cmd)
+        if exe and os.path.exists(exe):
+            return exe
     return ""
+
+
+def browsers() -> list:
+    """本机所有能用的浏览器，按「默认浏览器优先」排序，返回 [{exe,name,family}]。"""
+    out, seen = [], set()
+
+    def _add(exe: str):
+        if not exe or not os.path.exists(exe):
+            return
+        key = os.path.normcase(os.path.abspath(exe))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"exe": exe, "name": os.path.basename(exe).replace(".exe", ""),
+                    "family": _browser_family(exe)})
+
+    _add(default_browser())
+
+    try:
+        import winreg
+        for exe_name in _APP_PATH_EXES:
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                p = _reg_value(root,
+                               rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exe_name}")
+                if p:
+                    _add(_exe_from_command(p) or p)
+    except ImportError:
+        pass
+
+    for p in BROWSER_CANDIDATES:
+        _add(p)
+    la = os.environ.get("LOCALAPPDATA", "")
+    pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+    pf86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+    for p in (
+        os.path.join(pf, r"Google\Chrome\Application\chrome.exe"),
+        os.path.join(pf86, r"Google\Chrome\Application\chrome.exe"),
+        os.path.join(la, r"Google\Chrome\Application\chrome.exe"),
+        os.path.join(pf86, r"Microsoft\Edge\Application\msedge.exe"),
+        os.path.join(pf, r"Microsoft\Edge\Application\msedge.exe"),
+        os.path.join(pf, r"Mozilla Firefox\firefox.exe"),
+        os.path.join(pf86, r"Mozilla Firefox\firefox.exe"),
+        os.path.join(la, r"360se6\Application\360se.exe"),
+        os.path.join(la, r"360Chrome\Chrome\Application\360chrome.exe"),
+        os.path.join(pf86, r"Tencent\QQBrowser\QQBrowser.exe"),
+        os.path.join(la, r"Tencent\QQBrowser\Application\QQBrowser.exe"),
+        os.path.join(pf86, r"SogouExplorer\SogouExplorer.exe"),
+    ):
+        _add(p)
+    return out
+
+
+def find_browser() -> str:
+    """兼容老调用：返回首选浏览器 exe，都没装返回空串（上层会退回系统默认浏览器）。"""
+    bs = browsers()
+    return bs[0]["exe"] if bs else ""
+
+
+def pick_browser() -> tuple:
+    """返回 (exe, family)。family: chromium / firefox / other。"""
+    bs = browsers()
+    if not bs:
+        return "", ""
+    return bs[0]["exe"], bs[0]["family"]
+
+
+def browser_args(exe: str, url: str) -> list:
+    """按浏览器家族给「新窗口打开」参数。
+
+    Chromium 系：--new-window（否则 URL 会被塞进已有标签页，用户看不到）
+    Firefox：-new-window
+    其它：不给参数，直接丢 URL
+    """
+    fam = _browser_family(exe)
+    if fam == "chromium":
+        return ["--new-window", url]
+    if fam == "firefox":
+        return ["-new-window", url]
+    return [url]

@@ -17,7 +17,7 @@ import urllib.request
 
 from PySide6.QtCore import QThread, Signal
 
-from paths import runtime_dir
+from paths import data_dir, runtime_dir
 
 DEFAULT_PORT = 8085
 MODEL_NAME = "Qwen3-4B-Q4_K_M.gguf"
@@ -39,26 +39,129 @@ def server_exe() -> str:
     return os.path.join(runtime_dir(), "dafeiyu", "dafeiyu-server.exe")
 
 
-def model_path(name: str = "") -> str:
-    base = os.path.join(runtime_dir(), "models")
+GGUF_MAGIC = b"GGUF"
+_MAX_DEPTH = 2       # 模型目录递归层数：够覆盖 Ollama 风格的 blobs/子文件夹，又不会扫全盘
+
+
+def model_dirs(config: dict = None) -> list:
+    """所有会去找模型的目录，按优先级排序。
+
+    v3.0.7 实测：用户会把 gguf 放到数据目录（储存位置）下的 workspace/ 或 models/，
+    而旧版只认程序目录的 runtime/models —— 放在数据目录里永远扫不到。
+    现在同时认：程序 runtime/models、数据目录下的 runtime/models / models / workspace，
+    以及用户在 config 里手填的 llm_model_dirs。
+    """
+    ds = [os.path.join(runtime_dir(), "models")]
+    d = data_dir()
+    ds += [
+        os.path.join(d, "runtime", "models"),
+        os.path.join(d, "models"),
+        os.path.join(d, "workspace"),
+        os.path.join(d, "workspace", "models"),
+    ]
+    if config:
+        extra = config.get("llm_model_dirs") or []
+        if isinstance(extra, str):
+            extra = [extra]
+        ds += [str(x) for x in extra if x]
+    seen, out = set(), []
+    for p in ds:
+        try:
+            k = os.path.normcase(os.path.abspath(p))
+        except (OSError, ValueError):
+            continue
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(os.path.normpath(p))
+    return out
+
+
+def _is_gguf(path: str) -> bool:
+    """文件名是 .gguf，或者前 4 字节是 GGUF 魔数（Ollama 的 blobs 就没有扩展名）。"""
+    name = os.path.basename(path).lower()
+    if name.endswith(".gguf"):
+        return True
+    if not name.endswith((".gguf.part", ".tmp", ".partial")):
+        try:
+            if os.path.getsize(path) < 1024 * 1024:   # 太小，不可能是权重
+                return False
+            with open(path, "rb") as f:
+                return f.read(4) == GGUF_MAGIC
+        except OSError:
+            return False
+    return False
+
+
+def scan_models(config: dict = None) -> list:
+    """按 model_dirs() 扫出所有可用的 gguf，返回 [{name,path,size_mb,dir}]。
+
+    同一文件在多个目录出现时只保留优先级高的那个（按绝对路径去重）。
+    """
+    out, seen, seen_same = [], set(), set()
+    for base in model_dirs(config):
+        if not os.path.isdir(base):
+            continue
+        for root, dirs, files in os.walk(base):
+            depth = root[len(base):].count(os.sep)
+            if depth >= _MAX_DEPTH:
+                dirs[:] = []
+            for fname in files:
+                p = os.path.join(root, fname)
+                try:
+                    key = os.path.normcase(os.path.abspath(p))
+                except (OSError, ValueError):
+                    continue
+                if key in seen:
+                    continue
+                if not _is_gguf(p):
+                    continue
+                size = 0
+                try:
+                    size = os.path.getsize(p)
+                except OSError:
+                    continue
+                if size < 1024 * 1024:      # 小于 1MB 的“模型”是占位文件，不算
+                    continue
+                # 同名同体积的副本只列一次（程序目录优先），避免面板里出现两条一样的
+                same = (fname.lower(), size)
+                if same in seen_same:
+                    continue
+                seen.add(key)
+                seen_same.add(same)
+                out.append({"name": fname, "path": p,
+                            "size_mb": size / 1048576, "dir": root})
+    out.sort(key=lambda m: (-m["size_mb"], m["name"].lower()))
+    return out
+
+
+def resolve_model(name: str = "", config: dict = None) -> str:
+    """把文件名 / 绝对路径解析成真实存在的 gguf 路径；找不到返回空串。"""
+    name = (name or "").strip()
+    if name and os.path.isabs(name) and os.path.exists(name) and _is_gguf(name):
+        return name
+    found = scan_models(config)
     if name:
-        p = os.path.join(base, name)
-        if os.path.exists(p):
-            return p
-    for pref in PREFERRED_MODELS:
-        p = os.path.join(base, pref)
-        if os.path.exists(p):
-            return p
-    # 找不到指定文件名时取目录里第一个 .gguf，方便替换模型
-    if os.path.isdir(base):
-        for fname in sorted(os.listdir(base)):
-            if fname.lower().endswith(".gguf"):
-                return os.path.join(base, fname)
-    return ""
+        for m in found:
+            if m["name"] == name or os.path.normcase(m["path"]) == os.path.normcase(name):
+                return m["path"]
+    if not name:
+        for pref in PREFERRED_MODELS:
+            for m in found:
+                if m["name"].lower() == pref.lower():
+                    return m["path"]
+    if name:
+        return ""
+    return found[0]["path"] if found else ""
 
 
-def available() -> bool:
-    return (os.path.exists(server_exe()) and bool(model_path())) or ollama_alive()
+def model_path(name: str = "", config: dict = None) -> str:
+    """兼容老调用：不给名字时取首选模型 / 第一个模型。"""
+    return resolve_model(name, config)
+
+
+def available(config: dict = None) -> bool:
+    return (os.path.exists(server_exe()) and bool(model_path("", config))) or ollama_alive()
 
 
 def kill_stray_servers() -> int:
@@ -171,7 +274,7 @@ class ServerManager:
         return str(self.config.get("llm_model_file", "") or "")
 
     def model(self) -> str:
-        return model_path(self.model_file)
+        return model_path(self.model_file, self.config)
 
     # ---------- 后端选择 ----------
     @property
@@ -189,6 +292,11 @@ class ServerManager:
         if want == "llama_cpp":          # v2.9.7 前的老配置值，认成同一后端
             want = "dafeiyu_cpp"
         if want in ("ollama", "dafeiyu_cpp"):
+            # v3.0.7 实测：Ollama 的 llama-server.exe 缺失时，它的 /api/tags 仍然正常，
+            # 只有真正生成才报错。这种“假活的 Ollama”即使配置里强制 ollama，也必须退回自带引擎，
+            # 否则请求会全打在 11434 上拿到 404/500，用户看到的就是“模型扫到了但不说话”。
+            if want == "ollama" and self.ollama_broken:
+                return "dafeiyu_cpp"
             return want
         if self.ollama_broken:
             return "dafeiyu_cpp"
@@ -234,12 +342,13 @@ class ServerManager:
         if self.is_running() and self.health():
             self.ready = True
             return True
-        if not available():
-            self.last_error = "未找到 runtime/dafeiyu/dafeiyu-server.exe 或 runtime/models/*.gguf"
+        if not available(self.config):
+            self.last_error = ("没找到推理程序（runtime/dafeiyu/dafeiyu-server.exe）"
+                               "或任何可用的 .gguf 模型")
             return False
         exe, model = server_exe(), self.model()
         if not model:
-            self.last_error = "runtime/models 里没有找到 .gguf"
+            self.last_error = "模型的目录里没有找到可用的 .gguf（会扫 runtime/models、数据目录的 models/workspace）"
             return False
         ctx = str(int(self.config.get("llm_ctx", 4096)))
         threads = str(max(2, min(8, (os.cpu_count() or 4) // 2)))
@@ -330,12 +439,22 @@ class ServerManager:
                 return False, "local_empty"
             return True, content
         except urllib.error.HTTPError as e:
-            # 500 常见于 Ollama 自身运行库缺失（llama-server binary not found）：
-            # 记一笔，这次就直接用自带引擎重试，不让用户白等。
-            if e.code >= 500:
-                self.ollama_broken = True
+            # v3.0.7 实测：Ollama 的 llama-server.exe 丢了之后，/api/chat 会返回 500 或 404
+            # （报 "llama-server binary not found"）。不管哪种，都记一笔、立刻用自带引擎重试，
+            # 不能因为 Ollama 坏了就让用户聊不了天。
+            body = ""
+            try:
+                body = (e.read() or b"").decode("utf-8", "ignore")[:180]
+            except Exception:  # noqa: BLE001
+                pass
+            self.last_error = f"ollama_http_{e.code}: {body}"
+            self.ollama_broken = True
+            try:
                 if not self.is_running():
                     self.start()   # backend 已切到 dafeiyu_cpp，这里把自带引擎拉起来
+            except Exception:  # noqa: BLE001
+                pass
+            if self.ready or self.health():
                 return self._chat_local(messages, max_tokens, temperature, timeout, fmt)
             return False, f"local_http_{e.code}"
         except urllib.error.URLError:
@@ -345,12 +464,17 @@ class ServerManager:
 
     def chat(self, messages: list, max_tokens: int = 220, temperature: float = 0.7,
              timeout: int = 90, fmt: str | None = None):
-        """返回 (ok, text_or_reason)。fmt="json" 时强制结构化输出（仅 Ollama 后端支持）。"""
+        """返回 (ok, text_or_reason)。fmt="json" 时强制结构化输出（Ollama / 自带引擎都支持）。"""
         if not self.ready and not self.health():
-            return False, "local_not_ready"
+            if not self.ollama_broken:
+                return False, "local_not_ready"
+            self.start()        # Ollama 已经坏了，先把自带引擎拉起来再说话
         self.last_used = time.monotonic()
-        if self.backend == "ollama":
+        # Ollama 坏过一次就别再问它（用户可能根本没修），直接用自带引擎
+        if self.backend == "ollama" and not self.ollama_broken:
             return self._chat_ollama(messages, max_tokens, temperature, timeout, fmt)
+        if not self.is_running():
+            self.start()
         return self._chat_local(messages, max_tokens, temperature, timeout, fmt)
 
     # ---------- 空闲卸载 ----------

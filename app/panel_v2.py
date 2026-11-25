@@ -187,7 +187,9 @@ def tab_models(panel) -> QWidget:
     lay.addWidget(panel.ed_model_url)
     lay.addWidget(_row(_btn("下载到本地", panel._add_model_url),
                        _btn("打开模型目录", panel._open_model_dir),
+                       _btn("添加模型文件夹", panel._add_model_dir),
                        _btn("刷新已安装", panel._refresh_models)))
+    lay.addWidget(_row(_btn("检查 Ollama 能否真正生成", panel._check_ollama)))
 
     panel.pbar_model = QProgressBar()
     panel.pbar_model.setVisible(False)

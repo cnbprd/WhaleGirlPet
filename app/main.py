@@ -1194,7 +1194,7 @@ class Controller:
             self._finish_reply("这个操作要删东西或者动磁盘，我不做。要不要我帮你把文件挪到回收站？",
                                "安全前置拦截")
             return
-        if (self.config.get("llm_on", True) and local_llm.available()
+        if (self.config.get("llm_on", True) and local_llm.available(self.config)
                 and sk.looks_like_command(ask_text)):
             try:
                 self.skill_worker = local_llm.LocalChatWorker(
@@ -1241,7 +1241,7 @@ class Controller:
         self._chat_plain(text)
 
     def _chat_plain(self, text: str):
-        if self.config.get("llm_on", True) and local_llm.available():
+        if self.config.get("llm_on", True) and local_llm.available(self.config):
             try:
                 self.llm_worker = local_llm.LocalChatWorker(
                     self.llm, self._build_messages(text), max_tokens=260, temperature=0.8)
@@ -1357,7 +1357,7 @@ class Controller:
             self.worker.failed.connect(lambda r: self._finish_reply(draft, "本地草稿"))
             self.worker.start()
             return
-        if self.config.get("llm_on", True) and local_llm.available():
+        if self.config.get("llm_on", True) and local_llm.available(self.config):
             try:
                 self.llm_worker = local_llm.LocalChatWorker(
                     self.llm,
@@ -1970,7 +1970,7 @@ class Controller:
             return False
 
     def _warm_local_llm(self):
-        if not local_llm.available():
+        if not local_llm.available(self.config):
             return
         threading.Thread(target=self.llm.start, daemon=True).start()
 
@@ -1999,7 +1999,7 @@ class Controller:
             if not any(x["name"] == use for x in ollama):
                 use = self.llm._pick_ollama_model()
         return {
-            "available": local_llm.available(),
+            "available": local_llm.available(self.config),
             "running": self.local_llm_ready(),
             "model": os.path.basename(m) if (m and backend == "dafeiyu_cpp") else use,
             "port": self.llm.port,
@@ -2011,7 +2011,14 @@ class Controller:
 
     # ================= 模型库 =================
     def local_models(self):
-        return model_dl.local_models()
+        return model_dl.local_models(self.config)
+
+    def model_search_dirs(self) -> list:
+        """面板里提示用户「模型放哪能被扫到」。"""
+        try:
+            return local_llm.model_dirs(self.config)
+        except Exception:  # noqa: BLE001
+            return []
 
     def download_model(self, item_id: str) -> bool:
         it = models_catalog.by_id(item_id)
@@ -2020,7 +2027,7 @@ class Controller:
         w = self.dl_worker
         if w is not None and w.isRunning():
             return False
-        dest = os.path.join(paths.runtime_dir(), "models", it["file"])
+        dest = os.path.join(self.models_dir(), it["file"])
         self.dl_worker = model_dl.ModelDownloader(item_id, it["url"], dest)
         self.dl_worker.progress.connect(self._on_dl_progress)
         self.dl_worker.done.connect(self._on_dl_done)
@@ -2029,6 +2036,14 @@ class Controller:
         return True
 
     def models_dir(self) -> str:
+        """模型下载落地目录：优先数据目录（v3.0.7，装在 Program Files 时程序目录写不进去）。"""
+        d = os.path.join(paths.data_dir(), "models")
+        try:
+            os.makedirs(d, exist_ok=True)
+            if os.access(d, os.W_OK):
+                return d
+        except OSError:
+            pass
         d = os.path.join(paths.runtime_dir(), "models")
         os.makedirs(d, exist_ok=True)
         return d
@@ -2099,11 +2114,73 @@ class Controller:
             except Exception:  # noqa: BLE001
                 pass
 
-    def use_model(self, file_name: str) -> bool:
-        p = local_llm.model_path(file_name)
-        if not p or os.path.basename(p) != file_name:
+    def use_ollama_model(self, name: str) -> bool:
+        """切到 Ollama 后端并指定模型（面板「Ollama 里的模型」点使用）。"""
+        name = (name or "").strip()
+        if not name or not local_llm.ollama_model_present(name, self.llm.ollama_host):
             return False
-        self.config["llm_model_file"] = file_name
+        self.config["ollama_model"] = name
+        self.config["llm_backend"] = "ollama"
+        self.save_config()
+        try:
+            if self.local_llm_ready():
+                self.llm.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    def check_ollama(self):
+        """真打一次生成请求，判断 Ollama 是「只是列着模型」还是「真能跑」。
+
+        v3.0.7 实测：Ollama 的 llama-server.exe 缺失时 /api/tags 完全正常，
+        只有生成才 500/404，用户看到的假象就是"模型在、但不启用"。
+        返回 (ok, 一句话)。
+        """
+        import json as _json
+        import urllib.error as _ue
+        import urllib.request as _ur
+        host = self.config.get("ollama_host", local_llm.OLLAMA_HOST)
+        if not local_llm.ollama_alive(host):
+            return False, "Ollama 没在运行（11434 连不上）。用自带引擎就行，不用管它。"
+        try:
+            name = self.llm._pick_ollama_model()
+        except Exception:  # noqa: BLE001
+            name = self.config.get("ollama_model", "")
+        body = {"model": name, "messages": [{"role": "user", "content": "hi"}],
+                "stream": False, "options": {"num_predict": 1}}
+        req = _ur.Request(host.rstrip("/") + "/api/chat",
+                          data=_json.dumps(body).encode("utf-8"),
+                          headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with _ur.urlopen(req, timeout=25) as r:
+                data = _json.loads(r.read().decode("utf-8"))
+            if (data.get("message") or {}).get("content") is not None:
+                return True, f"Ollama 正常，{name} 能生成。"
+            return False, f"Ollama 回了空内容（{name}）。"
+        except _ue.HTTPError as e:
+            try:
+                detail = (e.read() or b"").decode("utf-8", "ignore")[:200]
+            except Exception:  # noqa: BLE001
+                detail = ""
+            try:
+                self.llm.ollama_broken = True
+            except Exception:  # noqa: BLE001
+                pass
+            if "llama-server binary not found" in detail:
+                return False, (f"Ollama 自己坏了：找不到 llama-server.exe（HTTP {e.code}）。"
+                               "重装 Ollama 就好，这期间桌宠会自动用自带引擎。")
+            return False, f"Ollama 生成失败（HTTP {e.code}）：{detail or '没有返回内容'}"
+        except Exception as e:  # noqa: BLE001
+            return False, f"连不上 Ollama：{e}"
+
+    def use_model(self, file_name: str) -> bool:
+        """file_name 可以是绝对路径，也可以是文件名（会在所有模型目录里找）。"""
+        name = (file_name or "").strip()
+        p = local_llm.resolve_model(name, self.config)
+        if not p:
+            return False
+        # 存绝对路径，避免不同目录里同名模型切错
+        self.config["llm_model_file"] = p
         self.save_config()
         try:
             if self.local_llm_ready():
@@ -2113,15 +2190,23 @@ class Controller:
         return True
 
     def delete_model(self, file_name: str) -> float:
-        p = os.path.join(paths.runtime_dir(), "models", file_name)
-        if not os.path.exists(p):
+        p = local_llm.resolve_model(file_name, self.config)
+        if not p or not os.path.exists(p):
             return 0.0
         size = os.path.getsize(p) / 1048576
-        os.remove(p)
+        try:
+            os.remove(p)
+        except OSError:
+            return 0.0
         part = p + ".part"
         if os.path.exists(part):
-            os.remove(part)
-        if str(self.config.get("llm_model_file", "")) == file_name:
+            try:
+                os.remove(part)
+            except OSError:
+                pass
+        cur = str(self.config.get("llm_model_file", ""))
+        if cur and (cur == p or os.path.basename(cur) == file_name
+                    or os.path.basename(cur) == os.path.basename(p)):
             self.config["llm_model_file"] = ""
             self.save_config()
         return size
@@ -2616,18 +2701,16 @@ class Controller:
             return
         text = " ".join(text.split())[:180]
         url = "https://www.bing.com/search?q=" + urllib.parse.quote(text)
-        exe = paths.find_browser()
+        exe, family = paths.pick_browser()
         if exe:
-            # 实测：不带 --new-window 时 URL 会被并进旧标签，用户看不到；
-            # 加上后新窗口标题即为搜索页，确认参数生效
-            if QProcess.startDetached(exe, ["--new-window", url]):
-                self.pet.bubble.show_text("丢进浏览器帮你查了～", 1600)
-            else:
-                QDesktopServices.openUrl(QUrl(url))
-                self.pet.bubble.show_text("外部浏览器没启动成功，改用默认浏览器", 1600)
-        else:
-            QDesktopServices.openUrl(QUrl(url))
-            self.pet.bubble.show_text("用默认浏览器打开搜索页了", 1600)
+            args = paths.browser_args(exe, url)
+            if QProcess.startDetached(exe, args):
+                name = os.path.basename(exe).replace(".exe", "")
+                self.pet.bubble.show_text(f"丢进 {name} 帮你查了～", 1600)
+                return
+        # 没探测到外部浏览器，或启动失败：交给系统默认浏览器（不管用户装的是哪个都能开）
+        QDesktopServices.openUrl(QUrl(url))
+        self.pet.bubble.show_text("用默认浏览器打开搜索页了", 1600)
 
     def _check_install_model_flag(self):
         """安装时勾了「要，装一个」→ 首次启动自动下默认模型，下完删标记。"""

@@ -2010,18 +2010,50 @@ class ControlPanel(QWidget):
         self.lst_models.addItem(h)
 
     def _refresh_models(self):
-        """模型库分两段：已安装（本地真实存在的 .gguf）在上，内置可下载在下。"""
+        """模型库分三段：Ollama（本机跑着就列）/ 已安装 gguf / 内置可下载。"""
         ctl = self.ctl
         try:
             local = ctl.local_models()
         except Exception:  # noqa: BLE001
             local = []
+        # v3.0.7：本机 Ollama 里有模型时也列出来，否则用户会觉得“本地模型没扫到”
+        try:
+            import local_llm
+            host = ctl.config.get("ollama_host", local_llm.OLLAMA_HOST)
+            om = local_llm.ollama_models(host) if local_llm.ollama_alive(host) else []
+            backend = "ollama" if (om and local_llm.ollama_alive(host)
+                                   and ctl.config.get("llm_backend", "auto") in ("auto", "ollama")) else "dafeiyu_cpp"
+        except Exception:  # noqa: BLE001
+            om, backend = [], "dafeiyu_cpp"
         by_name = {m["name"]: m for m in local}
-        cur = ctl.config.get("llm_model_file", "")
+        cur = str(ctl.config.get("llm_model_file", "") or "")
+        cur_o = str(ctl.config.get("ollama_model", "") or "")
+        if backend == "ollama":
+            _cur_txt = f"Ollama · {cur_o or '（自动挑一个）'}"
+        else:
+            _cur_txt = os.path.basename(cur) if cur else "（自动：按优先级取一个）"
         self.lbl_cur_model.setText(
-            "当前模型：" + (cur if cur else "（自动：runtime/models 里第一个 .gguf）")
-            + f"　本地已有 {len(local)} 个 .gguf")
+            f"当前：{_cur_txt}（{'Ollama 后端' if backend == 'ollama' else '自带引擎 dafeiyu.cpp'}）"
+            f"　本地 gguf {len(local)} 个" + (f"，Ollama 模型 {len(om)} 个" if om else ""))
+        self.lbl_cur_model.setToolTip(
+            "gguf 会在这几个目录里找：\n"
+            + "\n".join(ctl.model_search_dirs()[:6])
+            + "\n\n把 .gguf 丢进任意一个目录，点「刷新已安装」就能看到。\n"
+            "本机装并启动着 Ollama 的话，Ollama 里的模型也会列在最上面。")
         self.lst_models.clear()
+
+        # 〇、Ollama 模型
+        if om:
+            self._add_model_header(
+                f"■ Ollama 里的模型（{len(om)} 个，选中后点「使用此模型」切过去）")
+            for x in om:
+                mark = "　← 当前" if x["name"] == cur_o else ""
+                self._add_model_item(
+                    f"[Ollama] {x['name']}　{x['size_gb']:.1f} GB{mark}",
+                    "ollama:" + x["name"],
+                    {"id": "ollama", "brand": "Ollama", "name": x["name"], "file": "",
+                     "path": "", "size_mb": x["size_gb"] * 1024, "fits": True,
+                     "ollama": True})
 
         # 一、已安装
         self._add_model_header(f"■ 已安装模型（{len(local)} 个，可直接用）")
@@ -2033,15 +2065,15 @@ class ControlPanel(QWidget):
                 text = (f"[已安装] {it['brand']} · {it['name']}　"
                         f"{'可跑' if it['fits'] else '跑不动'}　"
                         f"{by_name[f]['size_mb']:.0f} MB")
-                self._add_model_item(text, "local:" + f, it)
+                self._add_model_item(text, "local:" + by_name[f]["path"], it)
         for m in local:
             if m["name"] in matched:
                 continue
             self._add_model_item(
-                f"[已安装] 自定义 · {m['name']}　{m['size_mb']:.0f} MB",
-                "local:" + m["name"],
+                f"[已安装] 自定义 · {m['name']}　{m['size_mb']:.0f} MB　{m['dir']}",
+                "local:" + m["path"],
                 {"id": "custom", "brand": "自定义", "name": m["name"], "file": m["name"],
-                 "size_mb": m["size_mb"], "fits": True, "custom": True})
+                 "path": m["path"], "size_mb": m["size_mb"], "fits": True, "custom": True})
         if not local:
             self._add_model_header("（还没有任何模型。可以下载下面的内置模型，或用「网络地址添加」）")
 
@@ -2071,6 +2103,9 @@ class ControlPanel(QWidget):
         item_id, info = self._cur_model_item()
         if item_id is None:
             return
+        if str(item_id).startswith("ollama:"):
+            self.lbl_dl.setText("这是 Ollama 里的模型，已经在本地，直接点「使用此模型」即可。")
+            return
         if str(item_id).startswith("local:"):
             self.lbl_dl.setText("这个模型已经在本地了，直接点「使用此模型」即可。")
             return
@@ -2093,7 +2128,19 @@ class ControlPanel(QWidget):
         item_id, info = self._cur_model_item()
         if not item_id:
             return
-        name = info.get("file") or ""
+        if info.get("ollama"):
+            # 切到 Ollama 后端，用这个名字
+            try:
+                ok = self.ctl.use_ollama_model(info["name"])
+            except Exception as e:  # noqa: BLE001
+                self.lbl_dl.setText(f"切换失败：{e}")
+                return
+            self.lbl_dl.setText(
+                f"已切成 Ollama · {info['name']}，下次说话就用它。" if ok
+                else "Ollama 里没有这个模型。")
+            self._refresh_v2()
+            return
+        name = info.get("path") or info.get("file") or ""
         if not name:
             self.lbl_dl.setText("这个模型没有单文件 GGUF，不能直接切换。")
             return
@@ -2102,14 +2149,17 @@ class ControlPanel(QWidget):
         except Exception as e:  # noqa: BLE001
             self.lbl_dl.setText(f"切换失败：{e}")
             return
-        self.lbl_dl.setText("已切换，重启本地模型后生效。" if ok else "本地没有这个文件，先下载。")
+        self.lbl_dl.setText("已切换，重启本地模型后生效。" if ok else "本地没找到这个文件，先下载。")
         self._refresh_v2()
 
     def _del_model(self):
         item_id, info = self._cur_model_item()
         if not item_id:
             return
-        name = info.get("file") or ""
+        if info.get("ollama"):
+            self.lbl_dl.setText("这是 Ollama 里的模型，程序不替你删；要删请在命令行跑 ollama rm " + info["name"])
+            return
+        name = info.get("path") or info.get("file") or ""
         if not name:
             self.lbl_dl.setText("这个模型没有单文件，无需删除。")
             return
@@ -2157,6 +2207,35 @@ class ControlPanel(QWidget):
         if ok:
             self.pbar_model.setVisible(True)
         self.ed_model_url.clear()
+
+    def _check_ollama(self):
+        """真打一次小请求，告诉用户 Ollama 是能跑还是假活。"""
+        try:
+            ok, msg = self.ctl.check_ollama()
+        except Exception as e:  # noqa: BLE001
+            ok, msg = False, f"检查失败：{e}"
+        self.lbl_dl.setText(("✔ " if ok else "✘ ") + msg)
+        self._refresh_models()
+
+    def _add_model_dir(self):
+        """把用户自己放模型的文件夹加进搜索范围（任意盘都行）。"""
+        from PySide6.QtWidgets import QFileDialog
+        d = QFileDialog.getExistingDirectory(self, "选择放模型的文件夹（里面是 .gguf）")
+        if not d:
+            return
+        dirs = self.ctl.config.get("llm_model_dirs") or []
+        if isinstance(dirs, str):
+            dirs = [dirs]
+        norm = os.path.normcase(os.path.abspath(d))
+        if any(os.path.normcase(os.path.abspath(x)) == norm for x in dirs):
+            self.lbl_dl.setText("这个文件夹已经在搜索范围里了。")
+            return
+        dirs.append(d)
+        self.ctl.config["llm_model_dirs"] = dirs
+        self.ctl.save_config()
+        self._refresh_v2()
+        found = len(self.ctl.local_models())
+        self.lbl_dl.setText(f"已加入：{d}　现在一共扫到 {found} 个模型。")
 
     def _open_model_dir(self):
         try:

@@ -127,8 +127,13 @@ def resolve_gguf_url(url: str):
     return "", ""
 
 
-def local_models() -> list:
-    """列出 runtime/models 下已有的 .gguf。"""
+def local_models(config: dict = None) -> list:
+    """列出所有能扫到的 .gguf（v3.0.7 起跨目录：程序 runtime/models、数据目录 models/workspace）。"""
+    try:
+        import local_llm
+        return local_llm.scan_models(config)
+    except Exception:  # noqa: BLE001
+        pass
     from paths import runtime_dir
     base = os.path.join(runtime_dir(), "models")
     if not os.path.isdir(base):
@@ -136,9 +141,8 @@ def local_models() -> list:
     out = []
     for name in sorted(os.listdir(base)):
         if name.lower().endswith(".gguf"):
-            out.append({
-                "name": name,
-                "size_mb": os.path.getsize(os.path.join(base, name)) / (1024 * 1024),
-                "path": os.path.join(base, name),
-            })
+            p = os.path.join(base, name)
+            out.append({"name": name,
+                        "size_mb": os.path.getsize(p) / (1024 * 1024),
+                        "path": p, "dir": base})
     return out

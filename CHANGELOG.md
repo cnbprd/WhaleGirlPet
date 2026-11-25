@@ -2,6 +2,18 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.7（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 模型扫不到 | `local_llm.scan_models()` 改为扫多目录（程序 runtime\models、数据目录 runtime\models / models / workspace / workspace\models、用户自定义目录），递归 2 层，按 GGUF 魔数识别、排除 <1MB 占位文件、同名同体积去重 | 本机扫出 6 个（原只有 4 个且重复计 10 条）；默认 qwen35；833MB 模型加载 6.2s、health/对话均通 |
+| 2 模型页 | 列表标注所在目录、悬停显示全部搜索目录、新增「添加模型文件夹」按钮、下载落地改数据目录（Program Files 可写） | offscreen 冒烟：19 条渲染正常，`_add_model_dir` 存在 |
+| 3 Ollama 假活 | 实测本机 Ollama 0.40.16 的 `llama-server.exe` 缺失，`/api/tags` 正常但生成 500；`backend` 改为「ollama 坏过就退 dafeiyu_cpp」，4xx/5xx 一律记病因并回退，进程内不再重试 | 强制 ollama 的配置：500 → 自动回退 → 17.5s 后答出「你好」，backend 变为 dafeiyu_cpp |
+| 4 Ollama 可见化 | 模型页新增「Ollama 里的模型」段（3 个，可一键切）+「检查 Ollama 能否真正生成」按钮 | 自检实测文案：`✘ Ollama 自己坏了：找不到 llama-server.exe（HTTP 500）…` |
+| 5 联网搜索 | 从只抓 Bing 改成 Bing → 百度 → 360 链式兜底 + 标题去重 + `html.unescape` 解实体 | Bing 10 条 0.4s；百度 9 条；360 7 条；DDG 本机超时未启用；「郑州 明天 天气」Bing4+百度1=5 条 2.2s |
+| 6 浏览器 | 原来硬编码 Tabbit 一条路径；改为 ①注册表默认浏览器 ②App Paths 12 个家族 ③常见安装路径，按家族给开窗参数 | 本机探测到 Edge(chromium)、Tabbit(chromium)，首选默认浏览器 |
+| 7 版本 3.0.7 | `paths.APP_VERSION`、iss 六处同步 | 六处 3.0.7、零残留 3.0.6 |
+
 ## v3.0.6（2026-11-25）
 
 | 项 | 改动 | 实测 |
