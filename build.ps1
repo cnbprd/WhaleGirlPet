@@ -26,6 +26,9 @@ if (-not (Test-Path $venvPy)) { $venvPy = "python" }
     --hidden-import awareness `
     --hidden-import voice_profile `
     --hidden-import theme `
+    --hidden-import quarantine `
+    --hidden-import realtime `
+    --hidden-import perf `
     --collect-all edge_tts `
     --collect-all aiohttp `
     --collect-all certifi `
