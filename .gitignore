@@ -27,6 +27,8 @@ tools/innosetup-*.exe
 
 # 本地测试残留
 assets/_tts_test/
+# 安全管家的假样本（含 powershell -enc / meterpreter 等字样，不进仓库，避免被误判成恶意代码）
+tools/_guard_samples/
 
 # 抖音视频素材与剪辑中间产物（125MB+，只留本地）
 短视频/

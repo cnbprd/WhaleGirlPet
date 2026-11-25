@@ -146,6 +146,10 @@ class Controller:
         self.update_dl = None
         self.llm_worker = None
         self.scan_worker = None
+        # v3.0.10 安全管家
+        self.guard_worker = None
+        self.defender_worker = None
+        self.guard_report = {}
         self.icon_layout = None
         self.ollama_import = None
         self.collision_timer = None
@@ -1921,6 +1925,83 @@ class Controller:
     def last_scan(self) -> dict:
         return getattr(self, "_scan_report", None) or {}
 
+    # ================= v3.0.10 安全管家（自研启发式，只报不杀） =================
+    def run_guard_scan(self) -> bool:
+        """起一轮后台扫描；已在跑就返回 False。"""
+        if self.guard_worker is not None and self.guard_worker.isRunning():
+            return False
+        import guard_core
+        self.guard_worker = guard_core.GuardWorker()
+        self.guard_worker.progress.connect(self._on_guard_progress)
+        self.guard_worker.done.connect(self._on_guard_done)
+        self.guard_worker.failed.connect(self._on_guard_failed)
+        self.guard_worker.start()
+        return True
+
+    def _on_guard_progress(self, pct: int, msg: str):
+        if self.panel:
+            try:
+                self.panel.on_guard_progress(pct, msg)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_guard_done(self, rep: dict):
+        self.guard_report = rep or {}
+        try:
+            import guard_core
+            rep["files"] = guard_core.save_report(rep)
+        except Exception as e:  # noqa: BLE001
+            rep["files"] = {"error": str(e)}
+        if self.panel:
+            try:
+                self.panel.refresh_guard(self.guard_report)
+            except Exception:  # noqa: BLE001
+                pass
+        # 她本人报一句，别让扫描结果只躺在面板里
+        try:
+            score, level = self.guard_report.get("score", 0), self.guard_report.get("level", "")
+            n = len(self.guard_report.get("findings") or [])
+            if n:
+                self.pet.bubble.show_text(
+                    f"安全管家扫完了：风险分 {score}（{level}），{n} 条线索。"
+                    "我只报不杀，要处置就交 Defender。", 5000)
+            else:
+                self.pet.bubble.show_text("安全管家扫完了，没发现值得报警的东西。", 3600)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_guard_failed(self, msg: str):
+        if self.panel:
+            try:
+                self.panel.lbl_guard.setText(f"扫描失败：{msg}")
+                self.panel.btn_guard.setEnabled(True)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def guard_defender(self):
+        """把高/中危的文件线索交给 Defender 逐个深扫；没有就整机快扫。"""
+        import guard_core
+        paths = []
+        for f in (self.guard_report or {}).get("findings") or []:
+            if f.get("kind") not in ("file", "pe"):
+                continue
+            p = str(f.get("target", ""))
+            if p and os.path.exists(p):
+                paths.append(p)
+        paths = paths[:8]
+        quick = not paths
+        self.defender_worker = guard_core.DefenderWorker(paths, quick)
+        self.defender_worker.done.connect(self._on_defender_done)
+        self.defender_worker.start()
+        return paths, quick
+
+    def _on_defender_done(self, res: dict):
+        if self.panel:
+            try:
+                self.panel.on_defender_done(res or {})
+            except Exception:  # noqa: BLE001
+                pass
+
     # ================= 知识库 / 记忆 =================
     def import_knowledge(self, path: str) -> dict:
         res = self.kb.import_file(path)
@@ -2849,7 +2930,8 @@ class Controller:
 
     def quit_app(self):
         for w in (self.worker, self.know_worker, self.clean_worker, self.update_worker,
-                  self.llm_worker, self.scan_worker, self.ambient_worker, self.update_dl):
+                  self.llm_worker, self.scan_worker, self.ambient_worker, self.update_dl,
+                  self.guard_worker, self.defender_worker):
             if w is not None and w.isRunning():
                 try:
                     w.stop()

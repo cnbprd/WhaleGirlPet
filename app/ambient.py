@@ -326,6 +326,30 @@ def news_line(title: str) -> str:
 
 
 # ---------------- 后台线程 ----------------
+class WeatherWorker(QThread):
+    """v3.0.10：面板「天气资讯」页单独拉实况天气，不阻塞 UI。"""
+    done = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, city: str = ""):
+        super().__init__()
+        self.city = (city or "").strip()
+
+    def run(self):
+        if not self.city:
+            self.failed.emit("没填城市")
+            return
+        try:
+            w = fetch_weather(self.city)
+        except Exception as e:  # noqa: BLE001
+            self.failed.emit(str(e)[:120])
+            return
+        if not w:
+            self.failed.emit("三个天气源都没拿到数据")
+            return
+        self.done.emit(w)
+
+
 class AmbientWorker(QThread):
     """一次抓一轮：天气 + 新闻。任一可用即可，全失败发 failed。"""
     done = Signal(dict)

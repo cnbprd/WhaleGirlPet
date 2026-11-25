@@ -282,8 +282,9 @@ def tab_security(panel) -> QWidget:
     ctl = panel.ctl
     w = QWidget()
     lay = QVBoxLayout(w)
-    tip = QLabel("只做只读检查：Defender 状态、开机自启项、常见后门端口、可疑进程。\n"
-                 "不改系统、不删文件；需要深度查杀请点「打开 Defender」。")
+    tip = QLabel("上面是只读体检（Defender 状态、开机自启、后门端口、可疑进程）；\n"
+                 "下面是安全管家：自研启发式扫描（PE 结构 + 规则引擎 + 持久化审计），"
+                 "只报不杀，可疑项可一键交给 Defender 深扫。")
     tip.setWordWrap(True)
     tip.setStyleSheet("color:#666;font-size:12px;")
     lay.addWidget(tip)
@@ -295,7 +296,34 @@ def tab_security(panel) -> QWidget:
     panel.txt_scan = QTextEdit()
     panel.txt_scan.setReadOnly(True)
     panel.txt_scan.setStyleSheet("font-family:Consolas,'Microsoft YaHei';font-size:12px;")
-    lay.addWidget(panel.txt_scan)
+    panel.txt_scan.setMinimumHeight(90)
+    lay.addWidget(panel.txt_scan, 1)
+
+    # ---- v3.0.10 安全管家（自研启发式扫描，只报不杀）----
+    head = QLabel("安全管家 · 自研启发式扫描（PE 结构 / 规则引擎 / 持久化 + 进程审计）")
+    head.setStyleSheet("font-weight:600;color:#2b2a33;")
+    lay.addWidget(head)
+    panel.btn_guard = _btn("扫描一遍", panel._guard_scan)
+    lay.addWidget(_row(
+        panel.btn_guard,
+        _btn("交给 Defender 深扫", panel._guard_defender),
+        _btn("导出报告", panel._guard_export),
+        _btn("打开报告文件夹", panel._open_guard_reports),
+    ))
+    panel.lbl_guard = QLabel("还没扫过。扫一遍约 5–10 秒，只读不改系统。")
+    panel.lbl_guard.setWordWrap(True)
+    panel.lbl_guard.setStyleSheet("color:#666;font-size:12px;")
+    lay.addWidget(panel.lbl_guard)
+    panel.tbl_guard = QTableWidget(0, 4)
+    panel.tbl_guard.setHorizontalHeaderLabels(["等级", "对象", "原因", "规则"])
+    panel.tbl_guard.setEditTriggers(QAbstractItemView.NoEditTriggers)
+    panel.tbl_guard.setSelectionBehavior(QAbstractItemView.SelectRows)
+    panel.tbl_guard.verticalHeader().setVisible(False)
+    panel.tbl_guard.setColumnWidth(0, 52)
+    panel.tbl_guard.setColumnWidth(1, 260)
+    panel.tbl_guard.setColumnWidth(2, 300)
+    panel.tbl_guard.setMinimumHeight(150)
+    lay.addWidget(panel.tbl_guard, 2)
     return w
 
 

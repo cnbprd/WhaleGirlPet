@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """控制面板：养成数值、投喂、换装、大小、番茄钟、提醒、聊天、打工任务、AI 后端、音频与自主行动。"""
+import datetime
 import os
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem,
@@ -737,7 +738,7 @@ class ControlPanel(QWidget):
 
     def _tab_ambient(self):
 
-        # ④ 天气资讯：天气照旧 + 六类资讯
+        # ④ 天气资讯：天气实况卡片 + 六类资讯
         box_amb = QGroupBox("天气资讯")
         av = QVBoxLayout(box_amb)
         av.setSpacing(4)
@@ -756,8 +757,40 @@ class ControlPanel(QWidget):
         btn_city.setFixedWidth(60)
         btn_city.clicked.connect(self._save_city)
         row_a1.addWidget(btn_city)
+        btn_w = QPushButton("刷新天气")
+        btn_w.setFixedWidth(84)
+        btn_w.clicked.connect(lambda: self._load_weather())
+        row_a1.addWidget(btn_w)
         row_a1.addStretch()
         av.addLayout(row_a1)
+
+        # v3.0.10：天气实况卡片（温度大字 + 描述 + 体感/湿度/风/降水/空气 + 来源时间）
+        card = QGroupBox("现在天气")
+        cg = QVBoxLayout(card)
+        cg.setSpacing(2)
+        crow = QHBoxLayout()
+        crow.setSpacing(10)
+        self.lbl_w_temp = QLabel("--°")
+        self.lbl_w_temp.setStyleSheet("font-size:30px;font-weight:600;color:#2b2a33;")
+        crow.addWidget(self.lbl_w_temp)
+        self.lbl_w_desc = QLabel("还没拿到天气")
+        self.lbl_w_desc.setStyleSheet("font-size:14px;color:#333;")
+        crow.addWidget(self.lbl_w_desc, 1)
+        cg.addLayout(crow)
+        self.lbl_w_detail = QLabel("体感 --　湿度 --　风 --　降水 --")
+        self.lbl_w_detail.setStyleSheet("font-size:12px;color:#555;")
+        self.lbl_w_detail.setWordWrap(True)
+        cg.addWidget(self.lbl_w_detail)
+        self.lbl_w_today = QLabel("今日 -- ~ --°　空气 --")
+        self.lbl_w_today.setStyleSheet("font-size:12px;color:#555;")
+        self.lbl_w_today.setWordWrap(True)
+        cg.addWidget(self.lbl_w_today)
+        self.lbl_w_src = QLabel("按城市自动取，三源级联（中国天气网 → wttr.in → open-meteo）")
+        self.lbl_w_src.setStyleSheet("font-size:11px;color:#888;")
+        self.lbl_w_src.setWordWrap(True)
+        cg.addWidget(self.lbl_w_src)
+        av.addWidget(card)
+
         row_a2 = QHBoxLayout()
         row_a2.setSpacing(8)
         self.chk_news = QCheckBox("开机说条资讯")
@@ -786,24 +819,101 @@ class ControlPanel(QWidget):
         av.addLayout(cat_row)
         self.txt_news = QTextEdit()
         self.txt_news.setReadOnly(True)
-        self.txt_news.setMaximumHeight(86)
+        # v3.0.10：不再卡 86px，直接撑到页面底部（以前只能看到 3 行，标题挤成一坨）
+        self.txt_news.setMinimumHeight(120)
         self.txt_news.setPlaceholderText("点上面任一分类，这里列最新标题")
-        av.addWidget(self.txt_news)
-        return self._wrap_prefs(box_amb)
+        av.addWidget(self.txt_news, 1)
+        # 打开页面就先把缓存/网络天气填上
+        QTimer.singleShot(0, self._load_weather)
+        return self._wrap_prefs(box_amb, fill=True)
 
     def _tab_pet_behavior(self):
         """桌宠行为：碎碎念、点击音效、始终指定、大小、换装、形态、跟随鼠标。"""
         return self._wrap_prefs(self._build_pet_box())
 
     @staticmethod
-    def _wrap_prefs(inner) -> QWidget:
-        """把单个分组包成一张子标签页（顶部对齐，底部留白）。"""
+    def _wrap_prefs(inner, fill: bool = False) -> QWidget:
+        """把单个分组包成一张子标签页（顶部对齐，底部留白）。
+
+        fill=True：让 inner 撑满整页（资讯框要顶到页面底部时用），不留底部空白。
+        """
         page = QWidget()
         lay = QVBoxLayout(page)
-        lay.setContentsMargins(4, 6, 4, 4)
-        lay.addWidget(inner)
-        lay.addStretch()
+        if fill:
+            lay.setContentsMargins(4, 4, 4, 2)
+        else:
+            lay.setContentsMargins(4, 6, 4, 4)
+        lay.addWidget(inner, 1 if fill else 0)
+        if not fill:
+            lay.addStretch()
         return page
+
+    def _load_weather(self):
+        """后台取天气并填卡片：优先用她刚播报过的缓存，没有就现场联网。"""
+        city = ""
+        try:
+            city = (self.ctl.config.get("weather_city", "") or "").strip() \
+                or ((getattr(self.ctl, "_ambient_cache", {}) or {}).get("city") or "")
+        except Exception:  # noqa: BLE001
+            city = ""
+        if city:
+            self.ed_city.setText(city)
+        cached = {}
+        try:
+            cached = (getattr(self.ctl, "_ambient_cache", {}) or {}).get("weather") or {}
+        except Exception:  # noqa: BLE001
+            cached = {}
+        if cached.get("t") is not None:
+            self._show_weather(cached, city, cached=True)
+        if not city:
+            self.lbl_w_src.setText("没填城市，填完点「刷新天气」。")
+            return
+        self.lbl_w_src.setText(f"正在取 {city} 的天气…")
+        try:
+            w = ambient.WeatherWorker(city)
+        except Exception as e:  # noqa: BLE001
+            self.lbl_w_src.setText(f"取天气失败：{e}")
+            return
+        w.done.connect(lambda data, c=city: self._show_weather(data, c))
+        w.failed.connect(lambda err: self.lbl_w_src.setText(f"{city} 天气没拿到：{err}"))
+        self._weather_worker = w       # 保引用，防止线程被回收
+        w.start()
+
+    def _show_weather(self, w: dict, city: str, cached: bool = False):
+        """把天气字典渲染成卡片。"""
+        if not w or w.get("t") is None:
+            self.lbl_w_src.setText(f"{city} 天气没拿到")
+            return
+        try:
+            t = float(w.get("t"))
+            self.lbl_w_temp.setText(f"{t:.0f}°")
+            desc = str(w.get("text") or "未知")
+            self.lbl_w_desc.setText(f"{city} · {desc}")
+            bits = []
+            if w.get("feels") is not None:
+                bits.append(f"体感 {float(w['feels']):.0f}°")
+            if w.get("hum") is not None:
+                bits.append(f"湿度 {int(float(w['hum']))}%")
+            if w.get("wind") is not None:
+                bits.append(f"风 {float(w['wind']):.1f} km/h")
+            if w.get("pop") is not None:
+                bits.append(f"降水 {int(float(w['pop']))}%")
+            if w.get("air"):
+                bits.append(f"空气 {w['air']}")
+            self.lbl_w_detail.setText("　".join(bits) if bits else "体感/湿度/风暂无")
+            if w.get("tmax") is not None or w.get("tmin") is not None:
+                hi = "-" if w.get("tmax") is None else f"{float(w['tmax']):.0f}"
+                lo = "-" if w.get("tmin") is None else f"{float(w['tmin']):.0f}"
+                self.lbl_w_today.setText(f"今日 {lo} ~ {hi}°")
+            else:
+                self.lbl_w_today.setText("今日高低温暂无")
+            src = {"itboy": "中国天气网", "wttr": "wttr.in", "openmeteo": "open-meteo"}.get(
+                str(w.get("src") or ""), str(w.get("src") or "未知源"))
+            stamp = datetime.datetime.now().strftime("%H:%M")
+            self.lbl_w_src.setText(
+                f"数据源：{src}　更新 {stamp}" + ("（缓存）" if cached else ""))
+        except Exception as e:  # noqa: BLE001
+            self.lbl_w_src.setText(f"天气显示出错：{e}")
 
     def _load_news_cat(self, key: str):
         """点分类按钮 → 后台抓该类头条，结果贴到小文本框。"""
@@ -2617,6 +2727,108 @@ class ControlPanel(QWidget):
 
     def _open_defender(self):
         QDesktopServices.openUrl(QUrl("windowsdefender://threat"))
+
+    # ---------- v3.0.10 安全管家 ----------
+    def _guard_scan(self):
+        ok = False
+        try:
+            ok = self.ctl.run_guard_scan()
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"扫描起不来：{e}")
+            return
+        if ok:
+            self.btn_guard.setEnabled(False)
+            self.lbl_guard.setText("正在扫……先读持久化点和进程，再解析落点目录里的可执行文件。")
+        else:
+            self.lbl_guard.setText("已经有一轮在跑了，等它出结果。")
+
+    def on_guard_progress(self, pct: int, msg: str):
+        try:
+            self.lbl_guard.setText(f"{pct}% · {msg}")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def refresh_guard(self, rep: dict):
+        """把扫描结果铺到表格：等级 / 对象 / 原因 / 规则。"""
+        try:
+            self.btn_guard.setEnabled(True)
+        except Exception:  # noqa: BLE001
+            pass
+        if not rep:
+            return
+        rows = rep.get("findings") or []
+        self.tbl_guard.setRowCount(0)
+        colors = {"high": "#c0392b", "medium": "#c77c00", "low": "#4a6fa5", "info": "#666"}
+        for f in rows[:200]:
+            r = self.tbl_guard.rowCount()
+            self.tbl_guard.insertRow(r)
+            lvl = {"high": "高危", "medium": "中危", "low": "低危", "info": "提示"}.get(
+                f.get("level", ""), f.get("level", ""))
+            c0 = QTableWidgetItem(f"{lvl} {int(f.get('score', 0))}")
+            c0.setForeground(QColor(colors.get(f.get("level", ""), "#333")))
+            c1 = QTableWidgetItem(str(f.get("target", ""))[:160])
+            c1.setToolTip(str(f.get("target", "")))
+            c2 = QTableWidgetItem(str(f.get("why", ""))[:200])
+            c3 = QTableWidgetItem(str(f.get("rule", "")))
+            for col, it in enumerate((c0, c1, c2, c3)):
+                self.tbl_guard.setItem(r, col, it)
+        saved = rep.get("files") or {}
+        tail = f"　报告：{os.path.basename(saved.get('md', ''))}" if saved.get("md") else ""
+        self.lbl_guard.setText(
+            f"扫完：风险分 {rep.get('score', 0)}/100（{rep.get('level', '')}）"
+            f" · 线索 {len(rows)} 条（高危 {rep['counts']['high']} / 中危 {rep['counts']['medium']}）"
+            f" · 查了 {rep.get('files_scanned', 0)} 个文件、{rep.get('processes_checked', 0)} 个进程"
+            f" · {rep.get('elapsed_s', 0)}s{tail}")
+        self.lbl_guard.setToolTip(str(saved.get("md", "")) or "报告目录：数据目录\\reports")
+
+    def _guard_defender(self):
+        try:
+            paths, quick = self.ctl.guard_defender()
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"交接失败：{e}")
+            return
+        if quick:
+            self.lbl_guard.setText("没有可交接的高/中危文件，已让 Defender 做一次快速全盘扫描…")
+        else:
+            self.lbl_guard.setText(f"已把 {len(paths)} 个可疑文件交给 Defender 逐个深扫…")
+
+    def on_defender_done(self, res: dict):
+        ok = res.get("ok")
+        msg = str(res.get("msg", ""))[:220].replace("\n", " ")
+        self.lbl_guard.setText(("Defender 扫完了：" if ok else "Defender 那边没成：") + msg)
+
+    def _guard_export(self):
+        rep = getattr(self.ctl, "guard_report", None) or {}
+        if not rep:
+            self.lbl_guard.setText("还没扫描过，没有报告可导。")
+            return
+        try:
+            import guard_core
+            md = guard_core.report_markdown(rep)
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"生成报告失败：{e}")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "导出安全管家报告", os.path.join(os.path.expanduser("~"), "安全管家报告.md"),
+            "Markdown (*.md);;文本 (*.txt)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(md)
+            self.lbl_guard.setText(f"已导出：{path}")
+        except OSError as e:
+            self.lbl_guard.setText(f"写入失败：{e}")
+
+    def _open_guard_reports(self):
+        try:
+            import guard_core
+            d = os.path.join(guard_core._data_root(), "reports")
+            os.makedirs(d, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+            self.lbl_guard.setText(f"报告目录：{d}")
+        except Exception as e:  # noqa: BLE001
+            self.lbl_guard.setText(f"打不开目录：{e}")
 
     def refresh_scan(self, report: dict):
         if not report:
