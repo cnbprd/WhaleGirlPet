@@ -3,16 +3,23 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('assets/skins', 'assets/skins'), ('assets/expressions', 'assets/expressions'), ('assets/actions', 'assets/actions'), ('assets/loli', 'assets/loli'), ('assets/ui', 'assets/ui')]
 binaries = []
+# v3.0.17 瘦身：v3.0.1 已删原生 Splash（Tk），这里去掉 tkinter —— 它会把整个
+#   tcl90/tk90 数据目录拖进包（未压缩约 15MB）。app 下全项目 0 次 import tkinter。
 hiddenimports = ['PySide6.QtMultimedia', 'edge_tts', 'skills', 'secscan', 'local_llm', 'voice_cmd', 'tasks', 'hwinfo', 'sysvol', 'pycaw', 'comtypes', 'gpu_guard', 'psutil', 'ambient', 'awareness', 'voice_profile', 'theme',
-                 'tkinter']   # v2.9.6：原生 Splash 需要 tcl90.dll/tk90.dll，靠 tkinter 的 hook 收进来
+                 'asyncio', 'unicodedata']
 tmp_ret = collect_all('edge_tts')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('aiohttp')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('tabulate')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# v3.0.17：tabulate 在 app 下 0 次被 import（实测），collect_all 纯属把它的
+#   测试与 metadata 也塞进包，删掉。
 tmp_ret = collect_all('certifi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# v3.0.17：venv 里装了但代码 0 次使用的重型库，显式排除（PIL 只在离线工具脚本里用过，
+#   桌宠本体不用；numpy/pandas/scipy/matplotlib 从未 import）。
+EXCLUDES = ['tkinter', 'numpy', 'pandas', 'scipy', 'matplotlib', 'PIL',
+            'pytest', '_pytest', 'IPython', 'notebook']
 
 
 a = Analysis(
@@ -24,9 +31,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=EXCLUDES,
     noarchive=False,
-    optimize=0,
+    optimize=2,          # v3.0.17：去掉 docstring（全项目 0 处用 __doc__）
 )
 pyz = PYZ(a.pure)
 

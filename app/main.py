@@ -93,6 +93,13 @@ DEFAULT_CONFIG = {
     # v3.0.4：本地模型空闲多少分钟后自动卸载（省 2.3GB 内存）；0 = 永不卸载
     "llm_idle_unload_min": 20,
     "llm_model_file": "",
+    # v3.0.17：三档分工（大脑 / 快反 / 工具人）。留空 = 不强制切模型，用默认候选。
+    #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 留给"快问快答"。
+    #   注意：本机 4 份 gguf 都是纯文本权重（没有 mmproj），所谓多模态只能走云端。
+    #   切换模型要重启引擎（秒级到十几秒），所以 fast 默认留空，避免日常闲聊来回切。
+    "model_roles": {"brain": "qwen35-4b-Q4_K_M.gguf",
+                    "tool": "deepseek-coder-6.7b-instruct.gguf",
+                    "fast": ""},
     "llm_backend": "auto",                      # auto / ollama / dafeiyu_cpp（旧值 llama_cpp 自动认）
     "gpu_when_idle": True,                      # 没在跑游戏时用 GPU（Ollama），跑游戏退 CPU
     "ollama_host": local_llm.OLLAMA_HOST,
@@ -1231,7 +1238,7 @@ class Controller:
             try:
                 self.skill_worker = local_llm.LocalChatWorker(
                     self.llm, self._router_messages(ask_text), max_tokens=180,
-                    temperature=0.1, fmt="json")
+                    temperature=0.1, fmt="json", role="tool")
                 self.skill_worker.reply_ready.connect(
                     lambda raw: self._on_skill_route(raw, ask_text))
                 self.skill_worker.failed.connect(lambda r: self._chat_plain(ask_text))
@@ -1272,11 +1279,26 @@ class Controller:
             "能力层拒了（%s），回普通对话" % res.get("reason", ""))
         self._chat_plain(text)
 
+    # 代码类请求的识别词。v3.0.17 收紧过一次：去掉「异常」「bug」这类日常也常说的词
+    #   （实测：切到 6.7B 要 23.6s、单轮 6.5s，误触发一次代价很大）。
+    CODE_HINTS = ("报错", "错误信息", "traceback", "Traceback", "SyntaxError",
+                  "Exception", "这段代码", "代码", "函数", "编译", "正则",
+                  "写个脚本", "重构", "单元测试", "pandas", "numpy", "SQL", "sql")
+
+    def _looks_like_code(self, text: str) -> bool:
+        t = str(text or "")
+        return any(h in t for h in self.CODE_HINTS)
+
     def _chat_plain(self, text: str):
         if self.config.get("llm_on", True) and local_llm.available(self.config):
             try:
+                role = "tool" if self._looks_like_code(text) else "brain"
+                if role == "tool":
+                    # 换模型 = 重启引擎，实测 23.6s，先告诉用户不是在卡死
+                    self.pet.bubble.show_text("我要把专写代码的那个脑子叫醒，得等十几二十秒…", 6000)
                 self.llm_worker = local_llm.LocalChatWorker(
-                    self.llm, self._build_messages(text), max_tokens=260, temperature=0.8)
+                    self.llm, self._build_messages(text), max_tokens=260,
+                    temperature=0.8, role=role)
                 self.llm_worker.reply_ready.connect(self._on_local_reply)
                 self.llm_worker.failed.connect(self._on_local_failed)
                 self.llm_worker.start()

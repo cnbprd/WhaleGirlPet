@@ -2,6 +2,19 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.17（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 三档模型分工 | `ServerManager` 新增 `role_model(role)` / `ensure_role(role)`：已在跑目标模型就不重启；否则停掉再起；可用内存 < 体积×1.15 不切、写 `fallback_note` 照常用现有模型。`LocalChatWorker(role=)`，`_chat_plain` 按代码意图选档，技能路由固定 `tool` | `tools/test_model_roles.py` 20/20 |
+| 2 切换代价（真机） | brain 起 5.8s/单轮 1.3s；brain→tool 6.7B **23.6s**/单轮 6.5s；回 brain 6.9s/1.6s（ctx 4096，串行 dispatch） | `tools/live_roles.py` 三段切换+三次对话全 ok |
+| 3 误触发防护 | `CODE_HINTS` 收紧：去掉「异常/bug/脚本」，留「报错/traceback/这段代码/代码/函数/编译/正则/写个脚本/重构/单元测试/pandas/numpy/SQL」；走 tool 先出气泡"要等十几二十秒" | 5 个判定用例（含"最近有点异常"→非代码） |
+| 4 多模态的硬事实 | `runtime\models` 下 `*mmproj*` 数量 = 0 → `gemma4-e2b-it.gguf` 只能跑纯文本；它 3269.1MB 比 brain 的 2525.9MB 还大 743MB。`fast` 默认留空 | 目录扫描 + 体积实测 |
+| 5 包体瘦身 | spec 删 `tkinter` hiddenimport、删 `collect_all('tabulate')`、`excludes` 加 numpy/pandas/scipy/matplotlib/PIL/pytest/tkinter、`optimize=2`；build.ps1 同步 | exe 69.4 → **64.0 MB**（−7.8%） |
+| 6 启动与内存 | onefile 解包变快 | 解包+主进程起 4.26 → **2.10s**；常驻 RSS 171 → 175MB（噪声内） |
+| 7 外部建议核实 | `vlln/whale-girl` 真实存在但属 DSH 插件/桌面壳，"WhaleGirlPet 项目家族"不成立；只借"引擎/渲染分离"思想，项目已是该形状 | `docs/model_roles_v317.md` §6 |
+| 8 版本 3.0.17 | `paths.APP_VERSION` + iss 六处 + 标题「三档模型分工」 | 六处 3.0.17 |
+
 ## v3.0.16（2026-11-25）
 
 | 项 | 改动 | 实测 |

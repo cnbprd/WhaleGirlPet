@@ -28,8 +28,13 @@ if (-not (Test-Path $venvPy)) { $venvPy = "python" }
     --hidden-import theme `
     --collect-all edge_tts `
     --collect-all aiohttp `
-    --collect-all tabulate `
     --collect-all certifi `
+    --exclude-module tkinter `
+    --exclude-module numpy `
+    --exclude-module pandas `
+    --exclude-module scipy `
+    --exclude-module matplotlib `
+    --exclude-module PIL `
     --add-data "assets\skins;assets\skins" `
     --add-data "assets\expressions;assets\expressions" `
     --add-data "assets\actions;assets\actions" `

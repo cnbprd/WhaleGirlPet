@@ -523,6 +523,61 @@ class ServerManager:
         self.stop()
         return False
 
+    def _mem_free_mb(self) -> int:
+        """可用物理内存（MB）；拿不到就给个很大的数，宁可不拦也别把能用的停掉。"""
+        try:
+            import psutil
+            return int(psutil.virtual_memory().available / 1048576)
+        except Exception:  # noqa: BLE001
+            return 999999
+
+    def role_model(self, role: str) -> str:
+        """v3.0.17：三个角色各自的模型文件（brain 大脑 / fast 快反 / tool 工具人）。"""
+        roles = self.config.get("model_roles")
+        if not isinstance(roles, dict) or not roles:
+            roles = {"brain": "qwen35-4b-Q4_K_M.gguf",
+                     "tool": "deepseek-coder-6.7b-instruct.gguf", "fast": ""}
+        name = str(roles.get(role, "") or "").strip()
+        if not name:
+            return ""
+        try:
+            return resolve_model(name, self.config)
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def ensure_role(self, role: str) -> bool:
+        """确保当前加载的就是这个角色该用的模型；本来就是就不动，不是就换（有内存闸）。
+
+        切换 = 停掉再起，秒级到十几秒，所以只在角色真的变了才做；
+        可用内存不够装新模型时宁可不切，继续用当前模型（返回 True，不打断这次对话）。
+        """
+        want = self.role_model(role)
+        if not want or not os.path.exists(want):
+            return True
+        cur = self.active_model or ""
+        if cur and os.path.basename(cur) == os.path.basename(want) and self.health():
+            return True
+        try:
+            need_mb = os.path.getsize(want) / 1048576
+        except OSError:
+            need_mb = 0
+        if need_mb and self._mem_free_mb() < need_mb * 1.15:
+            self.fallback_note = (f"可用内存不足 {need_mb:.0f}MB，暂不切换 "
+                                  f"{os.path.basename(want)}")
+            return True
+        with self._chat_lock:
+            if self.is_running():
+                self.stop()
+            self.active_model = ""
+            exe = server_exe()
+            if not os.path.exists(exe):
+                return False
+            self._ensure_port()
+            ok = self._spawn_and_wait(exe, want)
+            if ok:
+                self.active_model = want
+            return ok
+
     def dispatch(self, messages: list, max_tokens: int = 220, temperature: float = 0.7,
                  timeout: int = 90, fmt: str | None = None, retry: bool = True):
         """统一调度入口（v3.0.9）：串行化 + 确保就绪 + 失败自愈。
@@ -713,13 +768,14 @@ class LocalChatWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, manager: ServerManager, messages: list, max_tokens: int = 220,
-                 temperature: float = 0.7, fmt: str | None = None):
+                 temperature: float = 0.7, fmt: str | None = None, role: str = ""):
         super().__init__()
         self.manager = manager
         self.messages = messages
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.fmt = fmt
+        self.role = role          # v3.0.17：brain / fast / tool，空 = 不指定
         self._stop = False
 
     def stop(self):
@@ -729,6 +785,12 @@ class LocalChatWorker(QThread):
         if self._stop:
             return
         # v3.0.9：统一走 dispatch（串行排队 + 起不来先拉起 + 断了重启一次）
+        # v3.0.17：先按角色换到该用的模型（切不动就继续用现有的，不打断这次回答）
+        if self.role:
+            try:
+                self.manager.ensure_role(self.role)
+            except Exception:  # noqa: BLE001
+                pass
         ok, out = self.manager.dispatch(self.messages, self.max_tokens, self.temperature,
                                         fmt=self.fmt)
         if self._stop:
