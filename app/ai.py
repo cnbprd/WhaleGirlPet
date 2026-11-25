@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
+import api_access
 from paths import DEFAULT_NAME
 
 def build_system_prompt(name: str) -> str:
@@ -47,14 +48,24 @@ class ChatWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, endpoint: str, model: str, api_key: str, history: list, user_text: str,
-                 system_prompt: str = "", max_tokens: int = 300, temperature: float = 0.8):
+                 system_prompt: str = "", max_tokens: int = 300, temperature: float = 0.8,
+                 api_format: str = "openai", proxy: str = "",
+                 extra_headers: str = "", params_override: str = ""):
         super().__init__()
-        ep = endpoint.strip().rstrip("/") or DEFAULT_ENDPOINT
-        if not ep.endswith("/chat/completions"):
-            ep = ep + "/chat/completions"
-        self.endpoint = ep
-        self.model = (model.strip() or DEFAULT_MODEL).lower()
-        self.api_key = api_key.strip() or read_zhipu_key()
+        self.api_format = api_format if api_format in api_access.FORMATS else "openai"
+        self.endpoint = (endpoint or "").strip()
+        self.model = (model or "").strip()
+        # v3.0.15：高级设置里的三项（代理 / 自定义请求头 / 参数覆盖）
+        self.proxy = (proxy or "").strip()
+        self.extra_headers = (extra_headers or "").strip()
+        self.params_override = (params_override or "").strip()
+        # 只有 OpenAI 兼容那套有「智谱默认地址 + 环境变量兜底」的老约定
+        if self.api_format == "openai":
+            self.endpoint = self.endpoint.rstrip("/") or DEFAULT_ENDPOINT
+            self.model = (self.model or DEFAULT_MODEL).lower()
+            self.api_key = api_key.strip() or read_zhipu_key()
+        else:
+            self.api_key = api_key.strip()
         self.history = list(history)[-MAX_HISTORY:]
         self.user_text = user_text
         self.system_prompt = system_prompt or build_system_prompt(DEFAULT_NAME)
@@ -68,21 +79,44 @@ class ChatWorker(QThread):
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history)
         messages.append({"role": "user", "content": self.user_text})
-        body = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-            "stream": False,
-        }
-        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + self.api_key}
-        req = urllib.request.Request(self.endpoint, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-            content = (payload.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            content = content.strip()
+            url, headers, body = api_access.build_request(
+                self.api_format, self.endpoint, self.model, self.api_key,
+                messages, system_prompt=self.system_prompt,
+                max_tokens=self.max_tokens, temperature=self.temperature)
+        except Exception:  # noqa: BLE001
+            self.failed.emit("build")
+            return
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        # 自定义请求头 / 参数覆盖：JSON 不合法就忽略，不影响正常对话
+        if self.extra_headers:
+            try:
+                for k, v in json.loads(self.extra_headers).items():
+                    req.add_header(str(k), str(v))
+            except (ValueError, AttributeError):
+                pass
+        if self.params_override:
+            try:
+                extra = json.loads(self.params_override)
+                if isinstance(extra, dict):
+                    body.update(extra)
+                    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                    req.data = data
+            except (ValueError, AttributeError):
+                pass
+        opener = None
+        if self.proxy:
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy}))
+        try:
+            if opener is not None:
+                with opener.open(req, timeout=20) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+            else:
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+            content = api_access.parse_reply(self.api_format, payload)
             if not content:
                 self.failed.emit("empty")
                 return

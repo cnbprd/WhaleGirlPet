@@ -19,6 +19,7 @@ import paths
 import persona as pers
 import theme
 import voice_tweak
+from api_access_ui import ApiAccessCard
 from paths import (APP_VERSION, AUDIO_ACTIONS, AUDIO_ACTION_LABELS,
                    FORM_LABELS, SIZE_LEVELS, SKINS)
 from state import SNACKS
@@ -1235,44 +1236,9 @@ class ControlPanel(QWidget):
         w = QWidget()
         root = QVBoxLayout(w)
 
-        # 后端管理
-        box_ai = QGroupBox("联网后端管理")
-        form = QFormLayout(box_ai)
-        self.cb_profiles = QComboBox()
-        self.cb_profiles.currentIndexChanged.connect(self._on_profile_switch)
-        row_prof = QHBoxLayout()
-        row_prof.addWidget(self.cb_profiles)
-        btn_new = QPushButton("新建")
-        btn_new.clicked.connect(self._new_profile)
-        btn_del = QPushButton("删除")
-        btn_del.clicked.connect(self._delete_profile)
-        row_prof.addWidget(btn_new)
-        row_prof.addWidget(btn_del)
-        form.addRow("后端", row_prof)
-
-        self.ed_profile_name = QLineEdit()
-        self.ed_endpoint = QLineEdit()
-        self.ed_endpoint.setPlaceholderText("留空用智谱默认地址；填根地址会自动补 /chat/completions")
-        self.ed_model = QLineEdit()
-        self.ed_key = QLineEdit()
-        self.ed_key.setEchoMode(QLineEdit.Password)
-        self.ed_key.setPlaceholderText("留空则读取环境变量 ZHIPU_API_KEY 或 ~/.zhipu_api_key.txt")
-        form.addRow("备注名", self.ed_profile_name)
-        form.addRow("接口地址", self.ed_endpoint)
-        form.addRow("模型名", self.ed_model)
-        form.addRow("API Key", self.ed_key)
-
-        row = QHBoxLayout()
-        btn_save = QPushButton("保存当前后端")
-        btn_save.clicked.connect(self.ctl.save_ai_settings)
-        btn_test = QPushButton("测试连接")
-        btn_test.clicked.connect(self.ctl.test_ai_connection)
-        row.addWidget(btn_save)
-        row.addWidget(btn_test)
-        form.addRow(row)
-        self.lbl_ai_status = QLabel("")
-        form.addRow(self.lbl_ai_status)
-        root.addWidget(box_ai)
+        # v3.0.15：原来的「联网后端管理」表单换成照参考图做的「模型 API 接入」卡片
+        self.api_card = ApiAccessCard(self.ctl)
+        root.addWidget(self.api_card)
 
         # 自主行动
         box_auto = QGroupBox("自主行动")
@@ -1511,38 +1477,26 @@ class ControlPanel(QWidget):
         u.addWidget(lbl_info)
         return box_upd
 
-    # ---------- 后端交互 ----------
+    # ---------- 后端交互（v3.0.15：表单已并入 ApiAccessCard，旧入口保留为转发） ----------
     def _on_profile_switch(self, idx: int):
-        if idx >= 0:
-            self.ctl.switch_profile(idx)
-            self._fill_profile_fields()
+        if idx >= 0 and getattr(self, "api_card", None):
+            self.api_card._use(idx)
 
     def _new_profile(self):
-        self.ctl.new_profile()
-        self._reload_profiles()
+        if getattr(self, "api_card", None):
+            self.api_card._new_profile()
 
     def _delete_profile(self):
-        if self.ctl.delete_active_profile():
-            self._reload_profiles()
-        else:
-            self.lbl_ai_status.setText("至少保留一套后端。")
+        if getattr(self, "api_card", None):
+            self.api_card._disconnect(self.api_card._idx)
 
     def _reload_profiles(self):
-        self.cb_profiles.blockSignals(True)
-        self.cb_profiles.clear()
-        for i, p in enumerate(self.ctl.profiles()):
-            self.cb_profiles.addItem(p.get("name", f"后端 {i + 1}"), i)
-        idx = self.ctl.config.get("active_profile", 0)
-        self.cb_profiles.setCurrentIndex(max(0, min(idx, self.cb_profiles.count() - 1)))
-        self.cb_profiles.blockSignals(False)
-        self._fill_profile_fields()
+        if getattr(self, "api_card", None):
+            self.api_card.refresh()
 
     def _fill_profile_fields(self):
-        prof = self.ctl.active_profile()
-        self.ed_profile_name.setText(prof.get("name", ""))
-        self.ed_endpoint.setText(prof.get("endpoint", ""))
-        self.ed_model.setText(prof.get("model", ""))
-        self.ed_key.setText(prof.get("api_key", ""))
+        if getattr(self, "api_card", None):
+            self.api_card.refresh()
 
     # ---------- 音频交互 ----------
     def _on_volume(self, v: int):

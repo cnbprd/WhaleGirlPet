@@ -372,11 +372,16 @@ class Controller:
     def active_profile(self) -> dict:
         ps = self.profiles()
         if not ps:
-            ps.append({"name": "智谱默认", "endpoint": "", "model": "", "api_key": ""})
+            ps.append({"name": "智谱默认", "endpoint": "", "model": "", "api_key": "",
+                       "api_format": "openai", "models": []})
         i = self.config.get("active_profile", 0)
         i = max(0, min(i, len(ps) - 1))
         self.config["active_profile"] = i
-        return ps[i]
+        prof = ps[i]
+        # v3.0.15：接入协议的旧数据兼容
+        prof.setdefault("api_format", "openai")
+        prof.setdefault("models", [])
+        return prof
 
     def switch_profile(self, idx: int):
         if 0 <= idx < len(self.profiles()):
@@ -1267,7 +1272,10 @@ class Controller:
         self.worker = ChatWorker(
             endpoint=prof.get("endpoint", ""), model=prof.get("model", ""),
             api_key=prof.get("api_key", ""), history=self.history, user_text=text,
-            system_prompt=self._system_text(text, False))
+            system_prompt=self._system_text(text, False),
+            api_format=prof.get("api_format", "openai"),
+            proxy=prof.get("proxy", ""), extra_headers=prof.get("headers", ""),
+            params_override=prof.get("params", ""))
         self.worker.reply_ready.connect(self._on_ai_reply)
         self.worker.failed.connect(self._on_ai_failed)
         self.worker.start()
@@ -1433,6 +1441,10 @@ class Controller:
     def save_ai_settings(self):
         if self.panel is None:
             return
+        card = getattr(self.panel, "api_card", None)
+        if card is not None:
+            card._save()
+            return
         self.save_profile_fields(
             self.panel.ed_profile_name.text(),
             self.panel.ed_endpoint.text(),
@@ -1443,17 +1455,35 @@ class Controller:
     def test_ai_connection(self):
         self.save_ai_settings()
         prof = self.active_profile()
+        card = getattr(self.panel, "api_card", None) if self.panel else None
         if not (prof.get("api_key") or read_zhipu_key()):
-            self.panel.lbl_ai_status.setText("未检测到 API Key。")
+            if card is not None:
+                card.set_connected(False, "未检测到 API Key。")
             return
-        self.panel.lbl_ai_status.setText("正在测试连接……")
+        if card is not None:
+            card.lbl_status.setText("正在测试连接……")
         self.worker = ChatWorker(prof.get("endpoint", ""), prof.get("model", ""),
                                  prof.get("api_key", ""), [], "只回复两个字：连通",
-                                 system_prompt=build_system_prompt(self.get_name()))
-        self.worker.reply_ready.connect(
-            lambda c: self.panel and self.panel.lbl_ai_status.setText(f"连接成功：{c[:20]}"))
-        self.worker.failed.connect(
-            lambda r: self.panel and self.panel.lbl_ai_status.setText(f"连接失败：{r}"))
+                                 system_prompt=build_system_prompt(self.get_name()),
+                                 api_format=prof.get("api_format", "openai"),
+                                 proxy=prof.get("proxy", ""),
+                                 extra_headers=prof.get("headers", ""),
+                                 params_override=prof.get("params", ""))
+
+        def _ok(c):
+            if card is not None:
+                card.set_connected(True, f"连接成功：{c[:20]}")
+            elif self.panel:
+                self.panel.lbl_ai_status.setText(f"连接成功：{c[:20]}")
+
+        def _bad(r):
+            if card is not None:
+                card.set_connected(False, f"连接失败：{r}")
+            elif self.panel:
+                self.panel.lbl_ai_status.setText(f"连接失败：{r}")
+
+        self.worker.reply_ready.connect(_ok)
+        self.worker.failed.connect(_bad)
         self.worker.start()
 
     # ================= 形态切换 =================

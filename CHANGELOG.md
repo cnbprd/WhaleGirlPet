@@ -2,6 +2,17 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.15（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 「联网后端管理」→「模型 API 接入」 | 照参考图重做成深色卡片：标题+状态点 / 名称 / API 地址 / 格式药丸（OpenAI·Anthropic·Gemini）/ 查看填写规则 / API Key+眼睛 / 高级设置折叠 / 模型列表+添加 / 获取模型列表+测试连接+粉色保存；上半是已接入列表（状态点+名称+已连接徽标+模型名+使用·编辑·断开） | 离屏截图 `docs/settings_v315.png`、`docs/api_card_v315_on.png`；`hasattr(panel,"cb_profiles")==False` |
+| 2 三协议真实接入 | 新增 `app/api_access.py`：URL 补全、认证头、body 结构、回复解析、模型列表、填写规则三家分开；`ChatWorker` 按 `api_format` 走对应协议 | 协议层 21 项通过；端到端 5/5（openai「你好呀」/ anthropic「我是 Claude」/ gemini「我是 Gemini」） |
+| 3 高级设置真生效 | 代理走 `ProxyHandler`；自定义请求头 `add_header`；参数覆盖 `body.update`；JSON 不合法则忽略并提示 | 服务端收到 `X-Title`、body 含 `top_p:0.9` |
+| 4 状态三态与交互 | 未连接（灰）/ 已配置未验证（黄）/ 已连接（绿）；药丸互斥、眼睛切明文、断开清 Key 保留其余字段 | 单测：互斥 {openai:F,anthropic:F,gemini:T}、echoMode Normal、保存写回 `connected=True`、断开后 key="" |
+| 5 旧配置兼容 | 读取时 `setdefault` 补 `api_format=models=[]`；`save_ai_settings`/`test_ai_connection` 改读卡片 | 旧四字段档在设置页正常显示为「已配置·未验证」 |
+| 6 版本 3.0.15 | `paths.APP_VERSION`、iss 六处 + iss 标题改为「模型 API 接入」 | 六处 3.0.15；`py_compile` 5 个文件通过 |
+
 ## v3.0.14（2026-11-25）
 
 | 项 | 改动 | 实测 |
