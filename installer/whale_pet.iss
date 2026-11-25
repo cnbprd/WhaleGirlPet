@@ -1,23 +1,23 @@
-; 鲸鱼娘桌宠 安装脚本（Inno Setup 6.7.4）· v3.0.17 三档模型分工
+; 鲸鱼娘桌宠 安装脚本（Inno Setup 6.7.4）· v3.0.18 onedir + 本地视觉
 ; 编译：tools\inno\ISCC.exe installer\whale_pet.iss
 ; 说明：不再用 Inno 默认的"欢迎/选择目录/任务/准备"四页，
 ;       改成大肥鱼站在右侧、左侧气泡提问的四问流程（位置 / 桌面图标 / 装完叫醒 / 选装本地模型）。
 
 [Setup]
 AppName=鲸鱼娘桌宠
-AppVersion=3.0.17
-AppVerName=鲸鱼娘桌宠 3.0.17
+AppVersion=3.0.18
+AppVerName=鲸鱼娘桌宠 3.0.18
 AppPublisher=本地自制
 DefaultDirName={localappdata}\WhaleGirlPetApp
 DefaultGroupName=鲸鱼娘桌宠
 UninstallDisplayIcon={app}\WhaleGirlPet.exe
-UninstallDisplayName=鲸鱼娘桌宠 3.0.17
+UninstallDisplayName=鲸鱼娘桌宠 3.0.18
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=WhaleGirlPet-Setup-3.0.17
+OutputBaseFilename=WhaleGirlPet-Setup-3.0.18
 SetupIconFile=..\assets\ui\pet.ico
 WizardSmallImageFile=art\small_blank.png
 DisableWelcomePage=yes
@@ -40,10 +40,11 @@ ButtonBrowse=浏览(&B)...
 FinishedHeadingLabel=装好啦
 FinishedLabel=大肥鱼已经住进这台电脑了。桌面图标点一下就能叫醒她。
 ConfirmUninstall=确定要把大肥鱼请出去吗？
-SetupWindowTitle=Setup: 鲸鱼娘桌宠 3.0.17
+SetupWindowTitle=Setup: 鲸鱼娘桌宠 3.0.18
 
 [Files]
-Source: "..\dist\WhaleGirlPet.exe"; DestDir: "{app}"; Flags: ignoreversion
+; v3.0.18：onedir —— 安装包内容 = dist\WhaleGirlPet\ 整个目录（exe + _internal）
+Source: "..\dist\WhaleGirlPet\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\runtime\dafeiyu\*"; DestDir: "{app}\runtime\dafeiyu"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "copy_models.cmd"; DestDir: "{app}"; Flags: ignoreversion

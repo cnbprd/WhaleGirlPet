@@ -178,8 +178,20 @@ def model_path(name: str = "", config: dict = None) -> str:
     return resolve_model(name, config)
 
 
+def _has_image(messages) -> bool:
+    """v3.0.18：这条消息里带不带图（OpenAI vision 的 content 数组）。"""
+    for m in messages or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list):
+            for part in c:
+                if isinstance(part, dict) and part.get("type") in ("image_url", "image"):
+                    return True
+    return False
+
+
 def available(config: dict = None) -> bool:
-    return (os.path.exists(server_exe()) and bool(model_path("", config))) or ollama_alive()
+    return ((os.path.exists(server_exe()) and bool(model_path("", config)))
+            or ollama_alive())
 
 
 def kill_stray_servers() -> int:
@@ -335,6 +347,9 @@ class ServerManager:
         self.active_model = ""       # 实际加载成功的模型
         self.fallback_note = ""      # 降级说明（首选模型起不来时写这里）
         self.port_auto = False       # 端口被占用时自动换过
+        # v3.0.18：一旦做过角色切换或发过多模态请求，就锁定自带引擎（见 backend 注释）
+        self._force_local = False
+        self.active_role = ""        # 当前生效的角色（brain/fast/tool），重启时沿用
 
     @property
     def model_file(self) -> str:
@@ -364,6 +379,7 @@ class ServerManager:
             out.append(path)
             sizes.append(sz)
 
+        _add(self.role_model(getattr(self, "active_role", "")))
         _add(model_path(self.model_file, self.config) if self.model_file else "")
         for name in PREFERRED_MODELS:
             _add(model_path(name, self.config))
@@ -383,7 +399,11 @@ class ServerManager:
 
         v3.0.9：界面去掉了「只用 Ollama」，老配置里的 ollama 一律按 auto 处理
         （Ollama 坏过一次就固定走自带引擎，不再反复撞墙）。
+        v3.0.18：角色切换 / 多模态一律走自带引擎 —— 这两个能力都是靠 --mmproj 与
+        -m 指定权重实现的，Ollama 那边没有对应模型，混着用会打错端点（实测 400）。
         """
+        if getattr(self, "_force_local", False):
+            return "dafeiyu_cpp"
         want = str(self.config.get("llm_backend", "auto") or "auto")
         if want in ("llama_cpp", "ollama"):   # 老配置值统一降级为自动
             want = "auto"
@@ -490,6 +510,11 @@ class ServerManager:
                 "-rea", "off",
                 # v3.0.4：桌宠只会有一个人说话，4 个 slot 白占 KV 内存（实测 -np 1 省 155MB）
                 "-np", "1"]
+        # v3.0.18：多模态。权重是纯文本的（gemma4 / gemma3n 这类 any-to-any 模型另带
+        #   视觉/音频投影），要有匹配的 mmproj 才认得图；没有就不加参数，行为与以前一致。
+        mm = self.mmproj_for(model)
+        if mm:
+            args += ["--mmproj", mm, "-mmdev", "none"]
         creationflags = 0
         if os.name == "nt":
             creationflags = 0x08000000  # CREATE_NO_WINDOW
@@ -523,6 +548,38 @@ class ServerManager:
         self.stop()
         return False
 
+    def mmproj_for(self, model: str) -> str:
+        """v3.0.18：给这个权重找配套的多模态投影文件；没有就返回空（不传 --mmproj）。
+
+        优先 config["llm_mmproj"] 显式指定；否则在模型同目录找 mmproj*.gguf，
+        文件名里带模型主干的（gemma4-e2b-it → e2b）优先；只有一个就用它。
+        """
+        explicit = str(self.config.get("llm_mmproj", "") or "").strip()
+        if explicit and os.path.exists(explicit):
+            return explicit
+        base = os.path.basename(model or "").lower()
+        stem = base[:-5] if base.endswith(".gguf") else base
+        d = os.path.dirname(model or "")
+        if not stem or not d or not os.path.isdir(d):
+            return ""
+        cands = []
+        try:
+            for f in os.listdir(d):
+                low = f.lower()
+                if low.endswith(".gguf") and low.startswith("mmproj"):
+                    cands.append(os.path.join(d, f))
+        except OSError:
+            return ""
+        if not cands:
+            return ""
+        parts = [p for p in stem.replace("_", "-").replace(".", "-").split("-")
+                 if len(p) >= 2]
+        for c in cands:
+            cl = os.path.basename(c).lower()
+            if any(p in cl for p in parts):
+                return c
+        return cands[0] if len(cands) == 1 else ""
+
     def _mem_free_mb(self) -> int:
         """可用物理内存（MB）；拿不到就给个很大的数，宁可不拦也别把能用的停掉。"""
         try:
@@ -536,7 +593,8 @@ class ServerManager:
         roles = self.config.get("model_roles")
         if not isinstance(roles, dict) or not roles:
             roles = {"brain": "qwen35-4b-Q4_K_M.gguf",
-                     "tool": "deepseek-coder-6.7b-instruct.gguf", "fast": ""}
+                     "tool": "deepseek-coder-6.7b-instruct.gguf",
+                     "fast": "gemma4-e2b-it.gguf"}
         name = str(roles.get(role, "") or "").strip()
         if not name:
             return ""
@@ -554,8 +612,11 @@ class ServerManager:
         want = self.role_model(role)
         if not want or not os.path.exists(want):
             return True
+        # 角色切换必然是用 -m 指定权重起自带引擎，锁定后端，别让 dispatch 再去问 Ollama
+        self._force_local = True
         cur = self.active_model or ""
         if cur and os.path.basename(cur) == os.path.basename(want) and self.health():
+            self.active_role = role
             return True
         try:
             need_mb = os.path.getsize(want) / 1048576
@@ -576,6 +637,7 @@ class ServerManager:
             ok = self._spawn_and_wait(exe, want)
             if ok:
                 self.active_model = want
+                self.active_role = role
             return ok
 
     def dispatch(self, messages: list, max_tokens: int = 220, temperature: float = 0.7,
@@ -705,6 +767,10 @@ class ServerManager:
     def chat(self, messages: list, max_tokens: int = 220, temperature: float = 0.7,
              timeout: int = 90, fmt: str | None = None):
         """返回 (ok, text_or_reason)。fmt="json" 时强制结构化输出（Ollama / 自带引擎都支持）。"""
+        # v3.0.18：带图的消息只能走自带引擎（Ollama 的 /api/chat 用 images 字段，
+        # OpenAI 兼容层的 content 数组格式在两条路径上表现不一致，实测会 400）
+        if _has_image(messages):
+            self._force_local = True
         if not self.ready and not self.health():
             if not self.ollama_broken:
                 return False, "local_not_ready"

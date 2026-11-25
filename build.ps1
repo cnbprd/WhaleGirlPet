@@ -5,7 +5,7 @@ Set-Location $root
 $venvPy = Join-Path $root "..\.venv\Scripts\python.exe"
 if (-not (Test-Path $venvPy)) { $venvPy = "python" }
 
-& $venvPy -m PyInstaller --noconfirm --clean --onefile --windowed `
+& $venvPy -m PyInstaller --noconfirm --clean --onedir --windowed `
     --name WhaleGirlPet `
     --icon (Join-Path $root "assets\ui\pet.ico") `
     --paths (Join-Path $root "app") `

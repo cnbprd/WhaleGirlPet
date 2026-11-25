@@ -93,13 +93,14 @@ DEFAULT_CONFIG = {
     # v3.0.4：本地模型空闲多少分钟后自动卸载（省 2.3GB 内存）；0 = 永不卸载
     "llm_idle_unload_min": 20,
     "llm_model_file": "",
+    # v3.0.18：多模态投影文件。留空 = 自动在同目录找 mmproj*.gguf 按模型名匹配
+    "llm_mmproj": "",
     # v3.0.17：三档分工（大脑 / 快反 / 工具人）。留空 = 不强制切模型，用默认候选。
-    #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 留给"快问快答"。
-    #   注意：本机 4 份 gguf 都是纯文本权重（没有 mmproj），所谓多模态只能走云端。
-    #   切换模型要重启引擎（秒级到十几秒），所以 fast 默认留空，避免日常闲聊来回切。
+    #   brain 负责闲聊与业务理解；tool 只接代码/结构化；fast 负责看图（多模态）。
+    #   注意：换模型要重启引擎（实测 4~24s），所以每个角色只在对应任务上才切。
     "model_roles": {"brain": "qwen35-4b-Q4_K_M.gguf",
                     "tool": "deepseek-coder-6.7b-instruct.gguf",
-                    "fast": ""},
+                    "fast": "gemma4-e2b-it.gguf"},
     "llm_backend": "auto",                      # auto / ollama / dafeiyu_cpp（旧值 llama_cpp 自动认）
     "gpu_when_idle": True,                      # 没在跑游戏时用 GPU（Ollama），跑游戏退 CPU
     "ollama_host": local_llm.OLLAMA_HOST,
@@ -2893,6 +2894,38 @@ class Controller:
             self.pet.bubble.show_text(lines.pick(lines.CHAT_IDLE), 3000)
 
     # ================= 托盘 / 快捷键 =================
+    def act_look_screen(self):
+        """v3.0.18：本地视觉 —— 截一张整屏，交给「快反」档的视觉模型看一眼。"""
+        import vision
+        fast = self.llm.role_model("fast")
+        if not fast:
+            self.pet.bubble.show_text("还没配「快反」档的模型，先告诉我用哪个 gguf。", 5200)
+            return
+        if not self.llm.mmproj_for(fast):
+            self.pet.bubble.show_text("这台机器还没有配套的视觉投影文件（mmproj），我看不了图。", 5200)
+            return
+        if self._chat_busy():
+            self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
+            return
+        self.pet.bubble.show_text("我看看屏幕上是什么…", 2600)
+        path = vision.capture_screen()
+        if not path:
+            self.pet.bubble.show_text("截图没成功，可能是屏幕权限的问题。", 3600)
+            return
+        ask = "你看看我屏幕上是什么？用一句话说重点，别读整段文字。"
+        msgs = [{"role": "system", "content": self._system_text(ask, True)}]
+        if self.config.get("memory_on", True):
+            msgs.extend(self.memory.recent(4))
+        msgs.append(vision.vision_message(ask, path))
+        try:
+            self.llm_worker = local_llm.LocalChatWorker(
+                self.llm, msgs, max_tokens=200, temperature=0.6, role="fast")
+            self.llm_worker.reply_ready.connect(self._on_local_reply)
+            self.llm_worker.failed.connect(self._on_local_failed)
+            self.llm_worker.start()
+        except Exception as e:  # noqa: BLE001
+            self.pet.bubble.show_text(f"看图的脑子没叫起来：{str(e)[:40]}", 4200)
+
     def _build_tray(self):
         self.tray = QSystemTrayIcon(self.app)
         # v2.9.6 托盘统一用透明底 Q 版大肥鱼图标
@@ -2916,6 +2949,9 @@ class Controller:
         act_auto.setCheckable(True)
         act_auto.setChecked(self.config.get("auto_on", True))
         act_auto.toggled.connect(self.set_auto)
+        # v3.0.18：本地视觉入口（截图 → 快反档多模态模型）
+        act_look = QAction("看看我屏幕上是什么", menu)
+        act_look.triggered.connect(self.act_look_screen)
         # v2.9.3 静音模式：没任务时的闲聊/播报只出字不出声
         act_mute = QAction("静音模式（闲聊不发声）", menu)
         act_mute.setCheckable(True)
@@ -2931,6 +2967,8 @@ class Controller:
         menu.addSeparator()
         menu.addAction(act_auto)
         menu.addAction(act_mute)
+        menu.addSeparator()
+        menu.addAction(act_look)
         menu.addSeparator()
         menu.addAction(act_quit)
         self.tray.setContextMenu(menu)

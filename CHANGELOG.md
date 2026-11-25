@@ -2,6 +2,21 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.18（2026-11-25）
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 onedir 打包 | spec 改 `exclude_binaries=True` + `COLLECT`；iss `[Files]` 递归整个 `dist\WhaleGirlPet\`；CI portable 铺目录；build.ps1 `--onedir` | exe 4.4MB + 目录 147.6MB |
+| 2 启动 | 不再解包到 `%TEMP%` | 内存到 75%峰值 **4.55s → 0.76s**（约 6 倍） |
+| 3 常驻内存 | 引导进程消失 | RSS **170MB(2+1) → 83MB(1)**，省 87MB |
+| 4 本地视觉 | 新增 `app/vision.py`（截屏→缩 512→JPEG q80→data URL）+ `act_look_screen` + 托盘「看看我屏幕上是什么」 | 看图 ok，1.7~10s |
+| 5 mmproj 接入 | `ServerManager.mmproj_for()` + `--mmproj ... -mmdev none`；模型同目录自动匹配 | `/v1/models` 的 input_modalities：`['text']` → **`['text','image','audio','video']`** |
+| 6 权重补齐 | `mmproj-gemma4-e2b-f16.gguf` 940.0MB（985,654,080 字节，ModelScope 29.8MB/s 下完），runtime 与数据目录各一份 | 加载 4.7s |
+| 7 修 4 个实测坑 | PNG 原图 400 → 全转 JPEG；960px(156KB) 400 → 上限 512px(48KB)；`image_url` 必须对象（字符串写法 500）；`vision_message` 返回整条 message 不能塞进 content | `tools/probe_vision.py` A/B/D ok、C 500 |
+| 8 后端一致性 | 带图/切角色时 `_force_local` 锁定自带引擎（Ollama 的 `/api/chat` 用 images 字段）；`active_role` 让重启沿用角色 | 修掉"重启后图片发给 4B 文本模型"导致的 400 |
+| 9 视觉能力边界 | 能判断场景（网页/文档/界面），读不出界面小字 | `docs/api_card_v315_on.png` 未读出标题文字 |
+| 10 版本 3.0.18 | `paths.APP_VERSION` + iss 六处 + 标题「onedir + 本地视觉」 | 六处 3.0.18 |
+
 ## v3.0.17（2026-11-25）
 
 | 项 | 改动 | 实测 |

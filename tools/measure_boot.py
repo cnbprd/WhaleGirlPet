@@ -67,24 +67,27 @@ def main():
     child_at = None
     ready_at = None
     samples = []
-    last = 0.0
+    last = -9.0
+    peak = 0.0
     while True:
         el = time.perf_counter() - t0
-        if el - last >= 1.0:
+        procs = pids_of(EXE)
+        ch = children(procs)
+        tot = rss_mb(procs) + rss_mb(ch)
+        peak = max(peak, tot)
+        if el - last >= 0.5:
             last = el
-            procs = pids_of(EXE)
-            ch = children(procs)
-            tot = rss_mb(procs) + rss_mb(ch)
             samples.append((round(el, 1), len(procs), len(ch), round(tot)))
-            if first_pid_s is None and procs:
-                first_pid_s = el
-            if child_at is None and ch:
-                child_at = el
-            if ready_at is None and tot >= 150:
-                ready_at = el   # 合计 150MB = Qt 已加载、窗口正在绘制
+        if first_pid_s is None and procs:
+            first_pid_s = el
+        if child_at is None and ch:
+            child_at = el
+        # 就绪 = 内存涨到本次峰值的 75%（Qt 起来、窗口开始画）
+        if ready_at is None and peak > 60 and tot >= 0.75 * peak:
+            ready_at = el
         if el > WATCH:
             break
-        time.sleep(0.15)
+        time.sleep(0.08)
 
     procs = pids_of(EXE)
     ch = children(procs)
@@ -94,11 +97,11 @@ def main():
     print(f"exe            {EXE}")
     print(f"exe 文件大小    {os.path.getsize(EXE)/1048576:.1f} MB")
     print(f"引导进程首现    {first_pid_s if first_pid_s is not None else -1:.2f} s")
-    print(f"解包+主进程起   {child_at if child_at is not None else -1:.2f} s")
-    print(f"RSS>=100MB     {ready_at if ready_at is not None else -1:.2f} s")
+    print(f"解包子进程起    {child_at if child_at is not None else -1:.2f} s  （onedir 无此项）")
+    print(f"内存到 75%峰值  {ready_at if ready_at is not None else -1:.2f} s  ← 窗口就绪的近似")
     print(f"{WATCH:.0f}s 常驻 RSS   {total:.0f} MB  ({len(procs)}+{len(ch)} 进程)")
     print("采样(秒,顶层进程,子进程,合计MB):")
-    for s in samples[::3]:
+    for s in samples[::max(1, len(samples)//8)]:
         print("  ", s)
 
     # 收尾：杀掉，别把桌宠留在用户桌面上

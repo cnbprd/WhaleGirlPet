@@ -66,7 +66,7 @@
 | 文件 | 说明 |
 |---|---|
 | `WhaleGirlPet-Setup-x.y.z.exe` | 安装包，含开始菜单与卸载项 |
-| `WhaleGirlPet-x.y.z-portable.zip` | 免安装，解压即用 |
+| `WhaleGirlPet-x.y.z-portable.zip` | 免安装，解压即用（onedir：根目录里是 `WhaleGirlPet.exe` + `_internal\`，别只拖走 exe） |
 | `WhaleGirlPet-x.y.z-source.zip` | 源码快照 |
 | `*.sha256` | 校验值，`certutil -hashfile <文件> SHA256` 对比 |
 
@@ -81,13 +81,16 @@ py -3.11 -m venv .venv
 ```
 
 > 本地大模型（可选）：把 `dafeiyu.cpp` 运行时与 `.gguf` 模型放到 `runtime/`，程序会自动探测；不装则退回在线接口。
+> 想让她能看屏幕（本地视觉）：再放一份与主权重配套的 `mmproj*.gguf`（例如 `gemma4-e2b-it.gguf` 配 `mmproj-gemma4-e2b-f16.gguf`）到同一目录，启动时自动加 `--mmproj`。
 
 ### 打包自己的版本
 
 ```powershell
-.\build.ps1                 # PyInstaller → dist\WhaleGirlPet.exe
+.\build.ps1                 # PyInstaller onedir → dist\WhaleGirlPet\ （exe + _internal）
 tools\inno\ISCC.exe installer\whale_pet.iss   # Inno Setup → dist\WhaleGirlPet-Setup-x.y.z.exe
 ```
+
+> v3.0.18 起是 **onedir**：发布物是一个目录，不是单个 exe。单文件（onefile）每次冷启动都要把 64MB 解到 `%TEMP%`，实测就绪 4.55s / 常驻 170MB；onedir 是 0.76s / 83MB。
 
 ---
 

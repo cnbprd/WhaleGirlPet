@@ -44,9 +44,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,      # v3.0.18：onedir —— 二进制与数据不再塞进 exe
     name='WhaleGirlPet',
     debug=False,
     bootloader_ignore_signals=False,
@@ -61,4 +60,17 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['assets/ui/pet.ico'],
+)
+
+# v3.0.18：onefile → onedir。
+#   实测 onefile 每次冷启动都要把 64MB 解到 %TEMP%\ (2.1s)，还要多留一个引导进程；
+#   onedir 直接就地加载，这段开销为零，常驻内存也少一个进程。
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='WhaleGirlPet',
 )
