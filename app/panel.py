@@ -62,7 +62,8 @@ class ControlPanel(QWidget):
         # v3.0.0：窗口可自由拖动边缘缩放（去掉原来的 560×700 固定观感，只留最小尺寸）
         self.resize(660, 820)
         self.setMinimumSize(520, 560)
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        # v3.0.23（第 6 条）：不再置顶，其他窗口可以正常盖到设置窗口前面
+        self.setWindowFlags(Qt.Window)
         # 右下角补一个抓手，边框不可见时也能一眼看到能拖大拖小
         self._size_grip = QSizeGrip(self)
         self._size_grip.setFixedSize(16, 16)
@@ -72,21 +73,19 @@ class ControlPanel(QWidget):
         # v2.9.3 macOS 风格：左侧 QListWidget 侧边栏 + 右侧 QStackedWidget 内容区
         # （QTabWidget 的 West 模式会把中文标签挤成竖排、宽度又不可控，换成列表侧栏）
         pages = [
-            (self._scrollable(self._tab_status()), "养成"),
-            (self._tab_tasks(), "打工"),
+            (panel_v2.tab_account(self), "账号状态"),
+            (self._scrollable(self._tab_status()), "养成"),   # 打工已并入本页（第 5 条）
+            (self._tab_chat(), "聊天"),
+            (self._tab_pet_behavior(), "桌宠行为"),
             # v2.9.8：番茄钟/提醒与定时任务合并，统一叫「定时任务」
             (self._tab_remind(), "定时任务"),
-            (self._tab_chat(), "聊天"),
-            # v2.9.9：设置拆成 5 个模块，直接排到左侧导航（不再做页内子标签）
-            (self._scrollable(self._tab_about()), "关于与更新"),
-            (self._tab_store(), "储存位置"),
             (self._tab_wake(), "语音唤醒"),
-            (self._tab_ambient(), "天气资讯"),
-            (self._tab_pet_behavior(), "桌宠行为"),
             (panel_v2.tab_voice(self), "音频库"),
+            (self._tab_store(), "储存位置"),
+            (self._tab_ambient(), "天气资讯"),
             (self._scrollable(self._tab_settings()), "自定义模型"),
             (panel_v2.tab_security(self), "安全体检"),
-            (panel_v2.tab_account(self), "账号形态"),
+            (self._scrollable(self._tab_about()), "关于与更新"),
         ]
         self.side = QListWidget()
         self.side.setObjectName("SideBar")
@@ -102,6 +101,7 @@ class ControlPanel(QWidget):
         # v3.0.21：外部用 tabs.setCurrentIndex 切页时侧栏也要跟着高亮，
         # 否则代码切页后左侧还停在「养成」，用户看不出自己在哪一页（目检发现）
         self.stack.currentChanged.connect(self.side.setCurrentRow)
+        self.stack.currentChanged.connect(self._on_page_changed)
         self.side.setCurrentRow(0)
         # 外部（shot_panel 等）按 tabs.setCurrentIndex / tabs.widget 访问，QStackedWidget 同名接口兼容
         self.tabs = self.stack
@@ -142,6 +142,15 @@ class ControlPanel(QWidget):
         # 会按 200px 把长句子压窄裁掉。
         QTimer.singleShot(0, self._load_history_safe)
 
+    def _on_page_changed(self, idx: int):
+        """v3.0.23（第 7 条）：切到聊天页/刚打开面板时，直接停在最新一条。"""
+        try:
+            if self.side.item(idx).text() == "聊天":
+                QTimer.singleShot(0, self._scroll_chat_bottom)
+                QTimer.singleShot(150, self._scroll_chat_bottom)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _load_history_safe(self):
         if getattr(self, "_history_loaded", False):
             return
@@ -150,6 +159,9 @@ class ControlPanel(QWidget):
             self.load_chat_history()
         except Exception:  # noqa: BLE001
             pass
+        # 历史灌完再贴底（那时 viewport 才有真实高度）
+        QTimer.singleShot(0, self._scroll_chat_bottom)
+        QTimer.singleShot(200, self._scroll_chat_bottom)
 
     def showEvent(self, ev):  # noqa: N802
         super().showEvent(ev)
@@ -191,6 +203,12 @@ class ControlPanel(QWidget):
                 except Exception:
                     pass
         self.refresh() if refresh else None
+        # v3.0.23：API 卡片原来写死紫粉配色，跟着主题一起换
+        try:
+            if hasattr(self, "api_card"):
+                self.api_card.apply_theme()
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------- 养成页 ----------
     def _tab_status(self):
@@ -253,6 +271,12 @@ class ControlPanel(QWidget):
         btn_work.clicked.connect(lambda: self.ctl.open_task_page())
         row_entry.addWidget(btn_work)
         lay.addLayout(row_entry)
+        # v3.0.23（第 5 条）：打工并入养成页，不再单独占一个左侧模块
+        lay.addSpacing(12)
+        head_task = QLabel("打工任务")
+        head_task.setStyleSheet("font-weight:600;font-size:14px;")
+        lay.addWidget(head_task)
+        lay.addWidget(self._tab_tasks(embed=True))
         lay.addStretch()
         return w
 
@@ -291,7 +315,7 @@ class ControlPanel(QWidget):
         return bar
 
     # ---------- 打工页 ----------
-    def _tab_tasks(self):
+    def _tab_tasks(self, embed: bool = False):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(QLabel("打工任务：完成后结算金币与经验；学习任务联网取知识点，清理任务只动临时目录。"))
@@ -331,7 +355,8 @@ class ControlPanel(QWidget):
         tip_shop.setStyleSheet("color:#888;font-size:11px;")
         row_shop.addWidget(tip_shop, 1)
         lay.addLayout(row_shop)
-        lay.addStretch()
+        if not embed:
+            lay.addStretch()
         return w
 
     def _task_button(self, key: str):
@@ -784,22 +809,27 @@ class ControlPanel(QWidget):
         crow.setSpacing(12)
         self.lbl_w_temp = QLabel("--°")
         # v3.0.14：天气字看不清 → 温度加粗放大，旁边描述与明细都提一档字号/加深颜色
-        self.lbl_w_temp.setStyleSheet("font-size:34px;font-weight:700;color:#22212a;")
+        # v3.0.23（第 9 条）：原来温度/描述写死 #22212a 这类深灰，深色主题下等于没字。
+        # 统一从主题调色板取，浅色深色都看得清。
+        pal = theme.palette(self.ctl.config.get("theme", theme.DEFAULT))
+        self.lbl_w_temp.setStyleSheet(
+            f"font-size:34px;font-weight:700;color:{pal['label']};")
         crow.addWidget(self.lbl_w_temp)
         self.lbl_w_desc = QLabel("还没拿到天气")
-        self.lbl_w_desc.setStyleSheet("font-size:17px;font-weight:600;color:#2b2a33;")
+        self.lbl_w_desc.setStyleSheet(
+            f"font-size:18px;font-weight:600;color:{pal['label']};")
         crow.addWidget(self.lbl_w_desc, 1)
         cg.addLayout(crow)
         self.lbl_w_detail = QLabel("体感 --　湿度 --　风 --　降水 --")
-        self.lbl_w_detail.setStyleSheet("font-size:14px;color:#3d3d47;")
+        self.lbl_w_detail.setStyleSheet(f"font-size:15px;color:{pal['label']};")
         self.lbl_w_detail.setWordWrap(True)
         cg.addWidget(self.lbl_w_detail)
         self.lbl_w_today = QLabel("今日 -- ~ --°　空气 --")
-        self.lbl_w_today.setStyleSheet("font-size:14px;color:#3d3d47;")
+        self.lbl_w_today.setStyleSheet(f"font-size:15px;color:{pal['label']};")
         self.lbl_w_today.setWordWrap(True)
         cg.addWidget(self.lbl_w_today)
         self.lbl_w_src = QLabel("按城市自动取，三源级联（中国天气网 → wttr.in → open-meteo）")
-        self.lbl_w_src.setStyleSheet("font-size:12px;color:#5f5f6b;")
+        self.lbl_w_src.setStyleSheet(f"font-size:12px;color:{pal['hint']};")
         self.lbl_w_src.setWordWrap(True)
         cg.addWidget(self.lbl_w_src)
         av.addWidget(card)
@@ -827,13 +857,15 @@ class ControlPanel(QWidget):
         cat_col.setSpacing(4)
         cat_col.setContentsMargins(0, 0, 0, 0)
         lbl_cat = QLabel("资讯分类")
-        lbl_cat.setStyleSheet("font-size:12px;color:#5f5f6b;")
+        lbl_cat.setStyleSheet(f"font-size:12px;color:{pal['hint']};")
         cat_col.addWidget(lbl_cat)
         self.news_cat_btns = {}
         for key, label in ambient.NEWS_CATEGORIES:
             b = QPushButton(label)
-            b.setFixedHeight(26)
-            b.setFixedWidth(78)
+            # v3.0.23：按钮原来 78×26、12px 字太小，放大到 92×32 / 14px
+            b.setFixedHeight(32)
+            b.setFixedWidth(92)
+            b.setStyleSheet("font-size:14px;")
             b.clicked.connect(lambda _=False, k=key: self._load_news_cat(k))
             cat_col.addWidget(b)
             self.news_cat_btns[key] = b
@@ -845,7 +877,8 @@ class ControlPanel(QWidget):
         self.txt_news.setMinimumHeight(120)
         # v3.0.14：正文默认字号偏小，统一提到 13px + 1.5 倍行距，看着不费劲
         self.txt_news.setStyleSheet(
-            "QTextEdit{font-size:13px;color:#2b2a33;line-height:150%;padding:6px;}")
+            f"QTextEdit{{font-size:14px;color:{pal['label']};"
+            f"background:{pal['input_bg']};line-height:170%;padding:10px;}}")
         self.txt_news.setPlaceholderText("点左边任一分类，这里列最新标题")
         news_row.addWidget(self.txt_news, 1)
         av.addLayout(news_row, 1)
@@ -945,7 +978,7 @@ class ControlPanel(QWidget):
         """点分类按钮 → 后台抓该类头条，结果贴到小文本框。"""
         label = dict(ambient.NEWS_CATEGORIES).get(key, key)
         self.txt_news.setPlainText(f"正在抓{label}…")
-        worker = ambient.NewsWorker(key, 6)
+        worker = ambient.NewsWorker(key, 12)
         worker.done.connect(lambda items, lb=label: self._show_news_cat(lb, items))
         worker.failed.connect(lambda err: self.txt_news.setPlainText(f"{label}没抓成：{err}"))
         self._news_worker = worker
@@ -955,7 +988,8 @@ class ControlPanel(QWidget):
         if not items:
             self.txt_news.setPlainText(f"{label}：这次没抓到，过会儿再试。")
             return
-        self.txt_news.setPlainText("\n".join(f"· {t}" for t in items))
+        # v3.0.23（第 9 条）：条数提到 12 条、条间空行，尽量把资讯框铺满
+        self.txt_news.setPlainText("\n\n".join(f"· {t}" for t in items))
 
     # ---------- 设置页动作 ----------
     def _on_scatter_toggle(self, v: bool):

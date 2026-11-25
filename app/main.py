@@ -86,7 +86,7 @@ DEFAULT_CONFIG = {
     "save": {},
     # v2.0.0 新增
     "persona": pers.DEFAULT_PERSONA,
-    "tts_on": False, "tts_online": True,
+    "tts_on": True, "tts_online": True,
     # v2.9.2 真人音色提炼：linluo（温柔少女）/ jingjing（元气少女）/ off
     "voice_profile": "linluo",
     "llm_on": True, "llm_port": local_llm.DEFAULT_PORT, "llm_ctx": 4096,
@@ -492,7 +492,7 @@ class Controller:
             return
         if not (self.config.get("tts_on") and self.config.get("tts_online")):
             return
-        if len(text) > 60:
+        if len(text) > 180:
             return
         try:
             key = self.config.get("persona", pers.DEFAULT_PERSONA)
@@ -666,20 +666,23 @@ class Controller:
             title="挑一份活", tip="三个选项，10 秒没选我自己开工。",
             on_pick=self.start_task)
 
-    def open_task_page(self):
-        self.open_panel()
+    def _goto_panel_page(self, title: str):
+        """按侧栏标题跳页（顺序会调整，别写死行号）。"""
         try:
-            self.panel.side.setCurrentRow(1)
+            for i in range(self.panel.side.count()):
+                if self.panel.side.item(i).text() == title:
+                    self.panel.side.setCurrentRow(i)
+                    return
         except Exception:  # noqa: BLE001
             pass
 
-    def open_settings_page(self):
-        """v2.9.8：右键/托盘里的「设置」统一落到侧栏第 5 项（设置页）。"""
+    def open_task_page(self):
         self.open_panel()
-        try:
-            self.panel.side.setCurrentRow(4)
-        except Exception:  # noqa: BLE001
-            pass
+        self._goto_panel_page("养成")      # v3.0.23：打工已并入养成页
+
+    def open_settings_page(self):
+        self.open_panel()
+        self._goto_panel_page("自定义模型")
 
     def open_theme_settings(self):
         """兼容旧调用名（托盘「主题（在设置里改）」）。"""
@@ -1474,7 +1477,7 @@ class Controller:
         self.emotion.apply("chat", 1.0)
         self.panel and self.panel.append_chat("assistant", content)
         self.panel and self.panel.set_chat_status(source)
-        self._speak(content, 4200)
+        self._speak(content, 4200, priority=1)   # v3.0.23：对话回复必须出声（原来 priority=0 被静音掐掉）
         self.pet.set_expression("happy", 3000)
         self.beep("chat")
         self.refresh_panel()

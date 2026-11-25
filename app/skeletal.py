@@ -68,17 +68,23 @@ class Skeleton:
         self.defs = bones or BONES
         self.rest = {n: (d["pivot"][0] * w, d["pivot"][1] * h) for n, d in self.defs.items()}
 
-    def solve(self, angles: dict) -> dict:
-        """返回 {骨名: (世界枢轴, 世界角度)}；角度是相对父骨的局部角度（度）。"""
+    def solve(self, angles: dict, offsets: dict = None) -> dict:
+        """返回 {骨名: (世界枢轴, 世界角度, 累计平移)}；角度是相对父骨的局部角度（度）。"""
+        offsets = offsets or {}
         out = {}
         for name, d in self.defs.items():
             p = d["parent"]
             if p is None:
-                out[name] = (self.rest[name], float(angles.get(name, 0.0)))
+                out[name] = (self.rest[name], float(angles.get(name, 0.0)),
+                             tuple(offsets.get(name, (0.0, 0.0))))
                 continue
-            pp, pa = out[p]
-            out[name] = (_rot(QPointF(*self.rest[name]), pp, pa),
-                         pa + float(angles.get(name, 0.0)))
+            pp, pa, poff = out[p]
+            pivot = _rot(QPointF(*self.rest[name]), pp, pa)
+            own = offsets.get(name, (0.0, 0.0))
+            # 父骨平移会带着整条子树一起走；自己再叠加
+            pivot = QPointF(pivot.x() + poff[0], pivot.y() + poff[1])
+            out[name] = (pivot, pa + float(angles.get(name, 0.0)),
+                         (poff[0] + own[0], poff[1] + own[1]))
         return out
 
 
@@ -129,15 +135,17 @@ class Skin:
             row = []
             for i in range(self.gx + 1):
                 x, y, ws = self.verts[j][i]
-                if len(ws) == 1 and abs(world[ws[0][0]][1]) < 1e-6:
-                    row.append(QPointF(x, y))        # 单骨且没转，省掉计算
+                if (len(ws) == 1 and abs(world[ws[0][0]][1]) < 1e-6
+                        and abs(world[ws[0][0]][2][0]) < 1e-6
+                        and abs(world[ws[0][0]][2][1]) < 1e-6):
+                    row.append(QPointF(x, y))        # 单骨、没转也没平移，省掉计算
                     continue
                 ax = ay = 0.0
                 for bone, wgt in ws:
-                    pivot, ang = world[bone]
+                    pivot, ang, off = world[bone]
                     q = _rot(QPointF(x, y), pivot, ang)
-                    ax += q.x() * wgt
-                    ay += q.y() * wgt
+                    ax += (q.x() + off[0]) * wgt
+                    ay += (q.y() + off[1]) * wgt
                 # 吸附：位移小于 0.8px 就当作没动，否则全身处处重绘会出一层细横纹
                 if abs(ax - x) + abs(ay - y) < 0.8:
                     row.append(QPointF(x, y))
@@ -185,12 +193,15 @@ def _kf(*pairs):
 # 动作库（时间用占比，Clip 构造时换算成秒）
 CLIP_DEFS = {
     "walk": dict(loop=True, dur=0.78, tracks={
-        "thigh_l": _kf((0.0, 10), (0.5, -10), (1.0, 10)),
-        "shin_l":  _kf((0.0, 0), (0.25, 22, "out"), (0.5, 0, "in"), (1.0, 0)),
-        "thigh_r": _kf((0.0, -10), (0.5, 10), (1.0, -10)),
-        "shin_r":  _kf((0.0, 0), (0.75, 22, "out"), (1.0, 0, "in")),
-        "spine":   _kf((0.0, 2.8), (0.5, -2.8), (1.0, 2.8)),
-        "head":    _kf((0.0, -1.8), (0.5, 1.8), (1.0, -1.8)),
+        # v3.0.23（第 11 条）：正面立绘如果大腿大幅左右摆，看起来是"腿被拧变形"，
+        # 不是走路。改成小角度 + 抬脚（平移在 pet_window._paint_skeletal 里加），
+        # 抬腿相膝盖微弯，落脚相伸直。
+        "thigh_l": _kf((0.0, 2.0), (0.5, -2.0), (1.0, 2.0)),
+        "shin_l":  _kf((0.0, 2), (0.25, 9, "out"), (0.5, 3, "in"), (1.0, 2)),
+        "thigh_r": _kf((0.0, -2.0), (0.5, 2.0), (1.0, -2.0)),
+        "shin_r":  _kf((0.0, 2), (0.75, 9, "out"), (1.0, 2, "in")),
+        "spine":   _kf((0.0, 2.0), (0.5, -2.0), (1.0, 2.0)),
+        "head":    _kf((0.0, -1.2), (0.5, 1.2), (1.0, -1.2)),
     }),
     "run": dict(loop=True, dur=0.52, tracks={
         "thigh_l": _kf((0.0, 18), (0.5, -18), (1.0, 18)),
@@ -321,11 +332,16 @@ class SkeletalSprite:
         self._cache_key = None
         self._cache = None
 
-    def render(self, angles: dict) -> QPixmap:
+    def render(self, angles: dict, offsets: dict = None) -> QPixmap:
+        offsets = offsets or {}
         key = tuple(sorted((k, round(v, 2)) for k, v in angles.items() if abs(v) > 1e-6))
+        if offsets:
+            key = (key, tuple(sorted((k, round(v[0], 1), round(v[1], 1))
+                                     for k, v in offsets.items()
+                                     if abs(v[0]) + abs(v[1]) > 1e-6)))
         if key == self._cache_key and self._cache is not None:
             return self._cache
-        world = self.skeleton.solve(angles)
+        world = self.skeleton.solve(angles, offsets)
         gw = self.skin.deform(world)
         canvas = QPixmap(self.W, self.H)
         canvas.fill(Qt.transparent)

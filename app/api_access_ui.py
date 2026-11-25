@@ -18,56 +18,65 @@ from PySide6.QtWidgets import (
 )
 
 import api_access
+import theme
 
-CARD_QSS = """
-#ApiCard { background:#221F2B; border-radius:14px; }
-#ApiCard QLabel { color:#D8D4E2; }
-#ApiCard QLabel#H1 { color:#FFFFFF; font-size:16px; font-weight:600; }
-#ApiCard QLabel#Sub { color:#8F8A9C; font-size:12px; }
-#ApiCard QLabel#Field { color:#B7B1C4; font-size:12px; }
-#ApiCard QLabel#Rule { color:#FF6FA5; font-size:11px; }
-#ApiCard QLabel#Hint { color:#7C7689; font-size:11px; }
-#ApiCard QLineEdit, #ApiCard QComboBox {
-    background:#2B2836; border:1px solid #3A3646; border-radius:10px;
-    color:#EDEAF3; padding:8px 12px; font-size:13px;
-}
-#ApiCard QLineEdit:focus, #ApiCard QComboBox:focus { border:1px solid #E8447F; }
-#ApiCard QComboBox QAbstractItemView {
-    background:#2B2836; color:#EDEAF3; selection-background-color:#E8447F;
-    border:1px solid #3A3646;
-}
-#ApiCard QPushButton#Pill {
-    background:#2B2836; border:1px solid #3A3646; border-radius:14px;
-    color:#C9C5D2; padding:5px 16px; font-size:12px;
-}
-#ApiCard QPushButton#Pill:checked {
-    background:#33202C; border:1px solid #E8447F; color:#FF6FA5; font-weight:600;
-}
-#ApiCard QPushButton#Primary {
-    background:#E8447F; border:none; border-radius:10px;
+
+def card_qss(mode: str = "auto") -> str:
+    """v3.0.23（第 3 条）：卡片配色跟着面板主题走，不再写死紫粉。
+
+    原来整套 #221F2B / #E8447F 是照着深色参考图调的，放到蓝黑主题里就发紫、
+    输入框像一块脏棕色；浅色主题下更糟。这里统一取 theme.palette() 的字段。
+    """
+    p = theme.palette(mode)
+    return f"""
+#ApiCard {{ background:{p['chat_bg']}; border:1px solid {p['chat_border']}; border-radius:14px; }}
+#ApiCard QLabel {{ color:{p['label']}; }}
+#ApiCard QLabel#H1 {{ color:{p['label']}; font-size:16px; font-weight:600; }}
+#ApiCard QLabel#Sub {{ color:{p['hint']}; font-size:12px; }}
+#ApiCard QLabel#Field {{ color:{p['hint']}; font-size:12px; }}
+#ApiCard QLabel#Rule {{ color:{p['accent']}; font-size:11px; }}
+#ApiCard QLabel#Hint {{ color:{p['hint']}; font-size:11px; }}
+#ApiCard QLineEdit, #ApiCard QComboBox {{
+    background:{p['input_bg']}; border:1px solid {p['input_border']}; border-radius:10px;
+    color:{p['label']}; padding:8px 12px; font-size:13px;
+}}
+#ApiCard QLineEdit:focus, #ApiCard QComboBox:focus {{ border:1px solid {p['accent']}; }}
+#ApiCard QComboBox QAbstractItemView {{
+    background:{p['input_bg']}; color:{p['label']}; selection-background-color:{p['accent']};
+    border:1px solid {p['input_border']};
+}}
+#ApiCard QPushButton#Pill {{
+    background:{p['input_bg']}; border:1px solid {p['input_border']}; border-radius:14px;
+    color:{p['label']}; padding:5px 16px; font-size:12px;
+}}
+#ApiCard QPushButton#Pill:checked {{
+    background:{p['chat_bg']}; border:1px solid {p['accent']}; color:{p['accent']}; font-weight:600;
+}}
+#ApiCard QPushButton#Primary {{
+    background:{p['accent']}; border:none; border-radius:10px;
     color:#FFFFFF; padding:8px 24px; font-size:13px; font-weight:600;
-}
-#ApiCard QPushButton#Primary:hover { background:#F25C90; }
-#ApiCard QPushButton#Ghost {
-    background:transparent; border:none; color:#FF6FA5; font-size:12px; padding:4px 6px;
-}
-#ApiCard QPushButton#GhostSmall {
-    background:transparent; border:none; color:#FF6FA5; font-size:11px; padding:2px 4px;
-}
-#ApiCard QPushButton#RowBtn {
-    background:transparent; border:1px solid #3A3646; border-radius:8px;
-    color:#B7B1C4; font-size:11px; padding:3px 10px;
-}
-#ApiCard QPushButton#RowBtn:hover { border:1px solid #E8447F; color:#FF6FA5; }
-#ApiCard QPushButton#Danger {
-    background:transparent; border:1px solid #E0554B; border-radius:8px;
-    color:#FF8A80; font-size:11px; padding:3px 10px;
-}
-#ApiCard QToolButton#Adv {
-    background:transparent; border:none; color:#C9C5D2; font-size:12px;
-}
-#ApiCard QToolButton#Adv:hover { color:#FF6FA5; }
-#ApiCard QFrame#Rule2 { background:#3A3646; max-height:1px; border:none; }
+}}
+#ApiCard QPushButton#Primary:hover {{ background:{p['accent']}; }}
+#ApiCard QPushButton#Ghost {{
+    background:transparent; border:none; color:{p['accent']}; font-size:12px; padding:4px 6px;
+}}
+#ApiCard QPushButton#GhostSmall {{
+    background:transparent; border:none; color:{p['accent']}; font-size:11px; padding:2px 4px;
+}}
+#ApiCard QPushButton#RowBtn {{
+    background:transparent; border:1px solid {p['input_border']}; border-radius:8px;
+    color:{p['hint']}; font-size:11px; padding:3px 10px;
+}}
+#ApiCard QPushButton#RowBtn:hover {{ border:1px solid {p['accent']}; color:{p['accent']}; }}
+#ApiCard QPushButton#Danger {{
+    background:transparent; border:1px solid #C0554B; border-radius:8px;
+    color:#E88A80; font-size:11px; padding:3px 10px;
+}}
+#ApiCard QToolButton#Adv {{
+    background:transparent; border:none; color:{p['hint']}; font-size:12px;
+}}
+#ApiCard QToolButton#Adv:hover {{ color:{p['accent']}; }}
+#ApiCard QFrame#Rule2 {{ background:{p['input_border']}; max-height:1px; border:none; }}
 """
 
 
@@ -95,11 +104,21 @@ class ApiAccessCard(QWidget):
         super().__init__(parent)
         self.ctl = ctl
         self.setObjectName("ApiCard")
-        self.setStyleSheet(CARD_QSS)
+        self._pal = theme.palette(ctl.config.get("theme", "auto"))
+        self.setStyleSheet(card_qss(ctl.config.get("theme", "auto")))
         self._fmt = "openai"
         self._idx = 0
         self._fetch_worker = None
+        self._dirty = False          # v3.0.23：正在填的草稿，别被 refresh/自动更新冲掉
+        self._loading = False
         self._build()
+        self.refresh()
+
+    def apply_theme(self):
+        """面板切主题时跟着换色（v3.0.23）。"""
+        mode = self.ctl.config.get("theme", "auto")
+        self._pal = theme.palette(mode)
+        self.setStyleSheet(card_qss(mode))
         self.refresh()
 
     # ---------------- 界面 ----------------
@@ -261,6 +280,12 @@ class ApiAccessCard(QWidget):
         self.lbl_status.setWordWrap(True)
         root.addWidget(self.lbl_status)
 
+        # 第 4 条：任何输入都记为草稿，刷新/更新/重开面板都不会把已填的冲没
+        for ed in (self.ed_name, self.ed_endpoint, self.ed_key,
+                   self.ed_proxy, self.ed_headers, self.ed_params):
+            ed.textChanged.connect(self._mark_dirty)
+        self.cb_model.currentTextChanged.connect(self._mark_dirty)
+
     # ---------------- 数据 ----------------
     def _profiles(self) -> list:
         try:
@@ -300,16 +325,16 @@ class ApiAccessCard(QWidget):
             h.setSpacing(8)
             connected = bool(p.get("connected"))
             dot = QLabel("●")
-            dot.setStyleSheet("color:%s;font-size:11px;" % ("#3DDC84" if connected else "#7C7689"))
+            dot.setStyleSheet("color:%s;font-size:11px;" % ("#3DDC84" if connected else self._pal["hint"]))
             h.addWidget(dot)
             name = QLabel(str(p.get("name") or f"接入 {i + 1}"))
-            name.setStyleSheet("color:#EDEAF3;font-size:13px;font-weight:600;")
+            name.setStyleSheet(f"color:{self._pal['label']};font-size:13px;font-weight:600;")
             h.addWidget(name)
             badge = QLabel("已连接" if connected else "未连接")
-            badge.setStyleSheet("color:%s;font-size:11px;" % ("#3DDC84" if connected else "#8F8A9C"))
+            badge.setStyleSheet("color:%s;font-size:11px;" % ("#3DDC84" if connected else self._pal["hint"]))
             h.addWidget(badge)
             mdl = QLabel(str(p.get("model") or ""))
-            mdl.setStyleSheet("color:#7C7689;font-size:11px;")
+            mdl.setStyleSheet(f"color:{self._pal['hint']};font-size:11px;")
             h.addWidget(mdl)
             h.addStretch(1)
             if i != self._idx:
@@ -327,24 +352,58 @@ class ApiAccessCard(QWidget):
             h.addWidget(b_del)
             self.list_box.addWidget(row)
 
-    def _fill(self):
+    def _fill(self, force: bool = False):
         prof = self._current()
         if not prof:
             return
-        self.ed_name.setText(str(prof.get("name", "")))
-        self.ed_endpoint.setText(str(prof.get("endpoint", "")))
-        self._set_fmt(str(prof.get("api_format", "openai")))
-        self.ed_key.setText(str(prof.get("api_key", "")))
-        self.ed_proxy.setText(str(prof.get("proxy", "")))
-        self.ed_headers.setText(str(prof.get("headers", "")))
-        self.ed_params.setText(str(prof.get("params", "")))
-        self.cb_model.clear()
-        models = list(prof.get("models") or [])
-        if prof.get("model") and prof["model"] not in models:
-            models.insert(0, prof["model"])
-        self.cb_model.addItems(models)
-        self.cb_model.setCurrentText(str(prof.get("model", "")))
+        # 用户正在编辑（或上次没保存就退出）时，不要用存档覆盖屏幕上的字
+        if self._dirty and not force:
+            self._update_state()
+            return
+        draft = self.ctl.config.get("api_draft") or {}
+        use_draft = (draft and draft.get("idx") == self._idx
+                     and draft.get("endpoint"))
+        src = draft if use_draft else prof
+        self._loading = True
+        try:
+            self.ed_name.setText(str(src.get("name", "")))
+            self.ed_endpoint.setText(str(src.get("endpoint", "")))
+            self._set_fmt(str(src.get("api_format", "openai")))
+            self.ed_key.setText(str(src.get("api_key", "")))
+            self.ed_proxy.setText(str(src.get("proxy", "")))
+            self.ed_headers.setText(str(src.get("headers", "")))
+            self.ed_params.setText(str(src.get("params", "")))
+            self.cb_model.clear()
+            models = list(prof.get("models") or [])
+            if prof.get("model") and prof["model"] not in models:
+                models.insert(0, prof["model"])
+            self.cb_model.addItems(models)
+            self.cb_model.setCurrentText(str(src.get("model", "") or prof.get("model", "")))
+        finally:
+            self._loading = False
+        if use_draft:
+            self._dirty = True
         self._update_state()
+
+    def _mark_dirty(self, *_args):
+        if self._loading:
+            return
+        self._dirty = True
+        try:
+            self.ctl.config["api_draft"] = {
+                "idx": self._idx,
+                "name": self.ed_name.text(),
+                "endpoint": self.ed_endpoint.text(),
+                "api_format": self._fmt,
+                "api_key": self.ed_key.text(),
+                "proxy": self.ed_proxy.text(),
+                "headers": self.ed_headers.text(),
+                "params": self.ed_params.text(),
+                "model": self.cb_model.currentText(),
+            }
+            self.ctl.save_config()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _update_state(self):
         prof = self._current()
@@ -405,6 +464,7 @@ class ApiAccessCard(QWidget):
 
     def _use(self, idx: int):
         self._idx = idx
+        self._dirty = False
         if hasattr(self.ctl, "config"):
             self.ctl.config["active_profile"] = idx
             try:
@@ -502,6 +562,11 @@ class ApiAccessCard(QWidget):
                     break
         try:
             self.ctl.save_config()
+        except Exception:  # noqa: BLE001
+            pass
+        self._dirty = False
+        try:
+            self.ctl.config.pop("api_draft", None)
         except Exception:  # noqa: BLE001
             pass
         self.refresh()

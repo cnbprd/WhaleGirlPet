@@ -37,6 +37,8 @@ NEWS_FEEDS = {
     "tech":    ("科技", NEWS_URL),
     "finance": ("金融", "https://www.chinanews.com.cn/rss/finance.xml"),
     "politics":("时政", "https://www.chinanews.com.cn/rss/china.xml"),
+    # v3.0.23（第 9 条）：补一个国际分类
+    "world":   ("国际", "https://www.chinanews.com.cn/rss/world.xml"),
 }
 NEWS_CATEGORIES = [(k, v[0]) for k, v in NEWS_FEEDS.items()]
 

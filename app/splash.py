@@ -21,9 +21,9 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from paths import asset_path
 
-W, H = 380, 580
-ART_H = 470                 # 人物绘制高度
-FOOT_Y = 545                # 脚底基线
+W, H = 190, 290
+ART_H = 235                 # 人物绘制高度（v3.0.23：整体缩到原来一半）
+FOOT_Y = 272                # 脚底基线
 MIN_SHOW = 2.0              # 最短驻留，避免一闪而过
 FADE_IN = 0.55              # 淡入时长
 MAX_LIFE_MS = 15000         # v3.0.6：兜底存活上限，超过就无条件收掉

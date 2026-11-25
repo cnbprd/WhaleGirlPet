@@ -474,9 +474,10 @@ class PetWindow(QWidget):
                 self.walk_dir = -1
             self.mirror = self.walk_dir < 0
             self.move(x, self.y())
-            self.bob = -4 * abs(math.sin(self.state_t * 8)) * self.scale
+            # v3.0.23：起伏跟步态同相位（一步一沉），别和抬脚节奏打架
+            self.bob = -3.5 * abs(math.sin(self.gait * 2 * math.pi)) * self.scale
             # 步态已经在弯身体了，整图旋转要收着，否则像在"摇"
-            self.rot = 1.8 * math.sin(self.state_t * 8)
+            self.rot = 1.2 * math.sin(self.gait * 2 * math.pi)
             if self.state_t >= 8.0:
                 self.finish_state()
 
@@ -1191,7 +1192,18 @@ class PetWindow(QWidget):
         name = "run" if self.state == "run" else "walk"
         clip = sk_mod.CLIPS[name]
         t = (self.state_t % clip.duration) if clip.loop else min(self.state_t, clip.duration)
-        frame = sprite.render(clip.pose(t))
+        pose = clip.pose(t)
+        offsets = None
+        if name == "walk":
+            # v3.0.23（第 11 条）：正面立绘不能靠大腿大幅左右摆来"走"（会像腿被拧变形）。
+            # 改成左右腿交替上提 + 身体上下起伏 + 小角度屈膝，读起来才是迈步。
+            phase = self.gait * 2 * math.pi
+            lift = ph * 0.011
+            l = max(0.0, math.sin(phase))
+            r = max(0.0, -math.sin(phase))
+            offsets = {"thigh_l": (0.0, -lift * l),
+                       "thigh_r": (0.0, -lift * r)}
+        frame = sprite.render(pose, offsets)
         p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), frame)
 
     def _rig_for(self):
@@ -1218,7 +1230,7 @@ class PetWindow(QWidget):
         elif st == "trot":
             ang = rig_mod.Rig.walk_angles(phase, amp_thigh=12.0, amp_shin=26.0)
         else:
-            ang = rig_mod.Rig.walk_angles(phase, amp_thigh=9.0, amp_shin=20.0)
+            ang = rig_mod.Rig.walk_angles(phase, amp_thigh=3.0, amp_shin=12.0)
         frame = rig.frame(*ang)
         p.drawPixmap(QRect(-pw // 2, -ph, pw, ph), frame)
 
