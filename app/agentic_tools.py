@@ -17,17 +17,10 @@ def _load_cards():
     return security_cards.all_cards
 
 
-def _load_learning():
-    import security_learning
-    return security_learning.scan_library
-
-
 def build_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register(ToolSpec("security_posture", _load_posture, READ,
                           "只读检查 UAC/远程面/Guest/自动播放/Office/日志"))
     reg.register(ToolSpec("security_cards", _load_cards, READ,
-                          "返回防守侧安全知识卡"))
-    reg.register(ToolSpec("security_learning", _load_learning, READ,
-                          "扫描本地安全资料目录并返回路线索引"))
+                          "返回安全管家用的防守知识卡"))
     return reg

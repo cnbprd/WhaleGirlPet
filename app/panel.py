@@ -5,7 +5,7 @@ import os
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem,
                                QPushButton, QScrollArea, QSizeGrip, QSlider,
@@ -18,8 +18,6 @@ import models_catalog
 import panel_v2
 import paths
 import persona as pers
-import security_cards
-import security_learning
 import theme
 import voice_tweak
 from api_access_ui import ApiAccessCard
@@ -3276,49 +3274,16 @@ class ControlPanel(QWidget):
             import security_cards
             cards = security_cards.relevant_cards(report, limit=2)
             if cards:
-                lines_ += ["", "【相关安全知识卡】"]
+                lines_ += ["", "【安全管家·相关防守知识】"]
                 for c in cards:
                     lines_.append(f"· {c['title']}")
                     lines_.append("  " + c["summary"])
+                    lines_.append("  看什么：" + "；".join(c["signals"]))
                     lines_.append("  怎么防：" + "；".join(c["defense"]))
+                    lines_.append("  依据：" + c["source"])
         except Exception:  # noqa: BLE001
             pass
         self.txt_scan.setPlainText("\n".join(lines_))
-
-    def _show_security_cards(self):
-        """P2：安全知识卡。只展示“看什么/怎么防”，不展示攻击步骤。"""
-        import security_cards
-        dlg = QDialog(self)
-        dlg.setWindowTitle("安全知识卡 · 防守视角")
-        dlg.resize(620, 620)
-        lay = QVBoxLayout(dlg)
-        txt = QTextEdit()
-        txt.setReadOnly(True)
-        txt.setStyleSheet("font-family:'Microsoft YaHei';font-size:12px;")
-        txt.setPlainText("\n\n".join(security_cards.card_text(c)
-                                    for c in security_cards.all_cards()))
-        lay.addWidget(txt, 1)
-        btn = QPushButton("关闭")
-        btn.clicked.connect(dlg.accept)
-        lay.addWidget(btn)
-        dlg.exec()
-
-    def _show_security_learning(self):
-        """P3：学习路线索引。只列标题/路径，不读正文，不提供操作步骤。"""
-        import security_learning
-        dlg = QDialog(self)
-        dlg.setWindowTitle("网络安全资料 · 学习路线索引")
-        dlg.resize(760, 640)
-        lay = QVBoxLayout(dlg)
-        txt = QTextEdit()
-        txt.setReadOnly(True)
-        txt.setStyleSheet("font-family:Consolas,'Microsoft YaHei';font-size:12px;")
-        txt.setPlainText(security_learning.route_text())
-        lay.addWidget(txt, 1)
-        btn = QPushButton("关闭")
-        btn.clicked.connect(dlg.accept)
-        lay.addWidget(btn)
-        dlg.exec()
 
     # ---- 账号 / 形态 ----
     def _on_form_change(self, idx: int):

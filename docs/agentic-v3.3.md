@@ -14,7 +14,7 @@
 | 文件 | 职责 |
 |---|---|
 | `app/agentic_runtime.py` | 工具元数据、懒加载注册表、权限门、有限步循环 |
-| `app/agentic_tools.py` | 把现有只读能力（安全体检/知识卡/学习路线）注册成工具，**不提前 import 业务模块** |
+| `app/agentic_tools.py` | 把现有只读能力（安全体检/防守知识）注册成工具，**不提前 import 业务模块** |
 | `tools/test_agentic_runtime.py` | 懒加载计数、读/写/危险三态、循环停止条件 |
 | `tools/test_agentic_tools.py` | `describe()` 不加载业务模块，`call()` 才加载 |
 

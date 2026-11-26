@@ -9,7 +9,7 @@ import agentic_tools
 from agentic_runtime import PermissionGate, ToolCall
 
 reg = agentic_tools.build_registry()
-assert {x["name"] for x in reg.describe()} == {"security_cards", "security_learning", "security_posture"}
+assert {x["name"] for x in reg.describe()} == {"security_cards", "security_posture"}
 assert "security_cards" not in sys.modules and "secscan" not in sys.modules
 cards = reg.call(ToolCall("security_cards"), PermissionGate())
 assert len(cards) >= 14 and "security_cards" in sys.modules
