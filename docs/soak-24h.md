@@ -19,7 +19,7 @@
 | 三角形 | 2,076 |
 | 动画 | `ozz`、`clip=idle`、自动眨眼 |
 | 离屏 CPU | 启动约 36 s 累计 CPU 2.53 s（约 7% 单核，远低于可见窗口的 35%） |
-| 首条 JSON 检查点 | `status=running`，`samples=[]`（每 30 s 采样，首条汇总在约 5 分钟写入） |
+| 首条 JSON 检查点 | 04:22:47 写入；`status=running`，`samples=10`，`elapsed_s=270`；最后一条 RSS 70,651,904 B（约 67.4 MB），3D 进程存活 |
 
 ## 判定规则
 
