@@ -138,12 +138,12 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` | 1,315,840 bytes (1.25 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region |
-| exe SHA256 | `1290AC3A9E304465A00636DF67FBFB4C2BCFF6F5628FDCA792DE7E18DEE40E57` |
+| `whale3d.exe` (v3.2 step 1 dev) | 1,320,448 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus |
+| exe SHA256 (dev) | `1DF79D4B35061CE2AFFBB6F82F65561EED4C2A0226E2E9C73FB0255CE0432345` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
-| Runtime payload (exe + DLL + VRM) | 7,052,651 bytes (6.72 MiB) |
+| Runtime payload (dev exe + DLL + VRM) | 7,057,259 bytes (6.73 MiB) |
 | Spring chains | 4 (`hair_side.L/R`, `hair_back`, `tail`); 19 VRM humanoid bones |
 | Spring solver | 7.63–10.80 µs/frame idle; 4 spring chains on 28 joints |
 | Tray promotion | `HKCU\Control Panel\NotifyIconSettings\674768749172540869\IsPromoted=1`; exact-rect crop shows the blue-haired icon |
@@ -159,15 +159,17 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 | RSS | about 70.1 MB |
 | Exit code | 0 for direct exit, tray-menu exit and settings-close-then-exit |
 
-The exe grew by 13,312 bytes over the v3.0.28 shell (1,302,528 → 1,315,840). That covers the VRM/GLB extension parser, the per-frame spring solver, motion input plumbing and the `.vrm` settings path. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
+The v3.2 dev exe grew by 17,920 bytes over the v3.0.28 shell (1,302,528 → 1,320,448): 13,312 B for the VRM/GLB extension parser, per-frame spring solver and motion input; another 4,608 B for the emotion bus. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
 
 ## Runnable package
 
 `F:\WhaleGirlPet\3d\whale3d-whale-girl-v2.zip` is about **2.7 MiB** (the exact ZIP hash and size are recorded in `docs/3d-transition.md`; the README inside the ZIP cannot reliably hash itself). It contains `whale3d.exe` (1,315,840 B, VRM+spring/tray/settings/in-place-cache/alpha-region), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
 
+**v3.2 step 1 is a source/dev build only.** The release ZIP and the 3.1.0/3.0.28 installers still contain the v3.1.0 exe (1,315,840 B); rebuilding and republishing them is a later release step, and signing depends on a trusted certificate.
+
 The v3.0.28 package remains as `whale3d-whale-girl-v1.zip` (2,727,089 B, exe `1,302,528 B`, SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`); the expression-only package is preserved as `whale3d-whale-girl-v1-expression.zip` (2,695,131 B, exe `1,260,544 B`, SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`). Do not mix their numbers with this build.
 
-Windows installers are built from the release ZIPs by `installer/whale3d.iss` (compiled with `installer/build_3d_installers.ps1`). `WhaleGirlPet-3D-Setup-3.1.0.exe` and `WhaleGirlPet-3D-Setup-3.0.28.exe` install under `%LOCALAPPDATA%\WhaleGirlPet3D` without elevation, add Start Menu shortcuts plus an optional desktop shortcut, and register an uninstaller. Both use the same AppId, so installing 3.1.0 upgrades 3.0.28 in place. The installers are unsigned; verify the adjacent `.sha256` before running if SmartScreen warns.
+Windows installers are built from the release ZIPs by `installer/whale3d.iss` (compiled with `installer/build_3d_installers.ps1`). `WhaleGirlPet-3D-Setup-3.1.0.exe` and `WhaleGirlPet-3D-Setup-3.0.28.exe` install under `%LOCALAPPDATA%\WhaleGirlPet3D` without elevation, add Start Menu shortcuts plus an optional desktop shortcut, and register an uninstaller. Both use the same AppId, so installing 3.1.0 upgrades 3.0.28 in place. The installers are unsigned; verify the adjacent `.sha256` before running if SmartScreen warns. See `docs/code-signing.md` for the trusted-cert paths.
 
 ## Known limitations
 

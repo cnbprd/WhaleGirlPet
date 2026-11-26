@@ -31,11 +31,23 @@ SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚
 
 1. 先签安装包内的 `whale3d.exe`，再重新打 ZIP / 安装包，避免只签外壳、内部 exe 仍是未签名。
 2. 编译 `WhaleGirlPet-3D-Setup-<version>.exe`。
-3. 用 `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256` 签安装包；有 PFX 时加 `/f`、`/p`，用证书库时加 `/sha1 <thumbprint>`。
-4. 用 `signtool verify /pa /v` 和 `Get-AuthenticodeSignature` 复核。
+3. 签安装包。本机没有 `signtool.exe`，可先用 PowerShell 自带的 `Set-AuthenticodeSignature`（需要证书带私钥，且在 `Cert:\CurrentUser\My` 或 PFX 导入后）：
+   ```powershell
+   $cert = Get-Item Cert:\CurrentUser\My\<thumbprint>
+   Set-AuthenticodeSignature -FilePath .\dist\3d\WhaleGirlPet-3D-Setup-3.1.0.exe `
+     -Certificate $cert -TimestampServer http://timestamp.digicert.com -HashAlgorithm SHA256
+   ```
+   如果使用 `signtool`，命令是 `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 /sha1 <thumbprint> <file>`；有 PFX 时加 `/f`、`/p`。
+4. 用 `Get-AuthenticodeSignature`（或 `signtool verify /pa /v`）复核，状态应为 `Valid`；自签名通常是 `UnknownError`，不能作为公开发布。
 5. 重新生成 `.sha256` 并上传 Release，替换旧的未签名资产。
 
 > OV/EV 签名解决“未知发布者”，但 SmartScreen 信誉仍需时间积累；不能承诺签名后所有机器立刻零提示。
+
+## 最短路径（当前 MIT 公开仓库）
+
+1. 用仓库所有者账号登录 [SignPath Foundation](https://signpath.org/)，提交项目：公开仓库 `cnbprd/WhaleGirlPet`、MIT 许可证、构建脚本 `installer/build_3d_installers.ps1`。
+2. 审核通过后，把 `whale3d.exe` 与 Setup 的签名步骤接入 GitHub Actions 或 SignPath 的托管构建；签名后再上传 Release。
+3. 若不想走审核，则购买 OV 证书（DigiCert / Sectigo / Certum 等），把 PFX + 密码或证书指纹交给我，我在本机按上面的顺序签。
 
 ## 需要提供的信息
 
