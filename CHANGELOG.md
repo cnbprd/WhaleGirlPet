@@ -17,6 +17,20 @@
 
 边界：三帧图集已能平滑交叉淡化，但 `intensity` 还没有幅度/时间曲线，gaze/body lean、`P_USER/P_LLM/P_AUTO` 仲裁和 Python 侧 LLM 情绪标签生产仍未接入；这一步不能称为“情绪闭环完成”。细节见 `docs/3d-emotion-bus.md`。
 
+## v3.1.2（2026-11-27）
+
+安装器可见名称与默认目录修正：应用统一叫“鲸鱼娘”，不再在安装器、窗口标题、托盘和设置页显示“3D”；默认安装目录从 C 盘改为 `F:\WhaleGirlPetApp`。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 应用名 | `installer/whale3d.iss` 的 `AppName / AppVerName / DefaultGroupName / UninstallDisplayName / SetupWindowTitle / VersionInfoDescription` 全部改为“鲸鱼娘”；3D 窗口标题从 `WhaleGirl 3D Placeholder` 改为 `鲸鱼娘`；托盘提示和设置页标题同步去掉“3D” | 安装器标题 `安装鲸鱼娘 3.1.2`；主窗口标题 `鲸鱼娘`；首屏不再出现“3D 主版” |
+| 2 默认目录 | `GetPreferredDir()` 改为：有旧版 2D 时用旧版目录；否则 F 盘存在时默认 `F:\WhaleGirlPetApp`；只有没有 F 盘才回退 `%LOCALAPPDATA%\WhaleGirlPet3D`。`DisableDirPage=no` 保留，目录页仍可改 | GUI 目录页实测路径框 `F:\WhaleGirlPetApp`，不是 C 盘；`Browse` 可用 |
+| 3 安装包命名 | 安装器输出改为 `WhaleGirlPet-Setup-{#AppVersion}.exe`，不再带 `-3D-` | 本次产物 `WhaleGirlPet-Setup-3.1.2.exe` |
+| 4 CI | `.github/workflows/3d-build.yml` 版本校验改为 `3.1.2.0`，新增 FileDescription 不得含 `3D` 的断言，artifact 改为 `whale3d-v3.1.2-ci` | run `45861666963` 通过（53 秒）；CI exe 1,323,520 B，subsystem 2，ProductVersion `3.1.2.0` |
+| 5 资产 | 用 CI artifact 的 exe/ZIP 重打 3.1.2 安装包 | exe SHA256 `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84`；ZIP 2,809,199 B / `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`；安装包 4,418,364 B / `96B1377F31220C5B603A2D4E8976491385B0D23FD27BF14F80AA70D898BFA699` |
+
+边界：本轮只改安装器、窗口标题和发布包，不改渲染/动画功能；真实 `F:\WhaleGirlPetApp` 的 19 GB 数据迁移仍未完整执行，旧 2D 程序文件与旧卸载登记可能仍并存。安装包未签名，SignPath 仍在审核。
+
 ## v3.1.1（2026-11-26）
 
 3D 发布链路修复：GUI subsystem、安装位置选择、旧版 2D 迁移、最小 3D CI。这个版本不改变渲染/动画功能，只把已能跑的 3D 壳变成可安装、可升级、可复现构建的包。

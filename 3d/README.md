@@ -1,4 +1,4 @@
-# WhaleGirl 3D stage 10: VRM body + spring bones + emotion bus
+# 鲸鱼娘 stage 10: VRM body + spring bones + emotion bus
 
 This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell and adds the first **body layer**:
 
@@ -70,7 +70,7 @@ On Windows 11 the per-app visibility flag lives at `HKCU\Control Panel\NotifyIco
 - **Left-click the tray icon** toggles the pet window.
 - **Right-click the tray icon** opens a native popup menu: `隐藏窗口 / 显示窗口`, `动画：切到 Walk / Idle`, an expression submenu (`自动表情 / Open / Blink / Smile`), `设置…`, `退出`.
 - **Right-click the pet** opens the same native menu.
-- **Settings** is a native modal Win32 window titled `鲸鱼娘 3D · 设置`. It uses only `COMBOBOX`, `BUTTON` and `STATIC` controls:
+- **Settings** is a native modal Win32 window titled `鲸鱼娘 · 设置`. It uses only `COMBOBOX`, `BUTTON` and `STATIC` controls:
   - 模型: `鲸鱼娘 v1 (VRM)` (`whale_girl.vrm`) or `方块占位` (`placeholder.glb`)
   - 动画: `idle` / `walk`
   - 表情: `auto` / `open` / `blink` / `smile`
@@ -138,8 +138,8 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` (v3.1.1 GUI) | 1,323,520 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + face cross-fade + version resource; PE subsystem 2 |
-| exe SHA256 (v3.1.1) | `CCCA98BB05BB40332DF80A3BFD0E11AEF71D926DFB60C0432C5C210218C832E0` |
+| `whale3d.exe` (v3.1.2 GUI) | 1,323,520 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + face cross-fade + version resource; PE subsystem 2 |
+| exe SHA256 (v3.1.2) | `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
@@ -159,17 +159,17 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 | RSS | about 70.1 MB |
 | Exit code | 0 for direct exit, tray-menu exit and settings-close-then-exit |
 
-The v3.1.1 GUI exe is 1,323,520 bytes (1,024 B above the 1,322,496-byte v3.2 step 1b dev build). The extra bytes are the `whale3d.rc` version resource and the GUI-subsystem rebuild; the v3.1.0 release exe was 1,315,840 bytes. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
+The v3.1.2 GUI exe is 1,323,520 bytes (1,024 B above the 1,322,496-byte v3.2 step 1b dev build). The extra bytes are the `whale3d.rc` version resource and the GUI-subsystem rebuild; the v3.1.0 release exe was 1,315,840 bytes. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
 
 ## Runnable package
 
-`F:\WhaleGirlPet\3d\whale3d-whale-girl-v3.zip` is **2,809,167 B** with SHA256 `4DB8C1D5884C069363C4F7F0B8BCE8DDA73D44D3D85242B18F687D6A6CA9794E`. It contains `whale3d.exe` (1,323,520 B, GUI subsystem, VRM+spring/tray/settings/in-place-cache/alpha-region/emotion-bus/face-cross-fade), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
+`F:\WhaleGirlPet\3d\whale3d-whale-girl-v3.zip` is **2,809,199 B** with SHA256 `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`. It contains `whale3d.exe` (1,323,520 B, GUI subsystem, VRM+spring/tray/settings/in-place-cache/alpha-region/emotion-bus/face-cross-fade), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
 
-**v3.1.1 is the current installable build.** The v3.1.0 assets were repaired and re-uploaded on 2026-11-27 (GUI subsystem, 3.1.0.0 version resource, installer directory page); the v3.2 source work is still in `main` but not a separate release package yet.
+**v3.1.2 is the current installable build.** The v3.1.0 assets were repaired and re-uploaded on 2026-11-27 (GUI subsystem, 3.1.0.0 version resource, installer directory page); the v3.2 source work is still in `main` but not a separate release package yet.
 
 The v3.0.28 package remains as `whale3d-whale-girl-v1.zip` (2,727,089 B, exe `1,302,528 B`, SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`); the expression-only package is preserved as `whale3d-whale-girl-v1-expression.zip` (2,695,131 B, exe `1,260,544 B`, SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`). Do not mix their numbers with this build.
 
-Windows installers are built from the release ZIPs by `installer/whale3d.iss` (compiled with `installer/build_3d_installers.ps1`). `WhaleGirlPet-3D-Setup-3.1.1.exe` (4,419,862 B, SHA256 `96FD16551759B8E493FABCBBE638ACA4F8B3292B40DCDE2B6F181C8EB078897C`) is the current installer. It asks for the install directory, defaults to the old 2D directory when 3.0.27 is detected, and migrates that install without running its broken uninstaller; otherwise it defaults to `%LOCALAPPDATA%\WhaleGirlPet3D`. It installs without elevation, adds Start Menu shortcuts plus an optional desktop shortcut, and registers an uninstaller. The installer is unsigned; verify the adjacent `.sha256` before running if SmartScreen warns. See `docs/code-signing.md` for the trusted-cert paths and `.github/workflows/3d-build.yml` for the CI build.
+Windows installers are built from the release ZIPs by `installer/whale3d.iss` (compiled with `installer/build_3d_installers.ps1`). `WhaleGirlPet-Setup-3.1.2.exe` (4,418,364 B, SHA256 `96B1377F31220C5B603A2D4E8976491385B0D23FD27BF14F80AA70D898BFA699`) is the current installer. It asks for the install directory, defaults to `F:\WhaleGirlPetApp` when the F drive exists (and to the old 2D directory when 3.0.27 is detected), and migrates that install without running its broken uninstaller; only when there is no F drive does it fall back to `%LOCALAPPDATA%\WhaleGirlPet3D`. It installs without elevation, adds Start Menu shortcuts plus an optional desktop shortcut, and registers an uninstaller. The installer is unsigned; verify the adjacent `.sha256` before running if SmartScreen warns. See `docs/code-signing.md` for the trusted-cert paths and `.github/workflows/3d-build.yml` for the CI build.
 
 ## Known limitations
 
