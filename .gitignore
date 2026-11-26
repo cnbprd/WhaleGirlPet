@@ -41,6 +41,7 @@ tools/_guard_samples/
 3d/*.zip.sha256
 3d/*.log
 3d/*.err.log
+3d/longrun*.json
 3d/third_party/ozz-master.zip
 3d/third_party/ozz-animation-master/media/
 3d/third_party/**/*.exe
