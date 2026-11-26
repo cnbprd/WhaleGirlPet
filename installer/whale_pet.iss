@@ -5,20 +5,20 @@
 
 [Setup]
 AppName=鲸鱼娘桌宠
-; v3.0.26：背包自动取食；裙摆/尾巴 alpha 分层 + Verlet spring（第三阶段）；安装器界面沿用 v3.0.23。
-AppVersion=3.0.26
-AppVerName=鲸鱼娘桌宠 3.0.26
+; v3.0.27：本地模型状态口径；打工完工保持富江底脸；anim 第四阶段（反馈 L0–L3 / 泊松节流 / thinking 占位）。
+AppVersion=3.0.27
+AppVerName=鲸鱼娘桌宠 3.0.27
 AppPublisher=本地自制
 DefaultDirName={localappdata}\WhaleGirlPetApp
 DefaultGroupName=鲸鱼娘桌宠
 UninstallDisplayIcon={app}\WhaleGirlPet.exe
-UninstallDisplayName=鲸鱼娘桌宠 3.0.26
+UninstallDisplayName=鲸鱼娘桌宠 3.0.27
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=WhaleGirlPet-Setup-3.0.26
+OutputBaseFilename=WhaleGirlPet-Setup-3.0.27
 SetupIconFile=..\assets\ui\pet.ico
 WizardSmallImageFile=art\small_blank.png
 DisableWelcomePage=yes
@@ -41,7 +41,7 @@ ButtonBrowse=浏览(&B)...
 FinishedHeadingLabel=装好啦
 FinishedLabel=大肥鱼已经住进这台电脑了。桌面图标点一下就能叫醒她。
 ConfirmUninstall=你确定要卸载吗？卸载后大肥鱼就不在这台电脑上了。
-SetupWindowTitle=Setup: 鲸鱼娘桌宠 3.0.26
+SetupWindowTitle=Setup: 鲸鱼娘桌宠 3.0.27
 
 [Files]
 ; v3.0.19：onedir —— 安装包内容 = dist\WhaleGirlPet\ 整个目录（exe + _internal）

@@ -24,6 +24,7 @@ import care_ui
 import companion
 import director as director_mod
 import emotion as emo
+import feedback as feedback_mod
 import hardware
 import knowledge
 import lines
@@ -201,6 +202,9 @@ class Controller:
         self.scheduler.night_remind.connect(self._on_night_remind)
 
         self.pet = PetWindow(self, show_now=not defer_show)
+
+        # v3.0.27 anim 第四阶段：反馈分级 / 泊松节流 / thinking 占位
+        self.feedback = feedback_mod.FeedbackBus(self)
 
         # v3.0.1：首启新人礼包刚发过就立刻落盘，保证「只发一次」的标记存得住
         if getattr(self.state, "_gift_just_sent", False):
@@ -853,12 +857,13 @@ class Controller:
                 if self.maybe_status_bar():
                     return
             if st.is_thirsty(45) and now - self._care_last_beg > 300:
-                if random.random() < 0.5:
+                # v3.0.27：不是每次 tick 都 50% 硬抽，改成泊松抽样（约 1.2 次/分钟上限）
+                if self.feedback.allow("care_thirsty", rate_per_min=1.2, min_gap_s=180):
                     self._care_last_beg = now
                     self.beg_snack("thirsty")
                     return
             if st.is_hungry(50) and now - self._care_last_beg > 300:
-                if random.random() < 0.5:
+                if self.feedback.allow("care_hungry", rate_per_min=1.2, min_gap_s=180):
                     self._care_last_beg = now
                     self.beg_snack("hungry")
                     return
@@ -1431,6 +1436,7 @@ class Controller:
             return
         self._web_retry_done = False
         if self._chat_busy():
+            self.feedback.emit(feedback_mod.L0, "chat_busy")
             self.panel and self.panel.set_chat_status(f"{self.get_name()}还在想上一句……")
             return
         # ---- 气泡：附件逐个一条，文字只挂在第一条上，避免重复 ----
@@ -1455,6 +1461,9 @@ class Controller:
         self.history.append({"role": "user", "content": ask_text})
         self.panel and self.panel.set_chat_status("思考中……")
         self.pet.set_expression("curious", 4000)
+        # v3.0.27：本地模型/云端都有可能等一两秒，超过 700ms 才进 thinking 占位，
+        # 立刻回来的短回复不会闪一下；_finish_reply / 失败分支负责收回。
+        self.feedback.start_thinking(700)
         if self.config.get("memory_on", True):
             try:
                 self.memory.add_message("user", text)
@@ -1615,6 +1624,7 @@ class Controller:
         return t
 
     def _finish_reply(self, content: str, source: str = ""):
+        self.feedback.end_thinking()
         content = self._polish_reply(content)
         if not content:
             self._on_ai_failed("empty")
@@ -1634,9 +1644,11 @@ class Controller:
         self.emotion.apply("chat", 1.0)
         self.panel and self.panel.append_chat("assistant", content)
         self.panel and self.panel.set_chat_status(source)
-        self._speak(content, 4200, priority=1)   # v3.0.23：对话回复必须出声（原来 priority=0 被静音掐掉）
-        self.pet.set_expression("happy", 3000)
-        self.beep("chat")
+        # v3.0.27：对话回复归 L2；不再散落三处各调一次，避免重复气泡/音效
+        self.feedback.emit(
+            feedback_mod.L2, "chat_reply", expr="happy", bubble=content,
+            sfx="chat", source="llm", force=True, bubble_ms=4200,
+        )
         self.refresh_panel()
 
     def _on_ai_reply(self, content: str):
@@ -1663,6 +1675,7 @@ class Controller:
         self._web_retry_done = True
         self.panel and self.panel.set_chat_status("这句我答不上来，先上网学一下……")
         self.pet.set_expression("curious", 4000)
+        self.feedback.start_thinking(700)
 
         def work():
             try:
@@ -1727,6 +1740,7 @@ class Controller:
                     return
                 except Exception:  # noqa: BLE001
                     self._fallback_local = False
+        self.feedback.end_thinking()
         fallback = {
             "no_key": lines.pick(lines.NO_KEY),
             "offline": lines.pick(lines.OFFLINE),
@@ -1743,9 +1757,11 @@ class Controller:
         self.emotion.apply("task_fail", 0.6)
         self.panel and self.panel.append_chat("assistant", fallback)
         self.panel and self.panel.set_chat_status(f"没连上（{reason}），已用本地台词。")
-        self._speak(fallback, 3000)
-        self.pet.set_expression("sleepy", 3000)
-        self.beep("error")
+        # v3.0.27：连接失败是 L3 强反馈：表情 + 台词气泡 + 错误音一起给
+        self.feedback.emit(
+            feedback_mod.L3, "chat_failed", expr="sleepy", bubble=fallback,
+            sfx="error", source="llm", force=True,
+        )
 
     def save_ai_settings(self):
         if self.panel is None:
@@ -2854,12 +2870,15 @@ class Controller:
         self.task_active = None
         self.task_timer.stop()
         self.pet.finish_state()       # v3.0.0：把 work_* 状态一起收回 idle
-        self.beep("done")
         msg = f"完工！拿到 {defn['coins']} 金币、{defn['exp']} 经验。"
         if leveled:
             msg += f"\n升到 Lv.{self.state.level}！"
-        self.pet.bubble.show_text(msg, 3200)
-        self.pet.set_expression("happy", 3000)
+        # v3.0.27：完工不再换 happy 脸。happy 补丁是通用眯眼大笑，会把富江的冷感洗掉；
+        # 这里只做 L2 反馈（气泡/完工音），底脸保持 finish_state 收回来的富江基础脸。
+        self.feedback.emit(
+            feedback_mod.L2, "task_done", bubble=msg, sfx="done",
+            source="llm", force=True, bubble_ms=3200,
+        )
         self.save_config()
         self.panel and self.panel.refresh_tasks()
         self.refresh_panel()
@@ -2948,7 +2967,9 @@ class Controller:
             self.pet.trigger_random()
         elif pick == "expression":
             expr = random.choice(["happy", "shy", "curious", "sleepy"])
-            self.pet.set_expression(expr, 2500)
+            # v3.0.27：自主表情归 L1，走泊松节流；不弹气泡、不响，不抢当前动作
+            self.feedback.emit(feedback_mod.L1, "auto_expr", expr=expr,
+                               rate_per_min=8.0, min_gap_s=45.0)
         elif pick == "run":
             self.begin_run(6000)
         else:

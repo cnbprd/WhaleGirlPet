@@ -27,6 +27,16 @@ from state import SNACKS
 from tasks import TASK_DEFS
 
 
+def local_llm_status_text(info: dict) -> str:
+    """本地模型状态文案（v3.0.27 统一口径：可启动但没有加载）。"""
+    info = info or {}
+    if info.get("running"):
+        return "运行中"
+    if info.get("available"):
+        return "可启动（没有加载）"
+    return "还没装本地模型（不影响使用，聊天走云端或台词）"
+
+
 class _VoiceListWorker(QThread):
     """后台拉取微软 Edge TTS 音色库（联网，不能阻塞界面）。"""
     got = Signal(list)
@@ -2140,13 +2150,7 @@ class ControlPanel(QWidget):
     def _apply_llm_status(self, info: dict):
         """把本地模型状态填进标签（可能晚一拍执行，见 refresh 里的延迟查询）。"""
         try:
-            if info.get("running"):
-                state = "运行中"
-            elif info.get("available"):
-                state = "可启动（还没加载）"
-            else:
-                # v3.0.3：绝大多数用户装完是"没装模型"这个状态，得把话说清楚
-                state = "还没装本地模型（不影响使用，聊天走云端或台词）"
+            state = local_llm_status_text(info)
             backend = {"ollama": "Ollama", "dafeiyu_cpp": "dafeiyu.cpp",
                        "llama_cpp": "dafeiyu.cpp"}.get(
                 info.get("backend", ""), info.get("backend", "") or "未定")

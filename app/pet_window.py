@@ -496,6 +496,40 @@ class PetWindow(QWidget):
         self.mirror = False
         self.set_state("follow" if self.follow else "idle")
 
+    # ================= v3.0.27：thinking 占位动作 =================
+    def begin_thinking(self, text: str = "让我想一下…", ms: int = 1500) -> bool:
+        """聊天等待时的占位动作：头微侧/好奇表情，不弹大动作，也不抢用户动作。
+
+        返回是否真的进入 thinking；如果当前有用户动作/同级动作，Director 会拒绝。
+        """
+        if self.state == "thinking":
+            if text:
+                self.bubble.show_text(text, ms)
+            return True
+        act = director_mod.Action(
+            "thinking", expr="curious", priority=director_mod.P_LLM,
+            dur_ms=0, hold=True, interruptible=True, min_hold_ms=0,
+        )
+        ok, _why = self.director.submit(act, source="llm")
+        if not ok:
+            return False
+        self.rot = 0.0
+        self.bob = 0.0
+        self.sx = self.sy = 1.0
+        self.set_expression("curious", 0)
+        self.set_state("thinking")
+        if text:
+            self.bubble.show_text(text, ms)
+        return True
+
+    def end_thinking(self):
+        """回复/失败/用户接管时收回占位；只清自己，不碰别的动作。"""
+        if getattr(self, "director", None) is not None:
+            if self.director.current_key() == "thinking":
+                self.director.release("thinking")
+        if self.state == "thinking":
+            self.finish_state()
+
     def _update_mouth_level(self):
         """每帧读 TTS 播放音量，低通一下，避免嘴抖成机关枪。"""
         if self._mouth_pix is None:
@@ -535,6 +569,13 @@ class PetWindow(QWidget):
             amp = 0.003 if self.night else 0.006    # 夜间呼吸收一半，像在打盹
             self.sy = 1 + amp * math.sin(self.state_t * 2.5)
             self.sx = 1 - (amp * 0.5) * math.sin(self.state_t * 2.5)
+
+        elif st == "thinking":
+            # 占位动作：不位移，只做很小的呼吸 + 1.2° 头身侧倾，像在听/想
+            self.bob = -1.2 * abs(math.sin(self.state_t * 2.2)) * self.scale
+            self.rot = 1.2 * math.sin(self.state_t * 2.0)
+            self.sy = 1 + 0.004 * math.sin(self.state_t * 2.5)
+            self.sx = 1 - 0.002 * math.sin(self.state_t * 2.5)
 
         elif st == "drag":
             self.alpha = 1.0
