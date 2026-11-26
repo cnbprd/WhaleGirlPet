@@ -2,12 +2,14 @@
 
 > 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
 
+> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
+
 <p align="center">
   <img src="assets/ui/pet.ico" alt="WhaleGirlPet" width="96" />
 </p>
 
 <p align="center">
-  <strong>PySide6 桌面宠物 · 养成 / 打工 / 语音对话 / 安全体检</strong>
+  <strong>3D 桌面壳主线 · C++/SDL3/OpenGL · 2D PySide6 历史归档</strong>
 </p>
 
 <p align="center">
