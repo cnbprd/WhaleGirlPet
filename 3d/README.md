@@ -45,7 +45,7 @@ $env:WHALE3D_SPRING = '0'       # disable VRM spring bones for A/B; default on
 
 While the window has focus, `W` cycles `idle → walk`, `O` toggles `ozz ↔ self`, `E` toggles the smile frame and `B` triggers a blink. The log line reports `fps`, `triangles`, `update_us`, `animator`, `clip` and `face` once per second.
 
-## Emotion bus (v3.2 step 1)
+## Emotion bus (v3.2 step 1 + 1b)
 
 The 3D process listens on `udp://127.0.0.1:47832` (override with `WHALE3D_EMOTION_PORT`) for a small JSON frame:
 
@@ -59,7 +59,7 @@ Inject one manually while the pet is running:
 .venv\Scripts\python.exe 3d\tools\send_emotion.py happy 0.8
 ```
 
-The log then shows `Emotion: happy intensity=0.80 source=manual face=smile`. The current atlas maps positive/high-intensity emotions to `smile`, neutral to auto blink, and negative/low-arousal emotions to `open`; unknown labels are ignored. This is a transport + face-mapping slice only: cross-fade, gaze/body lean, and the Python ASR/LLM/TTS producer are later v3.2 work. See `docs/3d-emotion-bus.md`.
+The log then shows `Emotion: happy intensity=0.80 source=manual face=smile`. The current atlas maps positive/high-intensity emotions to `smile`, neutral to auto blink, and negative/low-arousal emotions to `open`; unknown labels are ignored. v3.2 step 1b cross-fades between the two atlas frames over 0.16 s in the shader instead of hard-swapping. This is a transport + face-mapping slice only: intensity shaping, gaze/body lean, prioritization, and the Python ASR/LLM/TTS producer are later v3.2 work. See `docs/3d-emotion-bus.md`.
 
 ## Tray, menu and settings
 
@@ -138,8 +138,8 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` (v3.2 step 1 dev) | 1,321,472 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + version resource |
-| exe SHA256 (dev) | `AA03A29167D18468887E4B1BDCB76B637B2FEDF09452698A9A24C5E4C7D6B42E` |
+| `whale3d.exe` (v3.2 step 1b dev) | 1,322,496 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + face cross-fade + version resource |
+| exe SHA256 (dev) | `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
@@ -159,7 +159,7 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 | RSS | about 70.1 MB |
 | Exit code | 0 for direct exit, tray-menu exit and settings-close-then-exit |
 
-The v3.2 dev exe grew by 18,944 bytes over the v3.0.28 shell (1,302,528 → 1,321,472): 13,312 B for the VRM/GLB extension parser, per-frame spring solver and motion input; 4,608 B for the emotion bus; and 1,024 B for the `whale3d.rc` product/version metadata used by SignPath. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
+The v3.2 dev exe grew by 19,968 bytes over the v3.0.28 shell (1,302,528 → 1,322,496): 13,312 B for the VRM/GLB extension parser, per-frame spring solver and motion input; 4,608 B for the emotion bus; and 1,024 B for the `whale3d.rc` product/version metadata used by SignPath; plus 1,024 B for the face cross-fade uniforms/state. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
 
 ## Runnable package
 

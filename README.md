@@ -92,6 +92,8 @@
 
 **Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).**
 
+Status (2026-11-26): the SignPath Foundation application has been submitted and is pending review. Until it is approved and signing is executed, the current Release artifacts remain unsigned and Windows may show “Unknown publisher”.
+
 Signing scope is the 3D Windows artifacts: `whale3d.exe` and `WhaleGirlPet-3D-Setup-<version>.exe`. Authors / reviewers / approver: [cnbprd](https://github.com/cnbprd) (repository owner); all team members use MFA for GitHub and SignPath. Full policy: [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md). Privacy statement: [`PRIVACY.md`](PRIVACY.md).
 
 2D 安装包是历史归档，不再作为新版本发布目标；下表只用于旧 Release 说明：

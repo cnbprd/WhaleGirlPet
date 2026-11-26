@@ -8,6 +8,17 @@
 - 仓库里也没有 `.pfx` / `.p12` 代码签名私钥。
 - 因此当前只能提供同名 `.sha256` 做完整性校验，无法消除 Windows SmartScreen 的“未知发布者”提示。
 
+## SignPath Foundation 申请状态
+
+**2026-11-26 已提交申请**，走的是开源免费托管签名路径。
+
+- 提交入口：`https://signpath.org/apply`（HubSpot 表单）。
+- 项目：`WhaleGirlPet`；仓库 `https://github.com/cnbprd/WhaleGirlPet`；MIT；分类 `Gaming`；维护者类型 `Individual maintainer(s)`；构建系统 `GitHub Actions`。
+- 提交后页面显示 `Form submitted / Thank you, we'll be in touch soon.`；**没有返回申请编号**，也没有单独的邮件回执号。
+- 确认截图：`docs/_signpath_application_submitted.png`。
+- 审核不保证通过：仓库创建于 2026-11-24，当前 stars/forks/watchers 都是 0，SignPath 对可执行程序的“可验证声誉”有要求；另外表单选了 GitHub Actions，而 3D 目前是本机 `build.ps1` 构建，仓库里只有 2D 的 release workflow。
+- 在收到批准前，安装包和 exe **仍然是未签名状态**；不能用“已申请”代替签名结果。
+
 ## 为什么不能靠改安装脚本解决
 
 SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚本里的说明文字。没有受信任证书时：

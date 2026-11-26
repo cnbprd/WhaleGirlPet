@@ -95,6 +95,7 @@ typedef void (APIENTRY* PFNGLUSEPROGRAM)(GLuint);
 typedef GLint (APIENTRY* PFNGLGETUNIFORMLOCATION)(GLuint, const GLchar*);
 typedef void (APIENTRY* PFNGLUNIFORMMATRIX4FV)(GLint, GLsizei, GLboolean, const GLfloat*);
 typedef void (APIENTRY* PFNGLUNIFORM1I)(GLint, GLint);
+typedef void (APIENTRY* PFNGLUNIFORM1F)(GLint, GLfloat);
 typedef void (APIENTRY* PFNGLUNIFORM4F)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (APIENTRY* PFNGLUNIFORM3F)(GLint, GLfloat, GLfloat, GLfloat);
 typedef void (APIENTRY* PFNGLACTIVETEXTURE)(GLenum);
@@ -126,6 +127,7 @@ struct GL {
     PFNGLGETUNIFORMLOCATION getUniformLocation = nullptr;
     PFNGLUNIFORMMATRIX4FV uniformMatrix4fv = nullptr;
     PFNGLUNIFORM1I uniform1i = nullptr;
+    PFNGLUNIFORM1F uniform1f = nullptr;
     PFNGLUNIFORM4F uniform4f = nullptr;
     PFNGLUNIFORM3F uniform3f = nullptr;
     PFNGLACTIVETEXTURE activeTexture = nullptr;
@@ -167,6 +169,7 @@ struct GL {
             && loadOne(getUniformLocation, "glGetUniformLocation")
             && loadOne(uniformMatrix4fv, "glUniformMatrix4fv")
             && loadOne(uniform1i, "glUniform1i")
+            && loadOne(uniform1f, "glUniform1f")
             && loadOne(uniform4f, "glUniform4f")
             && loadOne(uniform3f, "glUniform3f")
             && loadOne(activeTexture, "glActiveTexture")
@@ -473,8 +476,12 @@ struct Model::Impl {
 
     GLint uMVP = -1, uModel = -1, uJoints = -1, uSkinned = -1;
     GLint uBaseColor = -1, uTex = -1, uUseTex = -1, uFaceFrame = -1, uLightDir = -1;
+    GLint uFaceFrameB = -1, uFaceMix = -1;
 
     int faceFrame = 0;
+    int faceFrameB = 0;
+    float faceMix = 1.0f;
+    bool faceTransition = false;
     int forcedFace = -1;
     bool smile = false;
     float nextBlink = 2.0f;
@@ -669,6 +676,8 @@ uniform vec4 uBaseColor;
 uniform sampler2D uTex;
 uniform int uUseTex;
 uniform int uFaceFrame;
+uniform int uFaceFrameB;
+uniform float uFaceMix;
 uniform vec3 uLightDir;
 out vec4 fragColor;
 void main() {
@@ -677,9 +686,14 @@ void main() {
         vec2 uv = vUV;
         // Face atlas: 2048x512, frames at x=0,512,1024; body uses x=1792.
         if (uv.x < 0.5) {
-            uv.x += float(uFaceFrame) * 0.25;
+            vec2 uvA = uv;
+            vec2 uvB = uv;
+            uvA.x += float(uFaceFrame) * 0.25;
+            uvB.x += float(uFaceFrameB) * 0.25;
+            albedo *= mix(texture(uTex, uvA), texture(uTex, uvB), uFaceMix);
+        } else {
+            albedo *= texture(uTex, uv);
         }
-        albedo *= texture(uTex, uv);
     }
     vec3 n = normalize(vNormal);
     float ndl = max(dot(n, normalize(uLightDir)), 0.0);
@@ -1193,6 +1207,14 @@ const char* Model::clipName() const {
     return "idle";
 }
 
+static void beginFaceTransition(Model::Impl& m, int target) {
+    if (target < 0 || target > 2) return;
+    if (target == m.faceFrame && !m.faceTransition) return;
+    m.faceFrameB = target;
+    m.faceMix = 0.0f;
+    m.faceTransition = true;
+}
+
 bool Model::setFace(const std::string& name) {
     if (!impl_) return false;
     if (name == "auto") {
@@ -1200,12 +1222,27 @@ bool Model::setFace(const std::string& name) {
         impl_->smile = false;
         impl_->nextBlink = 2.0f;
         impl_->blinkUntil = -1.0f;
-        impl_->faceFrame = 0;
+        beginFaceTransition(*impl_, 0);
         return true;
     }
-    if (name == "open") { impl_->forcedFace = 0; impl_->faceFrame = 0; return true; }
-    if (name == "blink") { impl_->forcedFace = 1; impl_->faceFrame = 1; return true; }
-    if (name == "smile") { impl_->forcedFace = 2; impl_->faceFrame = 2; return true; }
+    if (name == "open") {
+        impl_->forcedFace = 0;
+        beginFaceTransition(*impl_, 0);
+        return true;
+    }
+    if (name == "blink") {
+        impl_->forcedFace = 1;
+        impl_->faceFrame = 1;
+        impl_->faceFrameB = 1;
+        impl_->faceMix = 1.0f;
+        impl_->faceTransition = false;
+        return true;
+    }
+    if (name == "smile") {
+        impl_->forcedFace = 2;
+        beginFaceTransition(*impl_, 2);
+        return true;
+    }
     return false;
 }
 
@@ -1213,7 +1250,7 @@ void Model::toggleSmile() {
     if (!impl_) return;
     impl_->forcedFace = -1;
     impl_->smile = !impl_->smile;
-    impl_->faceFrame = impl_->smile ? 2 : 0;
+    beginFaceTransition(*impl_, impl_->smile ? 2 : 0);
 }
 
 void Model::triggerBlink(float timeSeconds) {
@@ -1221,12 +1258,16 @@ void Model::triggerBlink(float timeSeconds) {
     impl_->forcedFace = -1;
     impl_->blinkUntil = timeSeconds + 0.18f;
     impl_->faceFrame = 1;
+    impl_->faceFrameB = 1;
+    impl_->faceMix = 1.0f;
+    impl_->faceTransition = false;
 }
 
 const char* Model::faceName() const {
     if (!impl_) return "open";
-    if (impl_->faceFrame == 1) return "blink";
-    if (impl_->faceFrame == 2) return "smile";
+    int frame = impl_->faceTransition ? impl_->faceFrameB : impl_->faceFrame;
+    if (frame == 1) return "blink";
+    if (frame == 2) return "smile";
     return "open";
 }
 
@@ -1353,6 +1394,9 @@ bool Model::loadImpl(const std::string& path) {
 #endif
     m.error.clear();
     m.faceFrame = 0;
+    m.faceFrameB = 0;
+    m.faceMix = 1.0f;
+    m.faceTransition = false;
     m.forcedFace = -1;
     m.smile = false;
     m.nextBlink = 2.0f;
@@ -1422,6 +1466,8 @@ bool Model::loadImpl(const std::string& path) {
     m.uTex = m.gl.getUniformLocation(m.program, "uTex");
     m.uUseTex = m.gl.getUniformLocation(m.program, "uUseTex");
     m.uFaceFrame = m.gl.getUniformLocation(m.program, "uFaceFrame");
+    m.uFaceFrameB = m.gl.getUniformLocation(m.program, "uFaceFrameB");
+    m.uFaceMix = m.gl.getUniformLocation(m.program, "uFaceMix");
     m.uLightDir = m.gl.getUniformLocation(m.program, "uLightDir");
 
     // images -> GL textures
@@ -1914,7 +1960,18 @@ static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
 }
 #endif
 
-static void updateFace(Model::Impl& m, float timeSeconds) {
+static void updateFace(Model::Impl& m, float timeSeconds, float dt) {
+    if (m.faceTransition) {
+        // 0.16 s cross-fade between the two blend frames. It is deliberately
+        // shorter than a human blink and longer than one frame at 60 Hz.
+        m.faceMix += dt / 0.16f;
+        if (m.faceMix >= 1.0f) {
+            m.faceMix = 1.0f;
+            m.faceFrame = m.faceFrameB;
+            m.faceTransition = false;
+        }
+        return;
+    }
     if (m.forcedFace >= 0) {
         m.faceFrame = m.forcedFace;
         return;
@@ -1929,12 +1986,12 @@ static void updateFace(Model::Impl& m, float timeSeconds) {
 void Model::update(float timeSeconds) {
     Impl& m = *impl_;
     if (!m.loaded) return;
-    updateFace(m, timeSeconds);
     float dt = 0.016f;
     if (m.lastUpdateTime >= 0.0f && timeSeconds > m.lastUpdateTime) {
         dt = std::clamp(timeSeconds - m.lastUpdateTime, 0.001f, 0.05f);
     }
     m.lastUpdateTime = timeSeconds;
+    updateFace(m, timeSeconds, dt);
 #ifdef WHALE3D_USE_OZZ
     if (m.useOzz && m.ozzReady && updateOzz(m, timeSeconds, dt)) return;
 #endif
@@ -1964,6 +2021,8 @@ void Model::draw(const float viewProjection[16]) {
     m.gl.uniform3f(m.uLightDir, -0.45f, 0.75f, 0.65f);
     m.gl.uniform1i(m.uTex, 0);
     m.gl.uniform1i(m.uFaceFrame, m.faceFrame);
+    m.gl.uniform1i(m.uFaceFrameB, m.faceTransition ? m.faceFrameB : m.faceFrame);
+    m.gl.uniform1f(m.uFaceMix, m.faceTransition ? m.faceMix : 1.0f);
 
     for (const auto& node : m.nodes) {
         if (node.mesh < 0 || node.mesh >= (int)m.meshes.size()) continue;

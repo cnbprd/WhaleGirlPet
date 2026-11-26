@@ -416,4 +416,21 @@
 | 体积 | `whale3d.exe` 1,315,840 → **1,321,472 B**（+5,632 B；含 1,024 B 版本资源）；仅新增系统 `ws2_32.dll` 依赖 |
 | 边界 | 三帧图集硬切，尚无 cross-fade、gaze/body lean、优先级仲裁；未重打 3.1.0 ZIP/安装包 |
 
-细节与协议见 `docs/3d-emotion-bus.md`。下一步是在 shader 里做两帧交叉淡化，并让 Python 侧把 LLM 情绪标签发到这条总线。
+细节与协议见 `docs/3d-emotion-bus.md`。
+
+## 第 11b 步（v3.2 step 1b）：脸部交叉淡化
+
+把一个“脸能切”的硬切版本推进到“脸能平滑切”：
+
+| 项 | 实现 |
+| :--- | :--- |
+| 状态 | `faceFrameB / faceMix / faceTransition`；`setFace(open/smile/auto)`、`toggleSmile()` 进入 0.16 s 过渡 |
+| 更新 | `updateFace()` 按 `dt / 0.16 s` 递增 `faceMix`，完成后 B → A；自动眨眼仍瞬时 |
+| Shader | 新增 `uFaceFrameB`、`uFaceMix`；脸部 UV 同时采 A/B 两帧后 `mix`，身体 UV 不变 |
+| GL | 加载 `glUniform1f`；无过渡时 B=A、mix=1，避免采到旧目标帧 |
+| 验收 | `emotion_accept.py` 增加 60 ms 中间帧：neutral→mid **0.121**、mid→happy **0.407**、neutral→happy **0.516** |
+| 截图 | `docs/_3d_emotion_crossfade.png`；三栏对比 `docs/_3d_emotion_compare.png` |
+| 体积 | dev exe **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769` |
+| 边界 | 仍无 intensity 幅度/时间曲线、gaze/body lean、优先级仲裁；仍未重打 ZIP/安装包 |
+
+下一步仍是 Python 侧 LLM 情绪标签生产与 `P_USER/P_LLM/P_AUTO` 仲裁，而不是继续堆脸部帧。

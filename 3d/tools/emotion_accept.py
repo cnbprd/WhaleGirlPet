@@ -92,8 +92,14 @@ def main() -> int:
         time.sleep(0.8)
         neutral = capture(hwnd, DOCS / "_3d_emotion_neutral.png")
         send("happy", 0.8)
-        time.sleep(1.0)
+        # v3.2 step 1b: the face atlas now cross-fades over 0.16 s. Sample
+        # mid-transition as evidence that this is not a hard frame swap.
+        time.sleep(0.06)
+        mid = capture(hwnd, DOCS / "_3d_emotion_crossfade.png")
+        time.sleep(0.6)
         happy = capture(hwnd, DOCS / "_3d_emotion_happy.png")
+        print("mean neutral->mid delta:", round(mean_delta(neutral, mid), 3))
+        print("mean mid->happy delta:", round(mean_delta(mid, happy), 3))
         print("mean RGB delta:", round(mean_delta(neutral, happy), 3))
         print("saved:", DOCS / "_3d_emotion_neutral.png")
         print("saved:", DOCS / "_3d_emotion_happy.png")
