@@ -401,3 +401,19 @@
 5. 若要继续动画，再评估 ozz 的 blend/IK/root motion；当前不把 glTF importer 或 VRM 运行时一起拖进来。
 6. 每一步都记录“新增字节数”和“私有字节增量”，不让包体积和 RAM 在无感知的情况下回涨。
 7. **第 10 步（v3.1.0）已完成**：`.vrm` 默认加载、4 条两骨 SpringBone、窗口位移惯性输入、A/B 开关和包内实测都已收口。下一步按路线进入 v3.2.x：先做情绪参数总线（`emotion/intensity/gaze_target/body_lean/source`），再接 ASR/TTS/LLM 的独立服务闭环；在此之前不把认知层塞进 3D 渲染进程。
+
+## 第 11 步（v3.2 step 1）：本机情绪总线
+
+这一步只做“参数进得来、脸能切”，不声称闭环已完成。
+
+| 项 | 实现 |
+| :--- | :--- |
+| 传输 | `EmotionBus`，UDP 仅绑 `127.0.0.1:47832`；`WHALE3D_EMOTION_PORT` 可改端口 |
+| 协议 | `{"emotion":"happy","intensity":0.8,"source":"llm"}`；`emotion` 必填，其余可选 |
+| 映射 | 正向/高唤醒 → `smile`；中性 → `auto`；负向/低唤醒 → `open`；未知忽略 |
+| 注入 | `3d/tools/send_emotion.py happy 0.8` |
+| 验收 | `3d/tools/emotion_accept.py`：日志 `Emotion: happy intensity=0.80 source=acceptance face=smile`，`docs/_3d_emotion_compare.png`，全窗 RGB 平均差 0.674 |
+| 体积 | `whale3d.exe` 1,315,840 → **1,320,448 B**（+4,608 B）；仅新增系统 `ws2_32.dll` 依赖 |
+| 边界 | 三帧图集硬切，尚无 cross-fade、gaze/body lean、优先级仲裁；未重打 3.1.0 ZIP/安装包 |
+
+细节与协议见 `docs/3d-emotion-bus.md`。下一步是在 shader 里做两帧交叉淡化，并让 Python 侧把 LLM 情绪标签发到这条总线。

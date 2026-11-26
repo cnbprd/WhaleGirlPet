@@ -1,4 +1,4 @@
-# WhaleGirl 3D stage 9: VRM body + spring bones
+# WhaleGirl 3D stage 10: VRM body + spring bones + emotion bus
 
 This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell and adds the first **body layer**:
 
@@ -8,6 +8,7 @@ This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell 
 - Animation sampling is delegated to **ozz-animation**; the original in-house sampler is kept as a fallback and as an A/B baseline. No glTF importer, game engine, blend tree or IK layer is pulled in.
 - VRM `VRMC_springBone` is parsed at load time and solved every frame as a damped angular spring. Window drag displacement feeds the solver as inertial input; the visual result is independent of the base idle clip. `WHALE3D_SPRING=0` disables the layer for A/B measurement.
 - The face is a 3-frame atlas (open / blink / smile) sampled by a shader UV offset. Auto blink is driven by the shell; `E` toggles smile and `B` triggers a blink.
+- **v3.2 step 1:** a localhost UDP emotion bus (`127.0.0.1:47832`) accepts `{"emotion":"happy","intensity":0.8,"source":"llm"}` and maps it to the same three face frames. It is data-only; ASR/LLM/TTS stay outside the render process. See `docs/3d-emotion-bus.md`.
 - The shell has a **native Win32 tray icon, native popup menu and native modal settings page**. No Qt, no PySide6, no UI toolkit.
 - Model switching is a same-process, same-GL-context **model cache**: the first load of a path builds an `Impl`, and switching to a cached path only changes the active pointer. No window hide, no helper, no blank frame.
 - The window is borderless, always on top, non-focus-stealing, and draggable with the left mouse button. Right-click opens the tray menu instead of quitting immediately. Only pixels whose alpha is above 16 belong to the Win32 window region, so transparent corners and gaps pass clicks through to the window below.
@@ -23,7 +24,7 @@ Toolchain is portable and lives outside PATH:
 - `F:\WhaleGirlPet\.toolchains\w64devkit` — g++ / make / binutils / CMake
 - `F:\WhaleGirlPet\.toolchains\SDL3\SDL3-3.4.20\x86_64-w64-mingw32` — SDL3 headers, import lib, DLL
 
-The release build uses `-Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections` to keep the shell small. `build.ps1` compiles `main.cpp`, `model.cpp` and `shell_ui.cpp`, links `-lSDL3`, the three static ozz libraries, `-lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32`, and deploys `SDL3.dll` next to the exe. If `third_party/ozz-build` is missing, build ozz once with the same w64devkit toolchain (`BUILD_SHARED_LIBS=OFF`, `ozz_build_tools/fbx/gltf/data/samples/howtos/tests` all `OFF`), then rerun the script. Putting the devkit `bin` directory on `PATH` is required because CMake's generated Makefiles call a bare `make`.
+The release build uses `-Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections` to keep the shell small. `build.ps1` compiles `main.cpp`, `model.cpp`, `shell_ui.cpp` and `emotion_bus.cpp`, links `-lSDL3`, the three static ozz libraries, `-lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32`, and deploys `SDL3.dll` next to the exe. If `third_party/ozz-build` is missing, build ozz once with the same w64devkit toolchain (`BUILD_SHARED_LIBS=OFF`, `ozz_build_tools/fbx/gltf/data/samples/howtos/tests` all `OFF`), then rerun the script. Putting the devkit `bin` directory on `PATH` is required because CMake's generated Makefiles call a bare `make`.
 
 ## Run
 
@@ -43,6 +44,22 @@ $env:WHALE3D_SPRING = '0'       # disable VRM spring bones for A/B; default on
 ```
 
 While the window has focus, `W` cycles `idle → walk`, `O` toggles `ozz ↔ self`, `E` toggles the smile frame and `B` triggers a blink. The log line reports `fps`, `triangles`, `update_us`, `animator`, `clip` and `face` once per second.
+
+## Emotion bus (v3.2 step 1)
+
+The 3D process listens on `udp://127.0.0.1:47832` (override with `WHALE3D_EMOTION_PORT`) for a small JSON frame:
+
+```json
+{"emotion":"happy","intensity":0.8,"source":"llm"}
+```
+
+Inject one manually while the pet is running:
+
+```powershell
+.venv\Scripts\python.exe 3d\tools\send_emotion.py happy 0.8
+```
+
+The log then shows `Emotion: happy intensity=0.80 source=manual face=smile`. The current atlas maps positive/high-intensity emotions to `smile`, neutral to auto blink, and negative/low-arousal emotions to `open`; unknown labels are ignored. This is a transport + face-mapping slice only: cross-fade, gaze/body lean, and the Python ASR/LLM/TTS producer are later v3.2 work. See `docs/3d-emotion-bus.md`.
 
 ## Tray, menu and settings
 

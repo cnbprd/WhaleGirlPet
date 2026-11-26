@@ -56,6 +56,13 @@ public:
     const char* faceName() const;
     const char* faceMode() const;
 
+    // v3.2 step 1: high-level emotion from the localhost bus. The current
+    // minimal VRM/GLB atlas only has open/blink/smile, so this maps emotion to
+    // the nearest face frame; pose/blend-shape expansion comes later.
+    bool applyEmotion(const std::string& emotion, float intensity);
+    const char* emotionName() const;
+    float emotionIntensity() const;
+
 private:
     bool loadImpl(const std::string& path);
 

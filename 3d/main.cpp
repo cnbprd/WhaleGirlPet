@@ -7,6 +7,7 @@
 
 #include "model.h"
 #include "shell_ui.h"
+#include "emotion_bus.h"
 
 #include <algorithm>
 #include <cmath>
@@ -172,6 +173,18 @@ int main(int argc, char** argv) {
     SDL_Log("Animator: %s; clip: %s; face: %s",
             model.animatorName(), model.clipName(), model.faceName());
 
+    EmotionBus emotionBus;
+    int emotionPort = 47832;
+    if (const char* rawPort = std::getenv("WHALE3D_EMOTION_PORT")) {
+        const int parsed = std::atoi(rawPort);
+        if (parsed > 0 && parsed <= 65535) emotionPort = parsed;
+    }
+    if (emotionBus.start(emotionPort)) {
+        SDL_Log("Emotion bus: udp://127.0.0.1:%d", emotionPort);
+    } else {
+        SDL_Log("Emotion bus unavailable on 127.0.0.1:%d", emotionPort);
+    }
+
     ShellUi ui;
     std::vector<unsigned char> hitMask;
     int hitW = 0, hitH = 0;
@@ -259,6 +272,19 @@ int main(int argc, char** argv) {
             }
         }
 
+        EmotionBus::Frame emotion;
+        if (emotionBus.poll(emotion)) {
+            if (model.applyEmotion(emotion.emotion, emotion.intensity)) {
+                SDL_Log("Emotion: %s intensity=%.2f source=%s face=%s",
+                        emotion.emotion.c_str(), emotion.intensity,
+                        emotion.source.empty() ? "unknown" : emotion.source.c_str(),
+                        model.faceName());
+            } else {
+                SDL_Log("Emotion ignored: %s (raw %.80s)", emotion.emotion.c_str(),
+                        emotion.raw.c_str());
+            }
+        }
+
         int pw = 0, ph = 0;
         SDL_GetWindowSizeInPixels(win, &pw, &ph);
         if (pw <= 0 || ph <= 0) {
@@ -332,6 +358,7 @@ int main(int argc, char** argv) {
     }
 
     ui.shutdown();
+    emotionBus.stop();
     model.shutdown();
     SDL_GL_DestroyContext(ctx);
     SDL_DestroyWindow(win);

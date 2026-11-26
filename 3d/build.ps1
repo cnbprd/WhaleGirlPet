@@ -35,7 +35,8 @@ foreach ($p in @($ozzInclude, $ozzLibOffline, $ozzLibRuntime, $ozzLibBase)) {
 $sources = @(
     (Join-Path $PSScriptRoot 'main.cpp'),
     (Join-Path $PSScriptRoot 'model.cpp'),
-    (Join-Path $PSScriptRoot 'shell_ui.cpp')
+    (Join-Path $PSScriptRoot 'shell_ui.cpp'),
+    (Join-Path $PSScriptRoot 'emotion_bus.cpp')
 )
 & $gxx.FullName -std=c++17 -Os -s -Wall -Wextra `
     -DWHALE3D_USE_OZZ `
@@ -44,7 +45,7 @@ $sources = @(
     $sources `
     "-L$sdlLib" "-L$ozzLibOffline" "-L$ozzLibRuntime" "-L$ozzLibBase" `
     -lSDL3 -lozz_animation_offline_r -lozz_animation_r -lozz_base_r `
-    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 `
+    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32 `
     -static-libgcc -static-libstdc++ `
     "-Wl,--gc-sections" `
     -o $out

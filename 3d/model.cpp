@@ -8,6 +8,7 @@
 #include <GL/gl.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -478,6 +479,8 @@ struct Model::Impl {
     bool smile = false;
     float nextBlink = 2.0f;
     float blinkUntil = -1.0f;
+    std::string emotion = "neutral";
+    float emotionIntensity = 0.0f;
 
     ~Impl() { shutdown(false); }
 
@@ -1233,6 +1236,51 @@ const char* Model::faceMode() const {
     if (impl_->forcedFace == 1) return "blink";
     if (impl_->forcedFace == 2) return "smile";
     return "auto";
+}
+
+bool Model::applyEmotion(const std::string& emotion, float intensity) {
+    if (!impl_) return false;
+    std::string name;
+    name.reserve(emotion.size());
+    for (char c : emotion) {
+        name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (name.empty()) return false;
+
+    // The current atlas has only open / blink / smile. Keep the mapping
+    // explicit and conservative: high-arousal positive -> smile, neutral ->
+    // auto blink, low-arousal/negative -> open. Later VRM blend shapes can
+    // replace this table without changing the bus protocol.
+    bool known = true;
+    if (name == "happy" || name == "joy" || name == "excited" ||
+        name == "smile" || name == "laugh" || name == "curious" ||
+        name == "thinking" || name == "interested") {
+        if (intensity >= 0.35f) {
+            setFace("smile");
+        } else {
+            setFace("auto");
+        }
+    } else if (name == "neutral" || name == "calm" || name == "idle") {
+        setFace("auto");
+    } else if (name == "sad" || name == "angry" || name == "tired" ||
+               name == "sleepy" || name == "bored") {
+        setFace("open");
+    } else {
+        known = false;
+    }
+    if (!known) return false;
+
+    impl_->emotion = name;
+    impl_->emotionIntensity = std::clamp(intensity, 0.0f, 1.0f);
+    return true;
+}
+
+const char* Model::emotionName() const {
+    return impl_ ? impl_->emotion.c_str() : "neutral";
+}
+
+float Model::emotionIntensity() const {
+    return impl_ ? impl_->emotionIntensity : 0.0f;
 }
 
 void Model::shutdown() {
