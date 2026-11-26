@@ -2,7 +2,7 @@
 
 > 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
 
-> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
+> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；v3.1.0 已落地最小 VRM 1.0 + 4 条两骨 SpringBone。2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
 
 <p align="center">
   <img src="assets/ui/pet.ico" alt="WhaleGirlPet" width="96" />
@@ -38,6 +38,21 @@
 
 仓库只放源码与文档；可执行安装包走 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases)。
 
+## 当前 3D 主线（v3.1.0）
+
+这一版把“身体”先接上了，认知层还没有搬进来：
+
+| 能力 | 状态 |
+|---|---|
+| 透明无边框 3D 窗口、置顶、拖拽 | 已通；420×620，OpenGL 3.3 |
+| 点击穿透 / Win11 托盘固定 / 同进程 in-place 换模 | 已通；真实鼠标和四轮内存实测在 `docs/3d-transition.md` |
+| 角色格式 | 最小 VRM 1.0 `3d/assets/models/whale_girl.vrm`，19 humanoid bones + 4 条两骨 SpringBone |
+| 基础动画 | ozz 采样 idle/walk；自研采样保留 A/B |
+| 头发/尾巴二次动力学 | 已通；窗口位移惯性输入，`WHALE3D_SPRING=0` 可关闭 |
+| 认知层（ASR/LLM/TTS） | 仍在 Python 侧，未进 3D 渲染进程；下一步 v3.2.x |
+
+细节：[`3d/README.md`](3d/README.md)、[`docs/3d-transition.md`](docs/3d-transition.md)。下面的“功能概览”是 2D 历史归档能力，不代表当前 3D 核心包已全部迁移。
+
 ---
 
 ## 功能概览
@@ -61,22 +76,37 @@
 
 ## 快速开始
 
-### 方式一：安装包（推荐）
+### 方式一：3D 核心包（当前主线）
 
 前往 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases/latest) 下载：
 
 | 文件 | 说明 |
 |---|---|
-| `WhaleGirlPet-Setup-x.y.z.exe` | 安装包，含开始菜单与卸载项 |
-| `WhaleGirlPet-x.y.z-portable.zip` | 免安装，解压即用（onedir：根目录里是 `WhaleGirlPet.exe` + `_internal\`，别只拖走 exe） |
-| `WhaleGirlPet-x.y.z-source.zip` | 源码快照 |
+| `whale3d-whale-girl-v2.zip` | 3D 核心包，解压即用；含 `whale3d.exe` + `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone |
+
+2D 安装包是历史归档，不再作为新版本发布目标；下表只用于旧 Release 说明：
+
+| 文件 | 说明 |
+|---|---|
+| `WhaleGirlPet-Setup-x.y.z.exe` | 2D 安装包，含开始菜单与卸载项（历史） |
+| `WhaleGirlPet-x.y.z-portable.zip` | 2D 免安装，解压即用（历史；onedir：根目录里是 `WhaleGirlPet.exe` + `_internal\`，别只拖走 exe） |
+| `WhaleGirlPet-x.y.z-source.zip` | 源码快照（历史） |
 | `*.sha256` | 校验值，`certutil -hashfile <文件> SHA256` 对比 |
 
-### 方式二：源码运行
+### 方式二：3D 源码构建
 
 ```powershell
 git clone https://github.com/cnbprd/WhaleGirlPet.git
 cd WhaleGirlPet
+powershell -ExecutionPolicy Bypass -File 3d\build.ps1
+.\3d\whale3d.exe
+```
+
+工具链、SDL3、ozz 静态库和模型说明见 [`3d/README.md`](3d/README.md)。`3d\build.ps1` 只编译 `main.cpp` / `model.cpp` / `shell_ui.cpp`，不依赖 Qt 或 Python。
+
+### 方式三：2D 源码运行（历史归档）
+
+```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app\main.py
@@ -168,7 +198,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.0.28**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.1.0**。
 
 ---
 

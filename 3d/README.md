@@ -1,14 +1,15 @@
-# WhaleGirl 3D stage 8: in-place model cache + promoted tray icon
+# WhaleGirl 3D stage 9: VRM body + spring bones
 
-This is the eighth 3D footing. It is still deliberately **not** a game-engine project:
+This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell and adds the first **body layer**:
 
 - SDL3 creates a borderless, always-on-top, per-pixel transparent window.
 - OpenGL 3.3 core draws a 2,076-triangle skinned low-poly whale girl with idle and walk clips.
-- The model is generated from `tools/make_whale_girl_glb.py` and stays inside the in-house GLB loader: one mesh, one skin, one material, one texture atlas, one animation.
-- Animation sampling is delegated to **ozz-animation**; the original in-house sampler is kept as a fallback and as an A/B baseline. No glTF importer, VRM runtime or blend/IK layer is pulled in.
+- The primary character file is now `assets/models/whale_girl.vrm` (351,708 B), a minimal **VRM 1.0** container generated from the existing GLB by `tools/make_whale_girl_vrm.py`: 19 humanoid bones and four two-bone spring chains (`hair_side.L/R`, `hair_back`, `tail`).
+- Animation sampling is delegated to **ozz-animation**; the original in-house sampler is kept as a fallback and as an A/B baseline. No glTF importer, game engine, blend tree or IK layer is pulled in.
+- VRM `VRMC_springBone` is parsed at load time and solved every frame as a damped angular spring. Window drag displacement feeds the solver as inertial input; the visual result is independent of the base idle clip. `WHALE3D_SPRING=0` disables the layer for A/B measurement.
 - The face is a 3-frame atlas (open / blink / smile) sampled by a shader UV offset. Auto blink is driven by the shell; `E` toggles smile and `B` triggers a blink.
-- The shell now has a **native Win32 tray icon, native popup menu and native modal settings page**. No Qt, no PySide6, no UI toolkit.
-- Model switching is now a same-process, same-GL-context **model cache**: the first load of a path builds an `Impl`, and switching to a cached path only changes the active pointer. No window hide, no helper, no blank frame. Measured 4 ms for the first placeholder load and 0 ms for cache hits; private bytes stay at 98.0–98.2 MB across four switches. A same-exe `--relaunch` helper remains available via `WHALE3D_SWITCH=relaunch` as an A/B/fallback path.
+- The shell has a **native Win32 tray icon, native popup menu and native modal settings page**. No Qt, no PySide6, no UI toolkit.
+- Model switching is a same-process, same-GL-context **model cache**: the first load of a path builds an `Impl`, and switching to a cached path only changes the active pointer. No window hide, no helper, no blank frame.
 - The window is borderless, always on top, non-focus-stealing, and draggable with the left mouse button. Right-click opens the tray menu instead of quitting immediately. Only pixels whose alpha is above 16 belong to the Win32 window region, so transparent corners and gaps pass clicks through to the window below.
 
 ## Build
@@ -30,7 +31,7 @@ The release build uses `-Os -s -ffunction-sections -fdata-sections -Wl,--gc-sect
 F:\WhaleGirlPet\3d\whale3d.exe
 ```
 
-`SDL3.dll` must sit next to `whale3d.exe`; the model is resolved relative to the exe (`assets/models/whale_girl.glb`), and the tray icon from `assets/ui/pet.ico`. If the primary model fails, the shell falls back to `placeholder.glb`. An explicit model path can be passed as the first argument.
+`SDL3.dll` must sit next to `whale3d.exe`; the model is resolved relative to the exe (`assets/models/whale_girl.vrm`), and the tray icon from `assets/ui/pet.ico`. If the VRM fails, the shell falls back to `whale_girl.glb` (same named spring chains), then `placeholder.glb`. An explicit model path can be passed as the first argument.
 
 Optional runtime switches:
 
@@ -38,6 +39,7 @@ Optional runtime switches:
 $env:WHALE3D_ANIMATOR = 'ozz'   # default; 'self' uses the in-house sampler
 $env:WHALE3D_CLIP = 'idle'      # default; 'walk' plays the 2-second technical clip
 $env:WHALE3D_FACE = 'auto'      # auto blink; or open / blink / smile for a fixed frame
+$env:WHALE3D_SPRING = '0'       # disable VRM spring bones for A/B; default on
 ```
 
 While the window has focus, `W` cycles `idle → walk`, `O` toggles `ozz ↔ self`, `E` toggles the smile frame and `B` triggers a blink. The log line reports `fps`, `triangles`, `update_us`, `animator`, `clip` and `face` once per second.
@@ -52,7 +54,7 @@ On Windows 11 the per-app visibility flag lives at `HKCU\Control Panel\NotifyIco
 - **Right-click the tray icon** opens a native popup menu: `隐藏窗口 / 显示窗口`, `动画：切到 Walk / Idle`, an expression submenu (`自动表情 / Open / Blink / Smile`), `设置…`, `退出`.
 - **Right-click the pet** opens the same native menu.
 - **Settings** is a native modal Win32 window titled `鲸鱼娘 3D · 设置`. It uses only `COMBOBOX`, `BUTTON` and `STATIC` controls:
-  - 模型: `鲸鱼娘 v1` (`whale_girl.glb`) or `方块占位` (`placeholder.glb`)
+  - 模型: `鲸鱼娘 v1 (VRM)` (`whale_girl.vrm`) or `方块占位` (`placeholder.glb`)
   - 动画: `idle` / `walk`
   - 表情: `auto` / `open` / `blink` / `smile`
   - 采样器: `ozz` / `self`
@@ -97,38 +99,56 @@ The current path is a real in-place **model cache**: `Model` owns a vector of `I
 
 The old process exit crash was not caused by the tray. It was a double free in `main.cpp`: `SDL_GetBasePath()` returns an internal pointer owned by `SDL_QuitFilesystem`, and the old code called `SDL_free` on it. GDB showed `SDL_Quit_REAL → SDL_QuitFilesystem → msvcrt!free` and `0xC0000374` (`STATUS_HEAP_CORRUPTION`). Removing that `SDL_free` made direct exit, tray-menu exit and settings-close-then-exit all return 0. The old expression package contained the same bug; it was inherited from the 2D→3D base, not introduced by the tray.
 
+## VRM body and spring bones
+
+`whale_girl.vrm` is a minimal VRM 1.0 container, not a full VRM avatar: it declares `VRMC_vrm` (19 humanoid bones) and `VRMC_springBone` (four two-bone chains), and keeps the original mesh, skin, atlas and idle clip. `model.cpp` parses both VRM 1.0 `extensions.VRMC_springBone.springs[].joints` and VRM 0.x `extensions.VRM.springBone.boneGroups[].bones`; if neither exists, it falls back to the named chains in the GLB.
+
+Per frame the solver integrates a damped angular spring with semi-implicit Euler:
+
+```text
+accel = -k * (angle - target) - drag * velocity
+velocity += accel * dt
+angle += velocity * dt
+```
+
+The target is driven by the window's per-frame displacement (`setMotionInput(dx, dy)`) plus a small breathing sine. The root bone is rotated, then the tip is reconstructed from `newRoot * inverse(oldRoot) * oldTip`, so the chain swings as a unit rather than each bone rotating independently. VRM `stiffness` / `dragForce` are mapped to `k = 50 + stiffness * 100` and `drag = 9 + dragForce * 20`.
+
+`3d/spring_accept.py` runs two otherwise identical processes with the base clip frozen (`WHALE3D_FREEZE=1`), one with `WHALE3D_SPRING=0` and one with it enabled. The three captured pairs are saved as `docs/_3d_spring_off_*.png` and `docs/_3d_spring_on_*.png`; the per-frame mean RGB deltas were `0.797`, `0.765`, `1.523`, and the frame-2 region sums were `14.3` over the hair/head crop and `96.7` over the tail crop. The tail visibly lifts in the on frame; the hair/head region also differs. This is screen-level evidence, not a formal spring-physics benchmark.
+
 ## Measured on this machine (2026-11-26)
 
 Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` | 1,302,528 bytes (1.24 MiB), with tray + settings + in-place model cache + alpha region |
-| exe SHA256 | `53F6113B757276BA029C2EB16A829FF2D69FF1805D3216782B9965203B6D0478` |
+| `whale3d.exe` | 1,315,840 bytes (1.25 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region |
+| exe SHA256 | `1290AC3A9E304465A00636DF67FBFB4C2BCFF6F5628FDCA792DE7E18DEE40E57` |
 | `SDL3.dll` | 5,385,103 bytes |
-| `whale_girl.glb` | 350,332 bytes |
-| Runtime payload (exe + DLL + GLB) | 7,037,963 bytes (6.71 MiB) |
-| Relaunch helper private (optional A/B path) | 2,064,384 bytes |
+| `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
+| `whale_girl.glb` fallback | 350,332 bytes |
+| Runtime payload (exe + DLL + VRM) | 7,052,651 bytes (6.72 MiB) |
+| Spring chains | 4 (`hair_side.L/R`, `hair_back`, `tail`); 19 VRM humanoid bones |
+| Spring solver | 7.63–10.80 µs/frame idle; 4 spring chains on 28 joints |
 | Tray promotion | `HKCU\Control Panel\NotifyIconSettings\674768749172540869\IsPromoted=1`; exact-rect crop shows the blue-haired icon |
 | Pet window | 420×620, transparent, borderless, always-on-top, non-focusable |
 | Settings client area | 420×360 (outer about 426×389) |
-| FPS | 26.8 first sample, then 28.8–29.0 with alpha readback and region updates; 0.7–13 while the modal settings loop blocks the main loop, recovering after close |
+| FPS | 28.3–29.0 with VRM + spring + alpha readback; 5.0–6.2 on the first frame after an in-place switch, then recovered |
 | Triangles | 2,076 (whale girl), 216 (placeholder) |
-| Animator update, ozz | 6.01–13.30 µs/frame in the restart runs; idle 6.68–8.93, walk 6.01–7.52 |
-| Private bytes, in-place cache | 98,004,992 steady; 98,201,600 after placeholder and after whale back; unchanged over 4 switches |
-| First in-place load | 4 ms for `placeholder.glb`; cache hit 0 ms |
-| In-place identity | same PID 11748, no child process, same window; exit 0 |
-| Relaunch handoff peak (optional) | 97,333,248 (whale → placeholder), 97,456,128 (placeholder → whale) |
-| CPU | 1.7–3.1% of one core in 10 s windows; first window after launch measured 6.2% |
+| Animator update, ozz | 4.34–17.26 µs/frame across switch runs; steady 8–9 µs |
+| Private bytes, in-place cache | 97,837,056 steady at first sample; 98,078,720 after placeholder and after whale back; unchanged over 4 switches |
+| First in-place load | 8 ms for `placeholder.glb`; cache hit 0 ms; `.vrm` back 0 ms |
+| In-place identity | same PID 15860, no child process, same window; exit 0 |
+| CPU | 31.1–35.8% of one core in a 10 s window (spring on vs off; render/hit-mask readback dominates) |
+| RSS | about 70.1 MB |
 | Exit code | 0 for direct exit, tray-menu exit and settings-close-then-exit |
 
-The exe grew by 41,984 bytes over the expression build (1,260,544 → 1,302,528). That covers the tray, two native menus, the settings dialog, subclassing, tray promotion, the in-place model cache, the optional relaunch helper and watchdog, the alpha hit-mask readback and the exit bug fix. The 100 MB limit holds in the default path: the cache settles at 98.0–98.2 MB with no growth across four switches; the optional helper peaks at 97.46 MB and starts the new pet only after the old process is gone.
+The exe grew by 13,312 bytes over the v3.0.28 shell (1,302,528 → 1,315,840). That covers the VRM/GLB extension parser, the per-frame spring solver, motion input plumbing and the `.vrm` settings path. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
 
 ## Runnable package
 
-`F:\WhaleGirlPet\3d\whale3d-whale-girl-v1.zip` is about **2.6 MiB** (the exact ZIP hash and size are recorded in `docs/3d-transition.md`; the README inside the ZIP cannot reliably hash itself). It contains `whale3d.exe` (1,302,528 B, tray/settings/in-place-cache/alpha-region), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.glb` (350,332 B), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Tray icon ready`, loads `whale_girl.glb` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
+`F:\WhaleGirlPet\3d\whale3d-whale-girl-v2.zip` is about **2.7 MiB** (the exact ZIP hash and size are recorded in `docs/3d-transition.md`; the README inside the ZIP cannot reliably hash itself). It contains `whale3d.exe` (1,315,840 B, VRM+spring/tray/settings/in-place-cache/alpha-region), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
 
-The previous expression-only package is preserved as `whale3d-whale-girl-v1-expression.zip` (2,695,131 B, exe `1,260,544 B`, SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`); do not mix its numbers with this build. The older `whale3d-base-step1.zip` (cube) and `whale3d-model-step2.zip` (blocky placeholder) are kept as stage archives.
+The v3.0.28 package remains as `whale3d-whale-girl-v1.zip` (2,727,089 B, exe `1,302,528 B`, SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`); the expression-only package is preserved as `whale3d-whale-girl-v1-expression.zip` (2,695,131 B, exe `1,260,544 B`, SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`). Do not mix their numbers with this build.
 
 ## Known limitations
 
@@ -136,15 +156,17 @@ The previous expression-only package is preserved as `whale3d-whale-girl-v1-expr
 2. Facial expression is only open / blink / smile on a UV-offset atlas; there is no eye tracking, lip sync, morph target or facial rig.
 3. The GLB itself has only one animation. `walk` is generated procedurally at startup; there is no animation blending, IK, root motion or animation event track yet.
 4. Click-through now passed an OS-level cursor test: `SetCursorPos` + `mouse_event` at the transparent corner produced `BN_CLICKED id=1 count=1` on the underlay button; a center drag moved the pet and left the underlay click count unchanged. The earlier synthetic failure was the ctypes WndProc harness truncating LPARAM, not the window-region routing. A physical-hand click is still a user sanity check, not an automated one.
-5. The default model switch is now a true in-place **model cache** in the same process and GL context: switch by active `Impl*`, no window hide, no helper, no blank frame. First placeholder load measured 4 ms and cache hits 0 ms; private bytes were 98,004,992 steady and 98,201,600 after four switches, same PID 11748 and no child process. The optional `--relaunch` helper remains for A/B/fallback (`WHALE3D_SWITCH=relaunch`): 2,064,384 B helper, old+helper peak 97.3–97.5 MB, new pet ready 1.55–1.61 s.
+5. The default model switch is now a true in-place **model cache** in the same process and GL context: switch by active `Impl*`, no window hide, no helper, no blank frame. First placeholder load measured 8 ms and cache hits 0 ms; private bytes were 97,837,056 at the first sample and 98,078,720 after four switches, same PID 15860 and no child process. The optional `--relaunch` helper remains for A/B/fallback (`WHALE3D_SWITCH=relaunch`): 2,064,384 B helper, old+helper peak 97.3–97.5 MB, new pet ready 1.55–1.61 s.
 6. Windows 11 tray promotion is implemented by matching `ExecutablePath` under `HKCU\Control Panel\NotifyIconSettings` and writing `IsPromoted=1`. Explorer applies it on its next start; this machine was restarted once, and the exact `(1611,0)-(1643,48)` crop shows the blue-haired whale girl icon. A fresh install still needs one Explorer restart/sign-in before the flag takes effect.
 7. No behavior state machine, audio, cloud/AI integration or PySide6 replacement yet. The existing `ai_profiles`, `_chat_cloud` and cloud API routes stay in the Python service and are not packaged into this core zip.
-8. ozz is used only as a runtime sampling library. The glTF importer, `.ozz` file baking, blend/IK/root-motion layers and VRM extensions are not integrated.
+8. The VRM support is a deliberately minimal subset: `VRMC_vrm` humanoid mapping and `VRMC_springBone` two-bone chains only. MToon materials, expressions, look-at, spring colliders and full per-joint spring bones are not integrated. The runtime does not import arbitrary VRM avatars yet; the `.vrm` is generated from the project's own GLB.
+9. The spring layer is wired into the default `ozz` path. Selecting the `self` sampler in the settings page bypasses `applySpringBones`; this is a known gap, not a claim that both samplers are equivalent.
 
 ## Not in this step
 
 - ozz blend trees, IK, root motion and `.ozz` asset baking
-- VRM loading and VRM expression / spring-bone support
+- VRM MToon materials, expressions / BlendShape, look-at, spring colliders and per-joint full spring chains
+- arbitrary third-party VRM avatars; the loader currently handles the project's minimal humanoid + two-bone spring subset
 - eye tracking, lip sync or a facial rig beyond the three atlas frames
 - behavior/AI integration
 - installer / package split

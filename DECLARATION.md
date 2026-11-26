@@ -2,7 +2,7 @@
 
 - 项目：鲸鱼娘桌宠 / WhaleGirlPet
 - 仓库：https://github.com/cnbprd/WhaleGirlPet
-- 生效版本：v3.0.28
+- 生效版本：v3.0.28（路线声明）；v3.1.0（3D 身体第一层）
 - 日期：2026-11-26
 - 维护者：cnbprd
 
@@ -30,7 +30,8 @@ v3.0.28 的 3D 核心包已达到以下可用状态：
 - Win11 托盘图标：写入 `NotifyIconSettings\<App ID>\IsPromoted=1`，Explorer 重启后固定在任务栏。
 - 原生托盘菜单、设置页、模型/动画/表情/采样器切换。
 - 同进程、同窗口、同 GL context 的模型缓存：切换只换 active `Impl*`，不隐藏窗口、不重启进程、不启 helper。
-- 当前包：`whale3d-whale-girl-v1.zip`，2,727,089 B；SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`。
+- 当前包：v3.0.28 `whale3d-whale-girl-v1.zip`，2,727,089 B；SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`。
+- v3.1.0 起：默认角色文件为最小 VRM 1.0 `whale_girl.vrm`（351,708 B，19 humanoid bones + 4 条两骨 SpringBone）；包为 `whale3d-whale-girl-v2.zip`（2,803,800 B，SHA256 `C76621D1856F092F859D9A97BE0DE64E70C56D3988E0DD6BD4F721D3422B871E`）。
 - 技术约束：不引入完整游戏引擎，不依赖 Qt/PySide6；继续使用自研 C++/SDL3/OpenGL 壳。
 
 ## 四、尚未迁移到 3D 的部分
@@ -40,7 +41,7 @@ v3.0.28 的 3D 核心包已达到以下可用状态：
 - `ai_profiles` 账号/模型配置。
 - `_chat_cloud` 与云端 API 路由。
 - 语音、记忆、知识库、安全体检等 2D 应用层能力。
-- VRM、ozz blend/IK/root motion、正式美术资产管线。
+- VRM MToon、expressions/BlendShape、look-at、spring colliders、blend/IK/root motion 与正式美术资产管线；当前 VRM 只是最小 humanoid + 两骨 SpringBone 子集。
 
 因此，“转向 3D”指的是**桌面壳和渲染主线**，不是声称 2D 应用的所有云端/业务能力已经迁完。
 

@@ -2,6 +2,19 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.1.0（2026-11-26）
+
+3D 第一层“身体”落地：默认角色从 GLB 切到最小 VRM 1.0，加入 4 条两骨 SpringBone；ASR/LLM/TTS 尚未接入。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 VRM 角色格式 | `3d/tools/make_whale_girl_vrm.py` 从 `whale_girl.glb` 生成 `whale_girl.vrm`；`menu/model` 默认为 `.vrm`，失败回退 `.glb` 再回退 placeholder | `whale_girl.vrm` 351,708 B；`Model loaded: whale_girl.vrm`；19 humanoid bones + 4 条 spring 链 |
+| 2 SpringBone 求解 | `model.cpp` 解析 VRM 1.0 / VRM 0.x / 命名链；每帧半隐式角弹簧；root 旋转 + tip 相对跟随；窗口位移 `setMotionInput` 作为惯性输入 | `Model springs: 4 chains, vrm=1`；`update_us` 稳态 8–9 µs；`WHALE3D_SPRING=0` 可 A/B 关闭 |
+| 3 视觉验收 | `3d/spring_accept.py` 冻结基础 clip，分别跑 spring on/off 各抓 3 帧并逐像素对比 | 平均 RGB 差 0.797 / 0.765 / 1.523；第 2 帧头发区差 14.3、尾巴区差 96.7；截图 `docs/_3d_spring_on_*.png` / `_off_*.png` |
+| 4 设置与默认路径 | 设置页模型项改为 `鲸鱼娘 v1 (VRM)`；默认加载 `.vrm`；in-place cache 对新路径仍生效 | 切 placeholder 首次 4–8 ms；切回 `.vrm` 0 ms；同一 PID、无子进程、exit 0 |
+| 5 包与体积 | 新包 `whale3d-whale-girl-v2.zip`；exe 增加 13,312 B | exe 1,315,840 B；运行负载 7,052,651 B；ZIP 2,803,800 B，SHA256 `C76621D1856F092F859D9A97BE0DE64E70C56D3988E0DD6BD4F721D3422B871E` |
+| 6 回归 | 真实鼠标点击穿透、托盘、in-place 换模沿用 v3.0.28 路径 | 透明角 underlay `BN_CLICKED id=1 count=1`；中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；私有字节 97,837,056 → 98,078,720 四轮不增长 |
+
 ## v3.0.28（2026-11-26）
 
 3D 核心壳三项可用性收口；本次 Release 附 `whale3d-whale-girl-v1.zip`，2D 安装包不重建。

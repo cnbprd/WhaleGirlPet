@@ -27,7 +27,14 @@ public:
     int triangleCount() const;
     int jointCount() const;
     int animationCount() const;
+    int springCount() const;
+    bool usesVrm() const;
     const std::string& error() const;
+
+    // Window/body motion in pixels since the previous frame. The spring-bone
+    // solver uses it as an inertial input; it never changes the mesh itself.
+    void setMotionInput(float dx, float dy);
+    void setSpringEnabled(bool enabled);
 
     // Selects the runtime sampler. "ozz" uses ozz-animation; "self" keeps
     // the original hand-written sampler as a reference/fallback.

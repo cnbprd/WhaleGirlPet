@@ -31,7 +31,7 @@
 | 拖拽验证 | 窗口跟随左键移动 | 最近一次 (-90,-45)；历史区间约 (-80~-100, -40~-50) |
 | 退出验证 | 右键退出成功 | 透明角落与角色身上都会触发，命中区仍是整窗；这是表情版阶段的状态，第 7 步已改成 alpha 区域 |
 
-上表是表情/ozz 阶段的历史数据，exe 不是当前包。当前托盘+设置+in-place 模型缓存+命中区版本的 exe 为 1,302,528 B，运行负载 7,037,963 B（6.71 MiB），内存 98.0–98.2MB 稳态，见第 6/7/8/9 步。
+上表是表情/ozz 阶段的历史数据，exe 不是当前包。当前 v3.1.0 VRM+SpringBone 版 exe 为 1,315,840 B，运行负载 7,052,651 B（6.72 MiB），工作目录私有字节 97.8–98.1MB，包内临时目录 98.3–98.4MB；见第 10 步。
 
 ## 第 3 步：低面数鲸鱼娘 v1
 
@@ -315,7 +315,7 @@
 | :--- | :--- | :--- | :--- |
 | 平台壳 | SDL3 + Win32 托盘/菜单/命中区 | 6.71 MiB 实测（exe 1,302,528 + SDL3 5,385,103 + GLB 350,332；含 ozz/表情/托盘/设置/alpha region/in-place 模型缓存） | 窗口/拖拽/托盘/右键菜单/退出/透明点击穿透/同一进程换模 <100MB 已通 |
 | 渲染 | OpenGL 3.3 core | 含在上项 | 透明/光照/蒙皮/动画已通 |
-| 模型 | 自研 glTF 加载器，不引完整运行时 | 含在上项 | 低面数鲸鱼娘 v1 已通；VRM 未接 |
+| 模型 | 自研 glTF 加载器 + 最小 VRM 1.0 容器，不引完整运行时 | 含在上项；VRM 351,708 B | 低面数鲸鱼娘 v1 + 4 条两骨 SpringBone 已通；MToon/表情/碰撞体未接 |
 | 骨架动画 | 自研采样 + ozz 采样专项库 | static libs 495,192 B；exe +183,296 B | ozz 已接 idle + walk；self 保留对照 |
 | 表情 | 2048×256 三帧图集 + shader 偏移 | GLB +17,420 B；exe +1,536 B | open / blink / smile 已通；自动眨眼生效 |
 | 行为 | C++ 状态机 + 现有动作语义 | 未实测 | 未接入 |
@@ -342,13 +342,51 @@
 
 旧表情版包保留为 `3d\whale3d-whale-girl-v1-expression.zip` **2,695,131 B**，exe `1,260,544 B`、SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`，不要与新包混用。透明对比取自旧表情包解压后的 open 帧：87.25% 像素完全一致，bbox=(139,178)-(329,531)；新包的模型/图集/渲染路径未变。
 
+## 第 10 步（v3.1.0）：VRM 1.0 身体与 SpringBone 二次动力学
+
+这一轮只做第一层“3D 身体”，不接 ASR/LLM/TTS，也不把认知层塞进渲染进程。
+
+| 项 | 实现 | 实测 |
+| :--- | :--- | :--- |
+| 默认角色格式 | `tools/make_whale_girl_vrm.py` 从原 GLB 生成 `whale_girl.vrm`；`main.cpp` 默认加载 `.vrm`，失败回退 `.glb`，再回退 placeholder | `Model loaded: whale_girl.vrm (2076 triangles, 28 joints, 1 animations)` |
+| VRM 元数据 | `VRMC_vrm` 1.0 + 19 个 humanoid bones；`VRMC_springBone` 4 条两骨链：`hair_side.L/R` `[22,23]/[24,25]`、`hair_back` `[26,27]`、`tail` `[20,21]` | 文件 **351,708 B**，SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
+| 弹簧求解 | 每帧半隐式角弹簧；窗口位移作为惯性输入，呼吸正弦作为微动；root 旋转后按 `newRoot * inverse(oldRoot) * oldTip` 重建 tip | `Model springs: 4 chains, vrm=1, enabled=1` |
+| VRM 参数映射 | `k = 50 + stiffness*100`、`drag = 9 + dragForce*20`；头发振幅 0.075 rad、尾巴 0.12 rad，限幅约 ±0.30 rad | 4 条链全部初始化并参与每帧求解 |
+| A/B 开关 | `WHALE3D_SPRING=0` 关闭弹簧层；`WHALE3D_FREEZE=1` 冻结基础 clip 便于同帧对比（仅测试用） | `spring_accept.py` 跑两组进程 |
+| 视觉验收 | 冻结 idle 后，spring on/off 各抓 3 帧；`docs/_3d_spring_on_*.png` / `_off_*.png` | 三帧平均 RGB 差 **0.797 / 0.765 / 1.523**；第 2 帧头发区差 **14.3**、尾巴区差 **96.7**（RGB 和） |
+| 窗口惯性接线 | `main.cpp` 每帧 `SDL_GetWindowPosition` 差值传给 `setMotionInput(dx,dy)` | 拖拽路径仍通过，未出现网格拉伸/炸开 |
+| 设置页 | 模型下拉改为 `鲸鱼娘 v1 (VRM)`；切换仍走 in-place cache | 切 placeholder 首次 4–8 ms，切回 `.vrm` 缓存命中 0 ms |
+| 回归 | 真实鼠标、托盘、in-place 缓存沿用 v3.0.28 路径 | 透明角 underlay `BN_CLICKED id=1 count=1`；中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；同一 PID、无子进程、exit 0 |
+
+### 体积与内存
+
+| 项 | 实测 |
+| :--- | :--- |
+| `whale3d.exe` | **1,315,840 B**；比 v3.0.28 的 1,302,528 B 增加 **13,312 B** |
+| `whale_girl.vrm` | **351,708 B**（原 `.glb` 350,332 B 仍保留作 fallback） |
+| 运行负载（exe + SDL3.dll + VRM） | **7,052,651 B（6.72 MiB）** |
+| 可运行包 `whale3d-whale-girl-v2.zip` | **2,803,800 B（2.67 MiB）**，SHA256 `C76621D1856F092F859D9A97BE0DE64E70C56D3988E0DD6BD4F721D3422B871E` |
+| 工作目录 in-place 私有字节 | 97,837,056 首次；98,078,720 切 placeholder/切回 `.vrm`/两轮后不增长；PID 15860，无子进程 |
+| 包内临时目录私有字节 | 98,328,576 首次；98,365,440 四轮切换后不增长；PID 32988，无子进程；仍低于 100,000,000 B |
+| 帧率 | 28.2–29.0；切换后的首帧 4.4–6.1，随后恢复 |
+| CPU | 31.1–35.8% 单核（10 秒窗口；spring on/off 无显著差异，渲染与 alpha 回读为主） |
+| RSS | 约 70.1 MB |
+
+### 已知边界
+
+1. 这是**最小 VRM 子集**：只有 humanoid 映射和两骨 `VRMC_springBone`；没有 MToon、expressions/BlendShape、look-at、spring colliders 和逐关节完整链条。
+2. 弹簧只作用于 root/tip 两骨链，tip 跟随 root 的局部相对变换；不是完整 VRM 逐关节物理。视觉上已经能让头发/尾巴摆，但不能宣称“任意 VRM 直接可跑”。
+3. 基础 idle 动画仍由 ozz 采样；弹簧是叠加层。`WHALE3D_ANIMATOR=self` 时当前不应用弹簧层，这是下一步要补的接线。
+4. CPU 约三分之一单核并不低；主要成本在每帧 alpha 回读与 30fps 渲染，不在 4 条弹簧。后续优化要从回读频率/窗口区域更新入手，不能把账算到 SpringBone。
+5. 没有用外部第三方 VRM 样例验证兼容性；当前 `.vrm` 是项目自有 GLB 的扩展容器。
+
 ## 风险与未决
 
 1. **透明 OpenGL 在混合显卡/不同驱动上不保证一致。** SDL3 源码对 Windows 透明窗口有 `FIXME: does not work on all hardware configurations with different renders` 的注释；本机 GTX 1060 通过，但需要在核显/双显卡机器上复测。
 2. **透明命中区已按“目标 + 回调”两段闭环。** `WM_NCHITTEST` 在角色中心返回 `HTCLIENT`、透明角落返回 `HTTRANSPARENT`；`SetWindowRgn` 后，干净 topmost underlay 的 `WindowFromPoint` 在透明角落返回测试按钮 `BUTTON`，角色中心仍返回 pet。进一步用 `SetCursorPos` + `mouse_event` 的真实 OS 级输入：透明角落触发 underlay `BN_CLICKED count=1`，角色中心拖拽把窗口从 `(1200,300)-(1620,920)` 移到 `(1235,325)-(1655,945)`，underlay 计数仍为 1。物理手人工点击仍可做最终目检，但合成输入层的旧 harness bug 已排除。
 3. **v1 仍是风格化低面数**：曲面脸贴片、近似的侧发/后发、单片鲸尾、没有落地阴影；表情只有 open / blink / smile 三帧，没有眼球转动、口型同步或情绪混合。它是可辨认的第一版，不是美术定稿。
 4. **PySide6 面板和云端功能尚未迁移。** `ai_profiles`、`_chat_cloud`、云端 API 路由都还在 Python 侧；在 C++ 核心稳定前，不要拆掉现有服务。
-5. **VRM 尚未接入；ozz 只接到采样层。** 当前证明的是壳、glTF 加载、蒙皮、ozz 采样和 idle/walk 两条 clip，不证明正式 VRM、blend/IK 或 root motion 管线。
+5. **VRM 已接入最小子集；ozz 只接到采样层。** 当前证明的是壳、glTF 加载、蒙皮、ozz 采样、VRM humanoid 映射和两骨 SpringBone；未证明 MToon、expressions/BlendShape、look-at、spring colliders、blend/IK 或 root motion 管线。
 6. **“单包 20–30MB 且全功能保留”仍不成立。** 若坚持单包，PySide6 必须重写为 Win32/D2D 或本地 HTML；这是下一阶段的大工程，不是接个 VRM 就能解决。
 7. **模型切换已改为默认 in-place 模型缓存，不再重启进程。** 同一 PID、同一 GL context、同一窗口，切换只换 active `Impl*`；首次 placeholder 加载 4ms，缓存命中 0ms；私有字节 98.0–98.2MB，四轮不增长。`--relaunch` helper 仅作为 `WHALE3D_SWITCH=relaunch` 的 A/B/fallback，峰值 97.3–97.5MB、空窗 1.55–1.61s。
 8. **Win11 托盘图标已写入固定标记。** `ShellUi::promoteTrayIcon` 按 `ExecutablePath` 匹配 `HKCU\Control Panel\NotifyIconSettings\674768749172540869`，写 `IsPromoted=1`；Explorer 重启一次后，`(1611,0)-(1643,48)` 的精确裁剪显示蓝发鲸鱼娘图标。新安装首次运行仍需用户重启一次 Explorer/重新登录，应用没有自动重启 Explorer。
@@ -361,3 +399,4 @@
 4. 把云端/AI 作为独立可选服务保留，核心包不打包 Python；`ai_profiles`、`_chat_cloud`、云端 API 路由不能丢。
 5. 若要继续动画，再评估 ozz 的 blend/IK/root motion；当前不把 glTF importer 或 VRM 运行时一起拖进来。
 6. 每一步都记录“新增字节数”和“私有字节增量”，不让包体积和 RAM 在无感知的情况下回涨。
+7. **第 10 步（v3.1.0）已完成**：`.vrm` 默认加载、4 条两骨 SpringBone、窗口位移惯性输入、A/B 开关和包内实测都已收口。下一步按路线进入 v3.2.x：先做情绪参数总线（`emotion/intensity/gaze_target/body_lean/source`），再接 ASR/TTS/LLM 的独立服务闭环；在此之前不把认知层塞进 3D 渲染进程。

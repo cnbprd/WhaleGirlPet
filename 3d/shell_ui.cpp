@@ -81,7 +81,10 @@ std::string joinBase(const std::string& base, const std::string& relative) {
 }
 
 std::string modelDisplayName(const std::string& path) {
-    return fileNameOf(path) == "placeholder.glb" ? "方块占位" : "鲸鱼娘 v1";
+    const std::string file = fileNameOf(path);
+    if (file == "placeholder.glb") return "方块占位";
+    if (file == "whale_girl.vrm") return "鲸鱼娘 v1 (VRM)";
+    return "鲸鱼娘 v1";
 }
 
 bool forceForeground(HWND hwnd) {
@@ -625,7 +628,7 @@ void ShellUi::buildSettingsControls(HWND hwnd) {
     const std::string currentModel = modelDisplayName(currentPath);
     createChild(hwnd, L"STATIC", L"模型", WS_CHILD | WS_VISIBLE, 20, 90, 60, 22);
     HWND modelCombo = createCombo(hwnd, 100, 86, 280, IDC_SET_MODEL);
-    SendMessageW(modelCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"鲸鱼娘 v1"));
+    SendMessageW(modelCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"鲸鱼娘 v1 (VRM)"));
     SendMessageW(modelCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"方块占位"));
     SendMessageW(modelCombo, CB_SETCURSEL,
                  fileNameOf(currentPath) == "placeholder.glb" ? 1 : 0, 0);
@@ -730,7 +733,7 @@ void ShellUi::applySettings(HWND hwnd) {
                               : (face == "Smile" || face == "smile") ? "smile"
                               : "auto";
     const std::string animatorKey = (animator == "self") ? "self" : "ozz";
-    const std::string modelFile = modelChoice == "方块占位" ? "placeholder.glb" : "whale_girl.glb";
+    const std::string modelFile = modelChoice == "方块占位" ? "placeholder.glb" : "whale_girl.vrm";
     const std::string newModelPath = joinBase(assetBase_, "assets/models/" + modelFile);
     const std::string oldModelPath = model_->sourcePath();
 

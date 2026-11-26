@@ -396,6 +396,36 @@ struct Animation {
     float duration = 0.0f;
 };
 
+// A spring chain is a two-bone approximation of a VRM spring. The root bone
+// carries the swing; the tip follows through the original local offset. This
+// keeps the solver cheap enough for a 420x620 desktop pet.
+struct SpringSpec {
+    std::string name;
+    int rootNode = -1;
+    int tipNode = -1;
+    float stiffness = 0.8f;
+    float dragForce = 0.4f;
+    float gravityPower = 0.1f;
+    float hitRadius = 0.02f;
+};
+
+struct SpringState {
+    SpringSpec spec;
+    int rootSkin = -1;
+    int tipSkin = -1;
+    int rootOzz = -1;
+    int tipOzz = -1;
+    float angleX = 0.0f;
+    float angleZ = 0.0f;
+    float velocityX = 0.0f;
+    float velocityZ = 0.0f;
+    float stiffness = 100.0f;
+    float drag = 13.0f;
+    float gravity = 0.0f;
+    float phase = 0.0f;
+    float amplitude = 0.055f;
+};
+
 struct Model::Impl {
     GL gl;
     GLuint program = 0;
@@ -415,6 +445,15 @@ struct Model::Impl {
     int triangleCount = 0;
     bool loaded = false;
     std::string error;
+
+    std::vector<SpringSpec> springSpecs;
+    std::vector<SpringState> springs;
+    bool vrmLoaded = false;
+    bool springEnabled = true;
+    bool freezeAnimation = false;
+    float motionX = 0.0f;
+    float motionY = 0.0f;
+    float lastUpdateTime = -1.0f;
 
     bool useOzz = true;
     bool ozzReady = false;
@@ -915,6 +954,144 @@ static bool buildOzz(Model::Impl& m) {
     return true;
 }
 #endif
+
+static int findNodeByName(const Model::Impl& m, const std::string& name) {
+    for (size_t i = 0; i < m.nodes.size(); ++i) {
+        if (m.nodes[i].name == name) return (int)i;
+    }
+    return -1;
+}
+
+static void addSpringSpec(Model::Impl& m, const std::string& name, int rootNode, int tipNode,
+                          float stiffness, float dragForce, float gravityPower) {
+    if (rootNode < 0 || tipNode < 0 || rootNode >= (int)m.nodes.size() ||
+        tipNode >= (int)m.nodes.size() || rootNode == tipNode) {
+        return;
+    }
+    SpringSpec spec;
+    spec.name = name;
+    spec.rootNode = rootNode;
+    spec.tipNode = tipNode;
+    spec.stiffness = stiffness;
+    spec.dragForce = dragForce;
+    spec.gravityPower = gravityPower;
+    m.springSpecs.push_back(std::move(spec));
+}
+
+static void parseSpringSpecs(Model::Impl& m, const nlohmann::json& j) {
+    m.springSpecs.clear();
+    m.vrmLoaded = false;
+    if (j.contains("extensions") && j["extensions"].is_object()) {
+        const auto& exts = j["extensions"];
+        if (exts.contains("VRMC_vrm")) m.vrmLoaded = true;
+
+    // VRM 1.0: extensions.VRMC_springBone.springs[].joints are node indices.
+    if (exts.contains("VRMC_springBone") && exts["VRMC_springBone"].is_object()) {
+        const auto& sb = exts["VRMC_springBone"];
+        if (sb.contains("springs") && sb["springs"].is_array()) {
+            int index = 0;
+            for (const auto& sj : sb["springs"]) {
+                std::string name = sj.value("name", "spring" + std::to_string(index++));
+                std::vector<int> joints;
+                if (sj.contains("joints") && sj["joints"].is_array()) {
+                    for (const auto& jn : sj["joints"]) {
+                        if (jn.is_number_integer()) joints.push_back(jn.get<int>());
+                    }
+                }
+                if (joints.size() >= 2) {
+                    addSpringSpec(m, name, joints[0], joints[1],
+                                  sj.value("stiffness", 0.8f),
+                                  sj.value("dragForce", 0.4f),
+                                  sj.value("gravityPower", 0.1f));
+                }
+            }
+        }
+    }
+
+    // VRM 0.x compatibility: extensions.VRM.springBone.boneGroups[].bones.
+    if (m.springSpecs.empty() && exts.contains("VRM") && exts["VRM"].is_object()) {
+        const auto& vrm = exts["VRM"];
+        if (vrm.contains("springBone") && vrm["springBone"].is_object()) {
+            const auto& sb = vrm["springBone"];
+            if (sb.contains("boneGroups") && sb["boneGroups"].is_array()) {
+                int index = 0;
+                for (const auto& bg : sb["boneGroups"]) {
+                    std::string name = bg.value("comment", "spring" + std::to_string(index++));
+                    std::vector<int> bones;
+                    if (bg.contains("bones") && bg["bones"].is_array()) {
+                        for (const auto& bn : bg["bones"]) {
+                            if (bn.is_number_integer()) bones.push_back(bn.get<int>());
+                        }
+                    }
+                    if (bones.size() >= 2) {
+                        float stiffness = bg.value("stiffness", bg.value("stiffiness", 0.8f));
+                        addSpringSpec(m, name, bones[0], bones[1], stiffness,
+                                      bg.value("dragForce", 0.4f),
+                                      bg.value("gravityPower", 0.1f));
+                    }
+                }
+            }
+        }
+    }
+
+    }
+
+    // The current custom GLB has no VRM extension. Keep the same spring
+    // behavior through its named secondary chains, so .glb remains a valid
+    // fallback and the package remains testable without VRM metadata.
+    if (m.springSpecs.empty()) {
+        auto named = [&](const char* name, const char* rootName, const char* tipName,
+                        float stiffness, float drag, float gravity) {
+            int root = findNodeByName(m, rootName);
+            int tip = findNodeByName(m, tipName);
+            addSpringSpec(m, name, root, tip, stiffness, drag, gravity);
+        };
+        named("hair_side.L", "hair_side.L", "hair_side_end.L", 0.85f, 0.45f, 0.12f);
+        named("hair_side.R", "hair_side.R", "hair_side_end.R", 0.85f, 0.45f, 0.12f);
+        named("hair_back", "hair_back", "hair_back_end", 0.75f, 0.50f, 0.10f);
+        named("tail", "tail", "tail_tip", 0.55f, 0.35f, 0.00f);
+    }
+}
+
+static void initSprings(Model::Impl& m) {
+    m.springs.clear();
+    for (const auto& spec : m.springSpecs) {
+        int skinIndex = -1, jointIndex = -1;
+        for (size_t si = 0; si < m.skins.size() && skinIndex < 0; ++si) {
+            for (size_t ji = 0; ji < m.skins[si].joints.size(); ++ji) {
+                if (m.skins[si].joints[ji] == spec.rootNode) {
+                    skinIndex = (int)si;
+                    jointIndex = (int)ji;
+                    break;
+                }
+            }
+        }
+        if (skinIndex < 0) continue;
+        SpringState state;
+        state.spec = spec;
+        state.rootSkin = jointIndex;
+        state.rootOzz = (jointIndex < (int)m.skinToOzz.size())
+                            ? m.skinToOzz[(size_t)jointIndex] : -1;
+        state.tipSkin = -1;
+        state.tipOzz = -1;
+        for (size_t ji = 0; ji < m.skins[(size_t)skinIndex].joints.size(); ++ji) {
+            if (m.skins[(size_t)skinIndex].joints[ji] == spec.tipNode) {
+                state.tipSkin = (int)ji;
+                state.tipOzz = (ji < m.skinToOzz.size()) ? m.skinToOzz[ji] : -1;
+                break;
+            }
+        }
+        // VRM stiffness is a normalized feel value; convert it to an angular
+        // spring with roughly 1.2-2 Hz and a damping ratio around 0.65.
+        state.stiffness = 50.0f + spec.stiffness * 100.0f;
+        state.drag = 9.0f + spec.dragForce * 20.0f;
+        state.gravity = spec.gravityPower * 0.012f;
+        state.phase = (float)m.springs.size() * 1.7f;
+        state.amplitude = spec.name.find("tail") != std::string::npos ? 0.12f : 0.075f;
+        m.springs.push_back(state);
+    }
+}
+
 Model::Model() : impl_(nullptr) {}
 Model::~Model() {
     for (Impl* cached : cache_) delete cached;
@@ -933,6 +1110,20 @@ int Model::jointCount() const {
 }
 int Model::animationCount() const {
     return impl_ ? (int)impl_->animations.size() : 0;
+}
+int Model::springCount() const {
+    return impl_ ? (int)impl_->springs.size() : 0;
+}
+bool Model::usesVrm() const {
+    return impl_ && impl_->vrmLoaded;
+}
+void Model::setMotionInput(float dx, float dy) {
+    if (!impl_) return;
+    impl_->motionX = dx;
+    impl_->motionY = dy;
+}
+void Model::setSpringEnabled(bool enabled) {
+    if (impl_) impl_->springEnabled = enabled;
 }
 const std::string& Model::error() const {
     static const std::string empty;
@@ -1087,6 +1278,20 @@ bool Model::loadImpl(const std::string& path) {
     m.sourcePath = path;
     m.triangleCount = 0;
     m.activeClip = 0;
+    m.springSpecs.clear();
+    m.springs.clear();
+    m.vrmLoaded = false;
+    m.motionX = 0.0f;
+    m.motionY = 0.0f;
+    m.lastUpdateTime = -1.0f;
+    m.springEnabled = true;
+    m.freezeAnimation = false;
+    if (const char* spring = std::getenv("WHALE3D_SPRING")) {
+        m.springEnabled = std::strcmp(spring, "0") != 0;
+    }
+    if (const char* freeze = std::getenv("WHALE3D_FREEZE")) {
+        m.freezeAnimation = std::strcmp(freeze, "0") != 0;
+    }
 #ifdef WHALE3D_USE_OZZ
     m.ozzReady = false;
     m.ozzError.clear();
@@ -1461,6 +1666,8 @@ bool Model::loadImpl(const std::string& path) {
         }
     }
 
+    parseSpringSpecs(m, j);
+
     // animations (first one)
     if (j.contains("animations")) {
         for (const auto& aj : j["animations"]) {
@@ -1509,7 +1716,13 @@ bool Model::loadImpl(const std::string& path) {
         SDL_Log("ozz ready: %d joints, clips=idle/walk",
                 m.ozzSkeleton->num_joints());
     }
+    initSprings(m);
+#else
+    initSprings(m);
 #endif
+
+    SDL_Log("Model springs: %d chains, vrm=%d, enabled=%d",
+            (int)m.springs.size(), m.vrmLoaded ? 1 : 0, m.springEnabled ? 1 : 0);
 
     m.loaded = true;
     update(0.0f);
@@ -1577,13 +1790,53 @@ static Mat4 matFromOzz(const ozz::math::Float4x4& src) {
     return r;
 }
 
-static bool updateOzz(Model::Impl& m, float timeSeconds) {
+static void applySpringBones(Model::Impl& m, float timeSeconds, float dt) {
+    if (!m.springEnabled || m.springs.empty() || !m.ozzReady) return;
+    if (dt <= 0.0f) return;
+    dt = std::min(dt, 0.05f);
+
+    for (auto& spring : m.springs) {
+        // Two angular degrees of freedom: forward/back (X) and side (Z).
+        // Window motion is the inertial input; the tiny sine is breathing.
+        float targetX = std::clamp(-m.motionY * 0.018f + std::sin(timeSeconds * 1.10f + spring.phase) * spring.amplitude,
+                                   -0.30f, 0.30f) + spring.gravity;
+        float targetZ = std::clamp(m.motionX * 0.018f + std::sin(timeSeconds * 0.85f + spring.phase + 0.8f) * spring.amplitude * 0.8f,
+                                   -0.32f, 0.32f);
+
+        float ax = -spring.stiffness * (spring.angleX - targetX) - spring.drag * spring.velocityX;
+        float az = -spring.stiffness * (spring.angleZ - targetZ) - spring.drag * spring.velocityZ;
+        spring.velocityX += ax * dt;
+        spring.velocityZ += az * dt;
+        spring.angleX += spring.velocityX * dt;
+        spring.angleZ += spring.velocityZ * dt;
+        spring.angleX = std::clamp(spring.angleX, -0.30f, 0.30f);
+        spring.angleZ = std::clamp(spring.angleZ, -0.32f, 0.32f);
+
+        if (spring.rootOzz < 0 || spring.tipOzz < 0 ||
+            spring.rootOzz >= (int)m.ozzModels.size() ||
+            spring.tipOzz >= (int)m.ozzModels.size()) {
+            continue;
+        }
+        const ozz::math::Float4x4 oldRoot = m.ozzModels[(size_t)spring.rootOzz];
+        const ozz::math::Float4x4 oldTip = m.ozzModels[(size_t)spring.tipOzz];
+        const ozz::math::Float4x4 rotation =
+            ozz::math::Float4x4::FromAxisAngle(ozz::math::Float3(1, 0, 0), spring.angleX) *
+            ozz::math::Float4x4::FromAxisAngle(ozz::math::Float3(0, 0, 1), spring.angleZ);
+        const ozz::math::Float4x4 newRoot = oldRoot * rotation;
+        const ozz::math::Float4x4 relative = ozz::math::Invert(oldRoot) * oldTip;
+        m.ozzModels[(size_t)spring.rootOzz] = newRoot;
+        m.ozzModels[(size_t)spring.tipOzz] = newRoot * relative;
+    }
+}
+
+static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
     const ozz::animation::Animation* clip =
         (m.activeClip == 1 && m.ozzWalk) ? m.ozzWalk.get() : m.ozzIdle.get();
     if (!clip || !m.ozzContext || m.ozzModels.empty() || m.ozzLocals.empty()) return false;
     float duration = clip->duration();
     if (duration <= 0.0f) return false;
-    float ratio = std::fmod(timeSeconds, duration) / duration;
+    float sampleTime = m.freezeAnimation ? 0.0f : timeSeconds;
+    float ratio = std::fmod(sampleTime, duration) / duration;
     if (ratio < 0.0f) ratio += 1.0f;
 
     ozz::animation::SamplingJob sampling;
@@ -1598,6 +1851,8 @@ static bool updateOzz(Model::Impl& m, float timeSeconds) {
     localToModel.input = ozz::make_span(m.ozzLocals);
     localToModel.output = ozz::make_span(m.ozzModels);
     if (!localToModel.Run()) return false;
+
+    applySpringBones(m, timeSeconds, dt);
 
     for (auto& skin : m.skins) {
         for (size_t j = 0; j < skin.joints.size() && j < m.skinToOzz.size(); ++j) {
@@ -1627,8 +1882,13 @@ void Model::update(float timeSeconds) {
     Impl& m = *impl_;
     if (!m.loaded) return;
     updateFace(m, timeSeconds);
+    float dt = 0.016f;
+    if (m.lastUpdateTime >= 0.0f && timeSeconds > m.lastUpdateTime) {
+        dt = std::clamp(timeSeconds - m.lastUpdateTime, 0.001f, 0.05f);
+    }
+    m.lastUpdateTime = timeSeconds;
 #ifdef WHALE3D_USE_OZZ
-    if (m.useOzz && m.ozzReady && updateOzz(m, timeSeconds)) return;
+    if (m.useOzz && m.ozzReady && updateOzz(m, timeSeconds, dt)) return;
 #endif
     if (!m.animations.empty()) {
         sampleAnimation(m, m.animations.front(), timeSeconds);

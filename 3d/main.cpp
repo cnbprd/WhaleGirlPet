@@ -132,21 +132,27 @@ int main(int argc, char** argv) {
         // calling SDL_free here corrupts the heap and crashes SDL_Quit on exit.
         base = raw;
     }
-    std::string modelPath = argc > 1 ? argv[1] : base + "assets/models/whale_girl.glb";
+    std::string modelPath = argc > 1 ? argv[1] : base + "assets/models/whale_girl.vrm";
     Model model;
     if (!model.load(modelPath)) {
-        SDL_Log("Primary model load failed: %s", model.error().c_str());
-        modelPath = base + "assets/models/placeholder.glb";
+        SDL_Log("Primary VRM load failed: %s", model.error().c_str());
+        modelPath = base + "assets/models/whale_girl.glb";
         if (!model.load(modelPath)) {
-            SDL_Log("Fallback model load failed: %s", model.error().c_str());
-            SDL_GL_DestroyContext(ctx);
-            SDL_DestroyWindow(win);
-            SDL_Quit();
-            return 1;
+            SDL_Log("GLB fallback load failed: %s", model.error().c_str());
+            modelPath = base + "assets/models/placeholder.glb";
+            if (!model.load(modelPath)) {
+                SDL_Log("Fallback placeholder load failed: %s", model.error().c_str());
+                SDL_GL_DestroyContext(ctx);
+                SDL_DestroyWindow(win);
+                SDL_Quit();
+                return 1;
+            }
         }
     }
     SDL_Log("Model loaded: %s (%d triangles, %d joints, %d animations)",
             modelPath.c_str(), model.triangleCount(), model.jointCount(), model.animationCount());
+    SDL_Log("Spring bones: %d chains, vrm=%d",
+            model.springCount(), model.usesVrm() ? 1 : 0);
 
     if (const char* animator = std::getenv("WHALE3D_ANIMATOR")) {
         if (!model.setAnimator(animator)) {
@@ -198,6 +204,8 @@ int main(int argc, char** argv) {
     bool dragging = false;
     float dragStartX = 0.0f, dragStartY = 0.0f;
     int winStartX = 0, winStartY = 0;
+    int lastWinX = 0, lastWinY = 0;
+    SDL_GetWindowPosition(win, &lastWinX, &lastWinY);
     Uint64 start = SDL_GetTicks();
     Uint64 lastLog = start;
     int frames = 0;
@@ -257,6 +265,13 @@ int main(int argc, char** argv) {
             SDL_Delay(16);
             continue;
         }
+
+        int winX = 0, winY = 0;
+        SDL_GetWindowPosition(win, &winX, &winY);
+        model.setMotionInput(static_cast<float>(winX - lastWinX),
+                             static_cast<float>(winY - lastWinY));
+        lastWinX = winX;
+        lastWinY = winY;
 
         float t = static_cast<float>(SDL_GetTicks() - start) / 1000.0f;
         Uint64 updateStart = SDL_GetPerformanceCounter();
