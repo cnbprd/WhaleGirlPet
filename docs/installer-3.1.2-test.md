@@ -60,9 +60,9 @@ Type Mismatch.
 
 ## 产物
 
-- 测试包：`dist/3d/WhaleGirlPet-Setup-3.1.2-test.exe`（仅测试，不进 Release）
-- 生产包：`dist/3d/WhaleGirlPet-Setup-3.1.2.exe`（重新编译的安装修复版）
-- 旧包备份：`build/WhaleGirlPet-Setup-3.1.2-before-installerfix.exe`
+- 测试包：`WhaleGirlPet-Setup-3.1.2-test.exe`，仅测试；与生产包内容/哈希相同（`BuildSuffix` 只改输出文件名），测试后已清理。
+- 生产包：`dist/3d/WhaleGirlPet-Setup-3.1.2.exe`，4,418,739 B / SHA256 `5AECE5A333A0AF8B5D357F32FF1E10F4438614F976911E8AE81E68E124D0A3D2`。
+- 旧包备份测试后已清理；线上 Release 仍是旧包。
 
 ## 边界
 
