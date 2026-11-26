@@ -357,6 +357,7 @@
 | 窗口惯性接线 | `main.cpp` 每帧 `SDL_GetWindowPosition` 差值传给 `setMotionInput(dx,dy)` | 拖拽路径仍通过，未出现网格拉伸/炸开 |
 | 设置页 | 模型下拉改为 `鲸鱼娘 v1 (VRM)`；切换仍走 in-place cache | 切 placeholder 首次 4–8 ms，切回 `.vrm` 缓存命中 0 ms |
 | 回归 | 真实鼠标、托盘、in-place 缓存沿用 v3.0.28 路径 | 透明角 underlay `BN_CLICKED id=1 count=1`；中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；同一 PID、无子进程、exit 0 |
+| Release 资产 | v3.1.0 只发 3D 包；旧的 `.github/workflows/release-assets.yml` 改为手动触发，避免 `app/**` 变更再自动构建 2D portable/source | Release 页面最终只有 `whale3d-whale-girl-v2.zip` 与其 `.sha256` |
 
 ### 体积与内存
 
