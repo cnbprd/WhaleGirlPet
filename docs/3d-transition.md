@@ -508,6 +508,6 @@
 | pose 验收 | `pose_accept.py` 冻结动画、`WHALE3D_SPRING=0` 隔离次级弹簧；3.2.0.0 重建后复测：neutral→gaze 60 ms **0.176** / 满值 **0.712**；lean 基线→lean 60 ms **0.314** / 满值 **1.160**；lean→release 120 ms **0.637** / 200 ms **1.091**；空 pose 后 reset **0.000**、3 s **0.000**、reset→reset 3 s **0.000** |
 | residual 归因 | 默认弹簧下 reset 仍有约 **0.4–0.8**（随弹簧相位变化；本轮 **0.413**（1 s）/ **0.707**（3 s），另次 **0.817 / 0.572**），但 `PoseTrace` 六个 current 值全为 0；切 `WHALE3D_SPRING=0` 后同一流程 reset **0.000**。残差来自头发/尾巴 SpringBone 独立正弦相位，不是姿态未归零；spring-on 对照截图 `docs/_3d_pose_neutral_spring.png`、`_3d_pose_reset_spring.png` |
 | 长时浸泡 | `emotion_longrun.py` 从 90 s 扩到 10 分钟（600 s），20 s 一轮 happy+gaze → lean → 空包回正；`alive_after_soak=True`，动画帧差 **0.284**，RSS 67.6→67.8 MB（全样本 67.2–67.9），CPU 平均 **35.4%** / 峰值 **38.5%**，FPS 19.7–28.9 / 平均 **27.68**；截图 `_3d_longrun_anim_a.png`、`_anim_b.png`、`_3d_longrun_10m_mid.png`、`_3d_longrun_final.png` |
-| 边界 | 5 条证据依赖规则仍人工核对；ASR 仍单句/显式一次录音，无连续识别/口型；3.2.0-dev 便携 ZIP 与安装器已生成，ZIP 解压启动验收通过，安装器未重做完整安装/卸载回归；10 分钟是 bounded soak，不是 24 小时 |
+| 边界 | 5 条证据依赖规则仍人工核对；ASR 仍单句/显式一次录音，无连续识别/口型；3.2.0-dev 便携 ZIP 与安装器已生成，ZIP 解压启动验收通过，安装器完成临时目录全新安装/启动/卸载回归，未做从现有 3.1.2 原地升级；10 分钟是 bounded soak，不是 24 小时 |
 
 ASR 与姿态层都接在 Python/参数层，渲染进程仍只认情绪与姿态参数。

@@ -86,7 +86,7 @@
 | 文件 | 说明 |
 |---|---|
 | `whale3d-whale-girl-v3.2-dev.zip` | 当前 3.2 测试便携包，解压即用；exe 版本资源 3.2.0.0，含 `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone + 180/420 ms 姿态平滑 |
-| `WhaleGirlPet-Setup-3.2.0-dev.exe` | 当前 3.2 测试安装包；无需管理员权限，目录页可改安装位置；安装脚本与稳定版相同，尚未做完整安装/卸载回归 |
+| `WhaleGirlPet-Setup-3.2.0-dev.exe` | 当前 3.2 测试安装包；无需管理员权限，目录页可改安装位置；已做临时目录全新安装/启动/卸载回归，未做从 3.1.2 原地升级 |
 | `whale3d-whale-girl-v3.zip` | 稳定版 3.1.2 核心包；exe 1,323,520 B，不含 3.2 的姿态平滑 |
 | `WhaleGirlPet-Setup-3.1.2.exe` | 稳定版安装包；无需管理员权限，目录页可改安装位置。默认目录按顺序：已有 3D 安装的 `InstallLocation` → 旧版 2D 3.0.27 目录 → `F:\WhaleGirlPetApp` → `%LOCALAPPDATA%\WhaleGirlPet3D`。检测到旧版 2D 时由安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.0.28 / v3.1.0 / v3.1.1 / v3.1.2 共用同一安装位置，后装覆盖升级 |
 

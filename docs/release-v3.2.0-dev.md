@@ -17,12 +17,13 @@
 | `whale3d-whale-girl-v3.2-dev.zip` | 2,814,755 B | `FDEFE4EAB2A17805664E4AE8DAE16CA3ADE28252D1A53650A067F564D9717B0C` |
 | `WhaleGirlPet-Setup-3.2.0-dev.exe` | 4,424,684 B | `7E859016691F0816AAD5A605C4035C37E9CF9D05653EF30C183F575874A8E5FF` |
 
-便携包已解压到干净临时目录启动：`Model springs: 4 chains, vrm=1`、2,076 三角形、`Hit mask ready: 420x620 center_alpha=255`、`fps=26.5`、退出码 0。安装器已用同一 payload 编译，内嵌 exe 的 `FileVersion/ProductVersion` 为 `3.2.0.0`；本轮未重做完整安装/卸载回归。
+便携包已解压到干净临时目录启动：`Model springs: 4 chains, vrm=1`、2,076 三角形、`Hit mask ready: 420x620 center_alpha=255`、`fps=26.5`、退出码 0。安装器已用同一 payload 编译，内嵌 exe 的 `FileVersion/ProductVersion` 为 `3.2.0.0`；本轮已在临时目录完成全新安装/启动/卸载回归，安装和卸载退出码均为 0。
 
 ## 已知边界
 
 - 5 条证据依赖规则（Rootkit / 注入 / Kali / DDoS / 钓鱼）仍需人工核对，不强行自动判。
 - ASR 只覆盖单句、显式一次录音；没有连续/流式识别，也没有音素级口型。
 - 10 分钟浸泡不等于 24 小时无泄漏结论。
+- 安装器完成了临时目录的全新安装/启动/卸载回归；未验证从现有 3.1.2 原地升级和旧版 2D 迁移路径。
 - 安装器未签名；SmartScreen 提示时请先核对同名 `.sha256`。
 - `v3.1.2` 仍是稳定版，升级前请自行备份用户数据。
