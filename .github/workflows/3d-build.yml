@@ -80,7 +80,8 @@ jobs:
           if ($subsystem -ne 2) { throw "expected GUI subsystem 2, got $subsystem (console window would appear)" }
           $vi = (Get-Item -LiteralPath $exe).VersionInfo
           if ($vi.ProductName -ne 'WhaleGirlPet') { throw "unexpected ProductName: $($vi.ProductName)" }
-          if ($vi.ProductVersion -ne '3.1.1.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
+          if ($vi.ProductVersion -ne '3.1.2.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
+          if ($vi.FileDescription -match '3D') { throw "FileDescription still contains 3D: $($vi.FileDescription)" }
           Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion)"
 
       - name: Package portable ZIP
@@ -103,7 +104,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: whale3d-v3.1.1-ci
+          name: whale3d-v3.1.2-ci
           path: |
             whale3d-whale-girl-v3-ci.zip
             whale3d-whale-girl-v3-ci.zip.sha256

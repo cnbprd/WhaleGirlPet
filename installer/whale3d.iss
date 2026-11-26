@@ -1,22 +1,22 @@
-; 鲸鱼娘 3D 核心包安装脚本（Inno Setup 6）
+; 鲸鱼娘 核心包安装脚本（Inno Setup 6）
 ; 推荐编译：powershell -ExecutionPolicy Bypass -File installer\build_3d_installers.ps1
 ; 手动编译前先把对应 zip 解压到 build\3d-installer-payload\<版本>，然后：
-;   tools\inno\ISCC.exe /DAppVersion=3.1.1 "/DPayloadDir=<绝对路径>" installer\whale3d.iss
-; 3.0.28 / 3.1.0 / 3.1.1 使用同一个 AppId 与安装目录，后装覆盖升级。
+;   tools\inno\ISCC.exe /DAppVersion=3.1.2 "/DPayloadDir=<绝对路径>" installer\whale3d.iss
+; 3.0.28 / 3.1.0 / 3.1.1 / 3.1.2 使用同一个 AppId 与安装目录，后装覆盖升级。
 ; 如果检测到旧版 2D 3.0.27，默认升级到它所在目录，并由安装器内 migrate_legacy.ps1 直接迁移；旧卸载器有 bug，不再调用。
 
 #ifndef AppVersion
-  #define AppVersion "3.1.1"
+  #define AppVersion "3.1.2"
 #endif
 #ifndef PayloadDir
-  #define PayloadDir "..\3d\_installer\3.1.1"
+  #define PayloadDir "..\3d\_installer\3.1.2"
 #endif
 
 [Setup]
 AppId=WhaleGirlPet3D
-AppName=鲸鱼娘 3D
+AppName=鲸鱼娘
 AppVersion={#AppVersion}
-AppVerName=鲸鱼娘 3D {#AppVersion}
+AppVerName=鲸鱼娘 {#AppVersion}
 AppPublisher=cnbprd
 AppPublisherURL=https://github.com/cnbprd/WhaleGirlPet
 AppSupportURL=https://github.com/cnbprd/WhaleGirlPet/issues
@@ -24,11 +24,11 @@ AppUpdatesURL=https://github.com/cnbprd/WhaleGirlPet/releases
 VersionInfoVersion={#AppVersion}.0
 VersionInfoProductVersion={#AppVersion}.0
 VersionInfoCompany=cnbprd
-VersionInfoDescription=鲸鱼娘 3D 安装包
+VersionInfoDescription=鲸鱼娘 安装包
 DefaultDirName={code:GetPreferredDir}
-DefaultGroupName=鲸鱼娘 3D
+DefaultGroupName=鲸鱼娘
 UninstallDisplayIcon={app}\whale3d.exe
-UninstallDisplayName=鲸鱼娘 3D {#AppVersion}
+UninstallDisplayName=鲸鱼娘 {#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -39,7 +39,7 @@ PrivilegesRequired=lowest
 ; 这里显式关闭，保证检测到 3.0.27 时目录页默认回到旧版安装目录。
 UsePreviousAppDir=no
 OutputDir=..\dist\3d
-OutputBaseFilename=WhaleGirlPet-3D-Setup-{#AppVersion}
+OutputBaseFilename=WhaleGirlPet-Setup-{#AppVersion}
 SetupIconFile=..\3d\assets\ui\pet.ico
 LicenseFile=..\LICENSE
 DisableWelcomePage=yes
@@ -56,15 +56,15 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-SetupWindowTitle=安装鲸鱼娘 3D {#AppVersion}
+SetupWindowTitle=安装鲸鱼娘 {#AppVersion}
 ButtonNext=下一步(&N) >
 ButtonBack=< 上一步(&B)
 ButtonInstall=开始安装(&I)
 ButtonCancel=取消
 ButtonFinish=完成(&F)
 FinishedHeadingLabel=装好啦
-FinishedLabel=鲸鱼娘 3D 已经安装到这台电脑。开始菜单或桌面图标点一下就能叫醒她。
-ConfirmUninstall=确定卸载鲸鱼娘 3D 吗？安装目录和角色资源会被移除。
+FinishedLabel=鲸鱼娘已经安装到这台电脑。开始菜单或桌面图标点一下就能叫醒她。
+ConfirmUninstall=确定卸载鲸鱼娘吗？安装目录和角色资源会被移除。
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加图标:"; Flags: unchecked
@@ -79,12 +79,12 @@ Source: "art\whale.png"; Flags: dontcopy
 Source: "art\migrate_legacy.ps1"; Flags: dontcopy
 
 [Icons]
-Name: "{group}\鲸鱼娘 3D"; Filename: "{app}\whale3d.exe"; IconFilename: "{app}\assets\ui\pet.ico"
-Name: "{group}\卸载 鲸鱼娘 3D"; Filename: "{uninstallexe}"; Parameters: "/SILENT"
-Name: "{autodesktop}\鲸鱼娘 3D"; Filename: "{app}\whale3d.exe"; IconFilename: "{app}\assets\ui\pet.ico"; Tasks: desktopicon
+Name: "{group}\鲸鱼娘"; Filename: "{app}\whale3d.exe"; IconFilename: "{app}\assets\ui\pet.ico"
+Name: "{group}\卸载 鲸鱼娘"; Filename: "{uninstallexe}"; Parameters: "/SILENT"
+Name: "{autodesktop}\鲸鱼娘"; Filename: "{app}\whale3d.exe"; IconFilename: "{app}\assets\ui\pet.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\whale3d.exe"; Description: "启动鲸鱼娘 3D"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\whale3d.exe"; Description: "启动鲸鱼娘"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
@@ -117,7 +117,11 @@ function GetPreferredDir(Param: String): String;
 var
   Loc: String;
 begin
-  Result := ExpandConstant('{localappdata}\WhaleGirlPet3D');
+  // 不再默认装 C 盘：F 盘可用时装到 F:\WhaleGirlPetApp；只有没有 F 盘才回退 LocalAppData。
+  if DirExists('F:\') then
+    Result := 'F:\WhaleGirlPetApp'
+  else
+    Result := ExpandConstant('{localappdata}\WhaleGirlPet3D');
   if RegQueryStringValue(HKCU,
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\鲸鱼娘桌宠_is1',
     'InstallLocation', Loc) and DirExists(Loc) then
@@ -175,7 +179,7 @@ begin
 
   if MsgBox('检测到旧版 2D 3.0.27。' + #13#10 +
             '旧版卸载器本身有 bug（会报 ExtractTemporaryFile），不能直接运行。' + #13#10 +
-            '3D 安装器会改为直接迁移：保留设置、账号、记忆、语音和模型，' + #13#10 +
+            '安装器会改为直接迁移：保留设置、账号、记忆、语音和模型，' + #13#10 +
             '删除旧程序文件、快捷方式和旧卸载登记，然后继续安装。' + #13#10#13#10 +
             '现在开始迁移并升级吗？', mbConfirmation, MB_YESNO) <> IDYES then
   begin
@@ -218,7 +222,7 @@ begin
   LegacyDir := GetLegacyDir();
   LegacyFound := LegacyDir <> '';
 
-  HeroPage := CreateCustomPage(wpWelcome, '鲸鱼娘 3D', '先认识一下，再开始安装');
+  HeroPage := CreateCustomPage(wpWelcome, '鲸鱼娘', '先认识一下，再开始安装');
 
   HeroArt := TBitmapImage.Create(HeroPage);
   HeroArt.Parent := HeroPage.Surface;
@@ -242,7 +246,7 @@ begin
   Title.Top := 8;
   Title.Width := 230;
   Title.Height := 34;
-  Title.Caption := '鲸鱼娘 3D';
+  Title.Caption := '鲸鱼娘';
   Title.Font.Name := 'Microsoft YaHei UI';
   Title.Font.Size := 18;
   Title.Font.Style := [fsBold];
@@ -253,7 +257,7 @@ begin
   SubTitle.Top := 44;
   SubTitle.Width := 230;
   SubTitle.Height := 22;
-  SubTitle.Caption := 'v{#AppVersion} · 3D 主版';
+  SubTitle.Caption := 'v{#AppVersion} · 主程序';
   SubTitle.Font.Name := 'Microsoft YaHei UI';
   SubTitle.Font.Size := 9;
   SubTitle.Font.Color := $00777777;
@@ -283,7 +287,7 @@ begin
   Hint.Font.Size := 9;
   if LegacyFound then
     Hint.Caption := '检测到旧版 2D 3.0.27。旧版卸载器本身有 bug，不能直接运行；' +
-                    '默认升级到旧版目录，点下面按钮由 3D 安装器迁移并保留数据。'
+                    '默认升级到旧版目录，点下面按钮由安装器迁移并保留数据。'
   else
     Hint.Caption := '没有检测到旧版 2D，直接安装即可。';
 

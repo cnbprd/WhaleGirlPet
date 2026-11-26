@@ -278,7 +278,7 @@ bool ShellUi::addTrayIcon() {
     data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     data.uCallbackMessage = kTrayMessage;
     data.hIcon = icon_;
-    std::wstring tip = L"鲸鱼娘 3D · 桌面宠物";
+    std::wstring tip = L"鲸鱼娘 · 桌面宠物";
     wcsncpy(data.szTip, tip.c_str(), std::size(data.szTip) - 1);
     if (!Shell_NotifyIconW(NIM_ADD, &data)) return false;
     trayAdded_ = true;
@@ -364,7 +364,7 @@ bool ShellUi::promoteTrayIconOnce() {
 
 void ShellUi::updateTrayTip() {
     if (!hwnd_ || !trayAdded_ || !model_) return;
-    std::wstring tip = L"鲸鱼娘 3D · ";
+    std::wstring tip = L"鲸鱼娘 · ";
     tip += toWide(model_->clipName());
     tip += L" · ";
     tip += toWide(model_->faceName());
@@ -584,7 +584,7 @@ void ShellUi::showSettings() {
                      std::min(y, static_cast<int>(monitor.rcWork.bottom) - height));
     }
 
-    settings_ = CreateWindowExW(WS_EX_DLGMODALFRAME, kSettingsClass, L"鲸鱼娘 3D · 设置",
+    settings_ = CreateWindowExW(WS_EX_DLGMODALFRAME, kSettingsClass, L"鲸鱼娘 · 设置",
                                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
                                x, y, width, height, hwnd_, nullptr, instance, this);
     if (!settings_) {
@@ -619,7 +619,7 @@ void ShellUi::showSettings() {
 }
 
 void ShellUi::buildSettingsControls(HWND hwnd) {
-    createChild(hwnd, L"STATIC", L"鲸鱼娘 3D · 最小设置",
+    createChild(hwnd, L"STATIC", L"鲸鱼娘 · 最小设置",
                 WS_CHILD | WS_VISIBLE, 20, 16, 380, 26);
     createChild(hwnd, L"STATIC", L"原生 Win32 控制，不依赖 Qt/PySide6。",
                 WS_CHILD | WS_VISIBLE, 20, 44, 380, 20);

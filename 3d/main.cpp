@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
         SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIGH_PIXEL_DENSITY |
         SDL_WINDOW_NOT_FOCUSABLE);
 
-    SDL_Window* win = SDL_CreateWindow("WhaleGirl 3D Placeholder", winW, winH, flags);
+    SDL_Window* win = SDL_CreateWindow("鲸鱼娘", winW, winH, flags);
     if (!win) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
