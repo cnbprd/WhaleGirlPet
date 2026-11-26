@@ -5,7 +5,7 @@ import os
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFormLayout,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFormLayout,
                                QGridLayout, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem,
                                QPushButton, QScrollArea, QSizeGrip, QSlider,
@@ -18,6 +18,8 @@ import models_catalog
 import panel_v2
 import paths
 import persona as pers
+import security_cards
+import security_learning
 import theme
 import voice_tweak
 from api_access_ui import ApiAccessCard
@@ -3204,13 +3206,95 @@ class ControlPanel(QWidget):
             lines_.append("  RemoteRegistry：" + rr_starts.get(rr.get("start"), str(rr.get("start"))))
         else:
             lines_.append("  RemoteRegistry：读不到")
+        lines_.append("")
+        guest = po.get("guest") or {}
+        if guest.get("ok"):
+            if not guest.get("present"):
+                lines_.append("  Guest 账户：不存在/已移除")
+            else:
+                lines_.append("  Guest 账户：" + ("已禁用" if not guest.get("enabled") else "启用中 ⚠"))
+        else:
+            lines_.append("  Guest 账户：读不到")
+        auto = po.get("autoplay") or {}
+        if auto.get("ok"):
+            lines_.append("  自动播放：" + ("已关闭" if auto.get("disabled") else "未显式关闭 ⚠")
+                          + (f"（用户开关={auto.get('user_disabled')}，策略={auto.get('policy')}）"
+                             if auto.get("policy") is not None else ""))
+        else:
+            lines_.append("  自动播放：读不到")
+        om = po.get("office_macros") or {}
+        if om.get("ok"):
+            bad = om.get("unsafe") or []
+            if bad:
+                lines_.append("  Office 宏：" + "、".join(f"{a['app']} {a['version']} 启用所有宏 ⚠"
+                                                       for a in bad))
+            else:
+                lines_.append(f"  Office 宏：已读取 {len(om.get('apps') or [])} 个应用，未发现“启用所有宏”")
+        else:
+            lines_.append("  Office 宏：未安装/读不到")
+        el = po.get("event_logs") or {}
+        if el.get("ok"):
+            sec = next((x for x in (el.get("items") or []) if x.get("name") == "Security"), None)
+            if sec:
+                lines_.append(f"  Security 日志：{sec.get('max_mb')} MB / {sec.get('mode')}"
+                              f" / {sec.get('records')} 条")
+            else:
+                lines_.append("  Security 日志：需要管理员权限才能读取")
+        else:
+            lines_.append("  Security 日志：读不到")
         lines_ += ["", f"综合评分：{report.get('score', '-')}/100"]
         for issue in report.get("issues", []):
             text = issue.get("text", "") if isinstance(issue, dict) else str(issue)
             level = {"warn": "需注意", "info": "提示"}.get(
                 issue.get("level") if isinstance(issue, dict) else "", "")
             lines_.append(f"· {('[' + level + '] ') if level else ''}{text}")
+        try:
+            import security_cards
+            cards = security_cards.relevant_cards(report, limit=2)
+            if cards:
+                lines_ += ["", "【相关安全知识卡】"]
+                for c in cards:
+                    lines_.append(f"· {c['title']}")
+                    lines_.append("  " + c["summary"])
+                    lines_.append("  怎么防：" + "；".join(c["defense"]))
+        except Exception:  # noqa: BLE001
+            pass
         self.txt_scan.setPlainText("\n".join(lines_))
+
+    def _show_security_cards(self):
+        """P2：安全知识卡。只展示“看什么/怎么防”，不展示攻击步骤。"""
+        import security_cards
+        dlg = QDialog(self)
+        dlg.setWindowTitle("安全知识卡 · 防守视角")
+        dlg.resize(620, 620)
+        lay = QVBoxLayout(dlg)
+        txt = QTextEdit()
+        txt.setReadOnly(True)
+        txt.setStyleSheet("font-family:'Microsoft YaHei';font-size:12px;")
+        txt.setPlainText("\n\n".join(security_cards.card_text(c)
+                                    for c in security_cards.all_cards()))
+        lay.addWidget(txt, 1)
+        btn = QPushButton("关闭")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn)
+        dlg.exec()
+
+    def _show_security_learning(self):
+        """P3：学习路线索引。只列标题/路径，不读正文，不提供操作步骤。"""
+        import security_learning
+        dlg = QDialog(self)
+        dlg.setWindowTitle("网络安全资料 · 学习路线索引")
+        dlg.resize(760, 640)
+        lay = QVBoxLayout(dlg)
+        txt = QTextEdit()
+        txt.setReadOnly(True)
+        txt.setStyleSheet("font-family:Consolas,'Microsoft YaHei';font-size:12px;")
+        txt.setPlainText(security_learning.route_text())
+        lay.addWidget(txt, 1)
+        btn = QPushButton("关闭")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn)
+        dlg.exec()
 
     # ---- 账号 / 形态 ----
     def _on_form_change(self, idx: int):

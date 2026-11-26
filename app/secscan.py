@@ -281,16 +281,109 @@ def suspect_processes() -> list:
     return sorted(set(hits))
 
 
-def _read_dword(path: str, name: str):
+def _read_dword(path: str, name: str, hive=winreg.HKEY_LOCAL_MACHINE):
     try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as k:
+        with winreg.OpenKey(hive, path) as k:
             return int(winreg.QueryValueEx(k, name)[0])
     except Exception:  # noqa: BLE001
         return None
 
 
+def _read_dword_current(path: str, name: str):
+    return _read_dword(path, name, winreg.HKEY_CURRENT_USER)
+
+
+def _identity_and_logs() -> dict:
+    """Guest 账户 + Security/System/Application 事件日志大小，只读。
+
+    用 Windows PowerShell 5.1 的 Get-LocalUser / Get-WinEvent，避免额外依赖；
+    读不到就如实返回 ok=False，不猜。
+    """
+    out = _run_ps(
+        "$g=Get-LocalUser -Name Guest -ErrorAction SilentlyContinue;"
+        "if($null -ne $g){$guest=[bool]$g.Enabled}else{$guest=$null};"
+        "$logs=@();"
+        "foreach($n in @('Security','System','Application')){"
+        "$l=Get-WinEvent -ListLog $n -ErrorAction SilentlyContinue;"
+        "if($l){$logs += [ordered]@{name=$n;"
+        "max_mb=[math]::Round($l.MaximumSizeInBytes/1MB,1);"
+        "mode=[string]$l.LogMode;records=[int64]$l.RecordCount}}}"
+        "[ordered]@{guest=$guest;logs=$logs}|ConvertTo-Json -Compress -Depth 4"
+    )
+    if not out:
+        return {"ok": False, "guest": None, "logs": []}
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return {"ok": False, "guest": None, "logs": []}
+    logs = []
+    for it in (data.get("logs") or []):
+        if isinstance(it, dict):
+            logs.append({
+                "name": str(it.get("name") or ""),
+                "max_mb": float(it.get("max_mb") or 0),
+                "mode": str(it.get("mode") or ""),
+                "records": int(it.get("records") or 0),
+            })
+    return {"ok": True, "guest": data.get("guest"), "logs": logs}
+
+
+def _autoplay_state() -> dict:
+    """用户级 AutoPlay 开关 + 机器策略 NoDriveTypeAutoRun。"""
+    user = _read_dword_current(
+        r"Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers",
+        "DisableAutoplay")
+    policy = _read_dword(
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer",
+        "NoDriveTypeAutoRun")
+    # NoDriveTypeAutoRun 的 0x4 位对应可移动驱动器；用户级 DisableAutoplay=1 是总开关。
+    policy_blocks_removable = policy is not None and bool(policy & 0x4)
+    disabled = (user == 1) or policy_blocks_removable
+    return {
+        "ok": user is not None or policy is not None,
+        "user_disabled": user == 1,
+        "policy": policy,
+        "policy_blocks_removable": policy_blocks_removable,
+        "disabled": disabled,
+    }
+
+
+OFFICE_SECURITY_PATHS = [
+    (r"Software\Microsoft\Office\16.0\Word\Security", "Word", "16.0"),
+    (r"Software\Microsoft\Office\16.0\Excel\Security", "Excel", "16.0"),
+    (r"Software\Microsoft\Office\15.0\Word\Security", "Word", "15.0"),
+    (r"Software\Microsoft\Office\15.0\Excel\Security", "Excel", "15.0"),
+    (r"Software\Microsoft\Office\14.0\Word\Security", "Word", "14.0"),
+    (r"Software\Microsoft\Office\14.0\Excel\Security", "Excel", "14.0"),
+    (r"Software\Microsoft\Office\12.0\Word\Security", "Word", "12.0"),
+    (r"Software\Microsoft\Office\12.0\Excel\Security", "Excel", "12.0"),
+]
+
+
+def _office_macro_state() -> dict:
+    """Office Word/Excel 的 VBAWarnings / AccessVBOM，只读 HKCU。"""
+    apps = []
+    unsafe = []
+    for path, app, ver in OFFICE_SECURITY_PATHS:
+        vba = _read_dword_current(path, "VBAWarnings")
+        vbom = _read_dword_current(path, "AccessVBOM")
+        if vba is None and vbom is None:
+            continue
+        row = {"app": app, "version": ver, "vba_warnings": vba, "access_vbom": vbom}
+        apps.append(row)
+        if vba == 1:
+            unsafe.append(row)
+    return {
+        "ok": bool(apps),
+        "installed": bool(apps),
+        "apps": apps,
+        "unsafe": unsafe,
+        "warning": [a for a in apps if a.get("vba_warnings") == 2],
+    }
+
+
 def security_posture() -> dict:
-    """只读检查 UAC / RDP / SMBv1 / RemoteRegistry，不改任何设置。
+    """只读检查 UAC / 远程面 / Guest / 自动播放 / Office 宏 / 事件日志。
 
     资料来源：Windows 安全配置策略、UAC 与远程面笔记；只把“是否暴露/被削弱”
     变成可读状态，修复入口留给系统设置，不自动改注册表。
@@ -302,6 +395,24 @@ def security_posture() -> dict:
     rdp = _read_dword(r"SYSTEM\CurrentControlSet\Control\Terminal Server", "fDenyTSConnections")
     smb1_start = _read_dword(r"SYSTEM\CurrentControlSet\Services\mrxsmb10", "Start")
     rr_start = _read_dword(r"SYSTEM\CurrentControlSet\Services\RemoteRegistry", "Start")
+    ident = _identity_and_logs()
+    autoplay = _autoplay_state()
+    office = _office_macro_state()
+    logs = list(ident.get("logs") or [])
+    # Get-WinEvent -ListLog Security 在非管理员下可能直接不返回；用注册表
+    # MaxSize/Retention 兜底，只读，不再加权限。
+    if not any(x.get("name") == "Security" for x in logs):
+        max_bytes = _read_dword(
+            r"SYSTEM\CurrentControlSet\Services\EventLog\Security", "MaxSize")
+        retention = _read_dword(
+            r"SYSTEM\CurrentControlSet\Services\EventLog\Security", "Retention")
+        if max_bytes:
+            logs.append({
+                "name": "Security",
+                "max_mb": round(max_bytes / 1024 / 1024, 1),
+                "mode": "Retain" if retention else "Circular",
+                "records": 0,
+            })
 
     return {
         "uac": {
@@ -324,6 +435,17 @@ def security_posture() -> dict:
             "ok": rr_start is not None,
             "disabled": rr_start == 4 if rr_start is not None else None,
             "start": rr_start,
+        },
+        "guest": {
+            "ok": bool(ident.get("ok")),
+            "present": ident.get("guest") is not None,
+            "enabled": bool(ident.get("guest")) if ident.get("ok") else None,
+        },
+        "autoplay": autoplay,
+        "office_macros": office,
+        "event_logs": {
+            "ok": bool(ident.get("ok")),
+            "items": logs,
         },
     }
 
@@ -369,6 +491,25 @@ def build_report() -> dict:
         issues.append({"level": "high", "text": "SMBv1 服务未禁用；旧式共享协议容易被蠕虫横向利用"})
     if posture["remote_registry"]["ok"] and posture["remote_registry"]["start"] in (0, 1, 2):
         issues.append({"level": "warn", "text": "RemoteRegistry 服务仍在自动/手动启动；远程注册表面建议关掉"})
+
+    guest = posture["guest"]
+    if guest["ok"] and guest["enabled"]:
+        issues.append({"level": "warn", "text": "Guest 来宾账户处于启用状态；建议禁用，别让它成为无密码入口"})
+    autoplay = posture["autoplay"]
+    if autoplay["ok"] and not autoplay["disabled"]:
+        issues.append({"level": "warn", "text": "自动播放未显式关闭；U 盘/移动介质插入后可能自动执行内容"})
+    office = posture["office_macros"]
+    if office["ok"] and office["unsafe"]:
+        names = "、".join(f"{a['app']} {a['version']}" for a in office["unsafe"])
+        issues.append({"level": "high", "text": f"Office 宏设为“启用所有宏”：{names}；宏可被文档直接执行"})
+    for it in posture["event_logs"]["items"]:
+        if it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 10:
+            issues.append({"level": "high", "text": f"Security 事件日志上限仅 {it['max_mb']} MB；很快被覆盖，入侵痕迹留不住"})
+        elif it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 20:
+            issues.append({"level": "warn", "text": f"Security 事件日志上限 {it['max_mb']} MB，偏小；建议至少 20 MB 并保留关键事件"})
+    if posture["event_logs"]["ok"] and not any(
+            x["name"] == "Security" for x in posture["event_logs"]["items"]):
+        issues.append({"level": "info", "text": "Security 事件日志需要管理员权限才能读取；当前未做大小判断"})
 
     n_th = len(th.get("items") or [])
     if n_th:

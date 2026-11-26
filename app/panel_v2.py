@@ -293,6 +293,10 @@ def tab_security(panel) -> QWidget:
         _btn("更新病毒库", panel._update_signatures),
         _btn("打开 Defender", panel._open_defender),
     ))
+    lay.addWidget(_row(
+        _btn("安全知识卡", panel._show_security_cards),
+        _btn("学习路线", panel._show_security_learning),
+    ))
     panel.txt_scan = QTextEdit()
     panel.txt_scan.setReadOnly(True)
     panel.txt_scan.setStyleSheet("font-family:Consolas,'Microsoft YaHei';font-size:12px;")
