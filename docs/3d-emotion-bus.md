@@ -171,12 +171,19 @@ Emotion: neutral intensity=0.00 attack=180ms release=420ms gaze=(0.80,-0.10)@1.0
 - `buildOzz()` 用节点名记录 `head/neck/spine/chest` 索引并写 `Pose bones` 日志；`main.cpp` 收到包后调用 `applyGazeLean()`，日志增加 `gaze=(...)@... lean=(...)@...`。
 - 每个新包不带 `gaze`/`lean` 时，`Frame` 的 weight 默认 0；因此空包会回正，不保留上一次姿态。
 
+## ASR 输入层（2026-11-27）
+
+- `app/asr_service.py` 默认关闭；构造后不录音，按钮/热键显式 `arm_once()` 后才启动一次 `VoiceWorker`，结束自动关闭。
+- 后端仍是 Windows 离线 SAPI；`voice_cmd.recognize(min_conf=0.30)` 拒绝低置信度假词，返回空文本而不是伪造指令。
+- 识别文本仍走 `main._on_voice()` → `send_chat()` → `emotion_bridge.user_text()`；`P_USER` 优先级不变，3D 只收情绪包。
+- 真实验收：`3d/tools/asr_accept.py` 识别“别难过，笑一个”（实际文本“别难过小一个”，conf 0.494）→ `P_USER happy 0.9` → 3D 全窗 RGB 差 **0.523**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png`。
+
 ## 还没做的
 
 step 1 / 1b / 4 / 5 已解决“参数进得来、脸能平滑切、强度有幅度和时间曲线、头和身体能做小角度姿态”。以下仍属于 v3.2.x 后续：
 
 1. **姿态层限制**：`gaze` 目前只转 head/neck 骨，没有眼骨或 BlendShape，视觉上接近“转头”而不是严格“转眼”；pose 是即时切换，没有平滑/回正包络；90 秒长跑只覆盖 idle + 自动眨眼，不是 24 小时浸泡。
-2. **ASR/TTS 闭环**：语音输入和语音输出还没有把情绪标签送进这条总线；当前自动信号只覆盖文本聊天和 `EmotionState`。
+2. **ASR/TTS 闭环**：ASR 的显式单句输入已在 `app/asr_service.py` 接到 `voice_cmd`，识别文本走 `main.send_chat` → `emotion_bridge.user_text`，因此能产生 `P_USER`；但还没有连续识别、音素级口型，TTS 侧只做到播放期延长 `P_LLM` TTL。
 3. **标签可靠性**：`P_LLM` 的隐藏标签依赖模型遵循提示；小模型可能不输出，当前用回复词表兜底。跨云端/本地/Ollama 三后端的实际命中率还没有统计。
 4. **仲裁边界**：当前是固定优先级 + TTL，不是“打扰预算”；用户连续说话时不会主动降频，后续可按会话强度再加节流。
 

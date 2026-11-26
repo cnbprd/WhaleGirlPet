@@ -293,7 +293,7 @@ def tab_security(panel) -> QWidget:
         _btn("更新病毒库", panel._update_signatures),
         _btn("打开 Defender", panel._open_defender),
     ))
-    tip_know = QLabel("防守知识已并入安全管家：体检结果会按命中项直接带出相关建议，不再单独弹知识卡/学习路线。")
+    tip_know = QLabel("防守知识已转成 14 条规则：体检结果按命中项带出 [规则 KR-...] 与证据，不再单独弹知识卡/学习路线。")
     tip_know.setWordWrap(True)
     tip_know.setStyleSheet("color:#666;font-size:11px;")
     lay.addWidget(tip_know)

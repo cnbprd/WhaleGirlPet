@@ -77,7 +77,7 @@
 
 ## 当前落地状态（2026-11-27 实测）
 
-P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日志均已接成只读检查，P1 三条规则、P2 防守知识已落到代码；P3 学习路线模块已取消，知识并入安全管家。仍坚持“只报不改”。
+P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日志均已接成只读检查，P1 三条规则、P2 防守知识已转成可执行规则；P3 学习路线模块已取消，知识并入安全管家。仍坚持“只报不改”。
 
 ### P0 安全体检
 
@@ -126,6 +126,18 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日
 - 安全页不再有独立“安全知识卡”按钮；`panel.refresh_scan()` 在体检结果末尾直接带出 2 张命中卡，标题为“安全管家·相关防守知识”
 - `tools/test_security_cards.py` 14 张卡字段完整，并断言不含 `sqlmap/msfconsole/meterpreter/mimikatz/nc -e/bash -i/hping3/loic`
 
+#### 知识卡 → 规则（2026-11-27）
+
+新增 `app/security_rules.py`，把 14 张卡逐张映射成规则，避免“知识只停留在说明文字”：
+
+- 14 张卡 → 14 条规则，`id` 为 `KR-*`，每条带 `card / title / level / weight / why / mode`。
+- 自动规则 9 条：UAC、RDP、SMBv1、Guest、自动播放、Office 宏/受保护视图、WSH、Security 日志、木马持久化/进程线索。判据只读现有 `security_posture()`、启动项和可疑进程名，不新增采集面。
+- 人工核对 5 条：Rootkit、注入、Kali 扫描、DDoS、钓鱼/弱口令。桌面端没有驱动签名/应用日志/边界流量证据，强行自动判会变成猜；这些规则保留 `signals` 与防守建议，不伪造“已检查”。
+- `secscan.build_report()` 的 posture issue 改为由规则生成，issue 带 `rule` / `card` 字段；报告 JSON 增加 `knowledge_rules`（summary + 每条规则状态）。
+- `panel.refresh_scan()` 在评分下方显示“知识规则：14 条（自动 9 / 人工核对 5），命中 N 条”，命中项带 `[规则 KR-...]` 标注。
+- 回归：`tools/test_security_rules.py` 14/14 映射、良好姿态 0 命中、全部恶化的姿态命中 9 条自动规则、5 条人工规则保留；真机报告命中 `KR-RDP-01 / KR-AUTOPLAY-01 / KR-WSH-01`，综合评分仍为 62/100。
+- 真机安全页截图：`docs/_security_rules_ui_win.png`（900×1100，`综合评分 62/100`，`知识规则 14 条（自动 9 / 人工核对 5），命中 3 条`，问题行带 `[规则 KR-...]`）。
+
 ### P3 学习路线（已取消）
 
 - 不再提供 `security_learning.py`、学习路线按钮和独立索引窗口；相关入口已从 `panel_v2` 删除
@@ -136,6 +148,7 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日
 
 - 事件日志的 `Security` 档在非管理员权限下只能提示“需要管理员权限”，无法读取真实大小；要完整检查需以管理员运行。不能因为“读不到”就推断日志没问题。
 - WSH、Office 受保护视图、Security 日志循环覆盖策略已接成只读检查；System/Application 日志大小/模式可读，Security 仍受权限限制。
+- Rootkit、注入、Kali 扫描、DDoS、钓鱼/弱口令这 5 张卡保留为人工核对规则：本机没有驱动签名/应用日志/边界流量证据时，不把“没看到”当成“没问题”。
 - v3.2 的 intensity 曲线已实现并实测；gaze/body lean 也已作为可选姿态层接进 3D，ASR 仍是路线项；本轮没有为了“继续”硬开新的 3D 功能；验收见 `docs/v3.2-next.md`。
 - 所有修复仍只给系统设置入口，不做一键改注册表。
 - 课程视频/PDF 都没打包进安装包，也没进 `knowledge.db`；P3 学习路线已取消，不再提供目录索引。

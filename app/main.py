@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 import accounts
 import ambient
+import asr_service
 import awareness
 import care_ui
 import companion
@@ -304,6 +305,9 @@ class Controller:
         self.minute_timer.start()
         self.voice_worker = None
         self._last_voice = {}
+        # v3.2：ASR 默认关闭；按钮/热键按下才开一次，识别完自动回到关闭态。
+        self.asr = asr_service.AsrService()
+        self.asr.result_ready.connect(self._on_voice)
 
         # 定时任务（专注计时）
         self.tomato_left = 0
@@ -2116,18 +2120,23 @@ class Controller:
 
     # ---------- v2.3.0 语音命令 ----------
     def voice_listen(self):
-        if self.voice_worker is not None and self.voice_worker.isRunning():
+        if self.asr.is_listening():
             return
         if self._chat_busy():
             self.pet.bubble.show_text("等我把这句说完再听你说。", 2500)
             return
+        if not self.config.get("voice_on", True):
+            self.pet.bubble.show_text("语音输入已在设置里关闭。", 3000)
+            return
         self.pet.bubble.show_text("我在听，说一句吧（说完停一下）……", 5000)
         self.pet.set_expression("curious", 6000)
         try:
-            import voice_cmd
-            self.voice_worker = voice_cmd.VoiceWorker(wait_s=4, timeout_s=14)
-            self.voice_worker.done.connect(self._on_voice)
-            self.voice_worker.start()
+            self.asr.arm_once()
+            res = self.asr.listen(wait_s=4, timeout_s=14)
+            self.voice_worker = self.asr.worker
+            if not res.get("started"):
+                self.pet.bubble.show_text(
+                    "语音模块没起来：" + str(res.get("reason") or "unknown")[:40], 3500)
         except Exception as e:  # noqa: BLE001
             self.pet.bubble.show_text("语音模块起不来：" + str(e)[:40], 3500)
 
@@ -2140,6 +2149,7 @@ class Controller:
             tip = {"no_mic": "没找到麦克风，检查一下设备。",
                    "no_speech": "没听到声音，再说一次？",
                    "timeout": "听的时间到了，没抓到语音。",
+                   "low_conf": "听清了但置信度太低，没敢当成指令，再说一次？",
                    "empty_text": "听到了，但没识别出字。"}.get(
                        reason, "没听清（" + reason[:30] + "）")
             self.pet.bubble.show_text(tip, 3200)

@@ -14,6 +14,8 @@ import os
 import subprocess
 import winreg
 
+import security_rules
+
 from PySide6.QtCore import QThread, Signal
 
 PS_TIMEOUT = 25
@@ -547,44 +549,15 @@ def build_report() -> dict:
     if off_fw:
         issues.append({"level": "high", "text": "防火墙已关闭：" + "、".join(off_fw)})
 
-    uac = posture["uac"]
-    if uac["ok"] and not uac["enabled"]:
-        issues.append({"level": "high", "text": "UAC 已关闭；普通程序可直接拿管理员权限"})
-    elif uac["ok"] and uac["consent"] == 0:
-        issues.append({"level": "high", "text": "UAC 已设为“不提示直接提权”，等于关掉了确认环节"})
-    if posture["rdp"]["ok"] and posture["rdp"]["enabled"]:
-        issues.append({"level": "warn", "text": "远程桌面 RDP 已开启；不用时建议关闭 3389"})
-    if posture["smb1"]["ok"] and not posture["smb1"]["disabled"]:
-        issues.append({"level": "high", "text": "SMBv1 服务未禁用；旧式共享协议容易被蠕虫横向利用"})
-    if posture["remote_registry"]["ok"] and posture["remote_registry"]["start"] in (0, 1, 2):
+    # v3.2：防御知识卡的自动规则先跑；能读状态就判，人工项由 report 保留。
+    rule_eval = security_rules.evaluate(posture, ports=ports,
+                                        startup=starts, suspect=procs)
+    issues.extend(rule_eval["issues"])
+
+    rr = posture["remote_registry"]
+    if rr["ok"] and rr["start"] in (0, 1, 2):
         issues.append({"level": "warn", "text": "RemoteRegistry 服务仍在自动/手动启动；远程注册表面建议关掉"})
 
-    guest = posture["guest"]
-    if guest["ok"] and guest["enabled"]:
-        issues.append({"level": "warn", "text": "Guest 来宾账户处于启用状态；建议禁用，别让它成为无密码入口"})
-    autoplay = posture["autoplay"]
-    if autoplay["ok"] and not autoplay["disabled"]:
-        issues.append({"level": "warn", "text": "自动播放未显式关闭；U 盘/移动介质插入后可能自动执行内容"})
-    office = posture["office_macros"]
-    if office["ok"] and office["unsafe"]:
-        names = "、".join(f"{a['app']} {a['version']}" for a in office["unsafe"])
-        issues.append({"level": "high", "text": f"Office 宏设为“启用所有宏”：{names}；宏可被文档直接执行"})
-    pv = posture["office_protected_view"]
-    if pv["ok"] and pv["unsafe"]:
-        names = "、".join(
-            f"{a['app']} {a['version']}（" + "/".join(x[0] for x in a["disabled"]) + "）"
-            for a in pv["unsafe"])
-        issues.append({"level": "high", "text": f"Office 受保护视图被关闭：{names}；外部文档会更早进入可编辑状态"})
-    wsh = posture["wsh"]
-    if wsh["ok"] and wsh["enabled"]:
-        issues.append({"level": "warn", "text": "Windows Script Host 未显式禁用；.vbs/.js 脚本仍可被执行"})
-    for it in posture["event_logs"]["items"]:
-        if it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 10:
-            issues.append({"level": "high", "text": f"Security 事件日志上限仅 {it['max_mb']} MB；很快被覆盖，入侵痕迹留不住"})
-        elif it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 20:
-            issues.append({"level": "warn", "text": f"Security 事件日志上限 {it['max_mb']} MB，偏小；建议至少 20 MB 并保留关键事件"})
-        elif it["name"] == "Security" and "circular" in str(it.get("mode", "")).lower():
-            issues.append({"level": "warn", "text": "Security 事件日志为循环覆盖；日志满了会覆盖旧记录，建议保留或集中收集"})
     if posture["event_logs"]["ok"] and not posture["event_logs"]["security_readable"]:
         issues.append({"level": "info", "text": posture["event_logs"]["security_reason"] + "；当前未做大小判断"})
 
@@ -598,8 +571,6 @@ def build_report() -> dict:
         issues.append({"level": "info", "text": f"发现 {len(user_starts)} 个用户级开机自启动项，建议逐条确认来源"})
     for p in ports:
         issues.append({"level": "warn", "text": f"端口 {p['port']}（{p['desc']}）处于监听，进程 PID {p['pid']}"})
-    for n in procs:
-        issues.append({"level": "warn", "text": f"进程名命中可疑特征：{n}（需人工确认，可能是误报）"})
 
     score = 100
     for it in issues:
@@ -620,6 +591,7 @@ def build_report() -> dict:
         "ports": ports,
         "suspect": procs,
         "posture": posture,
+        "knowledge_rules": rule_eval,
         "issues": issues,
         "score": score,
         "checked_at": __import__("time").strftime("%Y-%m-%d %H:%M:%S"),

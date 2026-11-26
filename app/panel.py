@@ -3265,11 +3265,21 @@ class ControlPanel(QWidget):
                     lines_.append(f"  {log_name} 日志：{item.get('max_mb')} MB / {item.get('mode')}"
                                   f" / {item.get('records')} 条")
         lines_ += ["", f"综合评分：{report.get('score', '-')}/100"]
+        kr = report.get("knowledge_rules") or {}
+        krs = kr.get("summary") or {}
+        if krs:
+            lines_.append(
+                f"知识规则：{krs.get('total', 0)} 条"
+                f"（自动 {krs.get('auto', 0)} / 人工核对 {krs.get('manual', 0)}）"
+                f"，命中 {krs.get('hit', 0)} 条"
+            )
         for issue in report.get("issues", []):
             text = issue.get("text", "") if isinstance(issue, dict) else str(issue)
             level = {"warn": "需注意", "info": "提示"}.get(
                 issue.get("level") if isinstance(issue, dict) else "", "")
-            lines_.append(f"· {('[' + level + '] ') if level else ''}{text}")
+            rule = issue.get("rule") if isinstance(issue, dict) else ""
+            rule_tag = f"[规则 {rule}] " if rule else ""
+            lines_.append(f"· {rule_tag}{('[' + level + '] ') if level else ''}{text}")
         try:
             import security_cards
             cards = security_cards.relevant_cards(report, limit=2)

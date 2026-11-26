@@ -92,10 +92,12 @@ def has_microphone() -> bool:
 
 
 def recognize(wav_path: str = "", wait_s: int = 5, timeout_s: int = 15,
-              phrases=None) -> dict:
+              phrases=None, min_conf: float = 0.30) -> dict:
     """听一句。返回 {ok, text, conf, reason}。
 
     wav_path 有值 → 识别该文件（自测用）；否则用默认麦克风。
+    SAPI 听写语法在静音/环境噪声下会吐低置信度假词；低于 min_conf 一律
+    当失败，text 置空，不把噪声拼成用户输入。
     """
     phrases = DEFAULT_PHRASES if phrases is None else phrases  # 目前只用于提示，不进语法
     # PowerShell 里反斜杠不是转义符，用单引号包路径最稳
@@ -122,6 +124,8 @@ def recognize(wav_path: str = "", wait_s: int = 5, timeout_s: int = 15,
         except (ValueError, IndexError):
             conf = 0.0
         text = parts[2].strip() if len(parts) > 2 else ""
+        if text and conf < float(min_conf):
+            return {"ok": False, "text": "", "conf": conf, "reason": "low_conf"}
         return {"ok": bool(text), "text": text, "conf": conf,
                 "reason": "" if text else "empty_text"}
     if last == "EMPTY":
