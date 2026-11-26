@@ -16,6 +16,21 @@
 
 边界：三帧图集已能平滑交叉淡化，但 `intensity` 还没有幅度/时间曲线，gaze/body lean、`P_USER/P_LLM/P_AUTO` 仲裁和 Python 侧 LLM 情绪标签生产仍未接入；这一步不能称为“情绪闭环完成”。细节见 `docs/3d-emotion-bus.md`。
 
+## v3.1.1（2026-11-26）
+
+3D 发布链路修复：GUI subsystem、安装位置选择、旧版 2D 迁移、最小 3D CI。这个版本不改变渲染/动画功能，只把已能跑的 3D 壳变成可安装、可升级、可复现构建的包。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 终端框 | `3d/build.ps1` 明确加 `-mwindows`，把 PE subsystem 从 3 改为 2；`3d/main.cpp` 把运行日志写到 exe 同目录 `whale3d.log`，可用 `WHALE3D_LOG` 覆盖 | exe 1,323,520 B，SHA256 `0D5BF3FA9C122C24018C1073D36AC32C92BEA66BAA8899D67315DBA8A783F907`；subsystem **2**；ProductVersion/FileVersion `3.1.1.0`；验收日志 `fps=27.5 update_us=8.75`，无额外控制台窗口 |
+| 2 安装位置 | `installer/whale3d.iss` 恢复 `DisableDirPage=no`；`DefaultDirName={code:GetPreferredDir}`；检测到旧版 2D 时默认旧版目录，否则 `%LOCALAPPDATA%\WhaleGirlPet3D`；新增 `UsePreviousAppDir=no`，避免被上一次 3.1.0 的目录覆盖 | GUI 目检通过：安装向导显示 “Select Destination Location”，路径框默认 `F:\WhaleGirlPetApp`，Browse 可用；首屏显示旧版 2D 迁移提示 |
+| 3 旧版 2D 升级 | 3.0.27 的卸载器 `InitializeUninstall()` 调用 `ExtractTemporaryFile()`，Inno 直接报 `Internal error: Cannot call ExtractTemporaryFile function during Uninstall.`，退出码 1；因此不再调用旧卸载器，改由 `installer/art/migrate_legacy.ps1` 迁移：先把 `config.json / accounts.json / memory.db / knowledge.db / accounts / voices / tts_cache / workspace / reports / quarantine / scripts / models / runtime / updates / ollama_library.json` 移到临时备份，删除 `_internal`、`WhaleGirlPet.exe`、`unins000.*`、旧快捷方式和旧卸载登记，再把数据移回原目录 | 在 `F:\WhaleGirlPetApp_migration_test` 的等价副本上实测：exit 0，data 全部保留，`_internal` / `WhaleGirlPet.exe` / 旧卸载键全部移除；真实 `F:\WhaleGirlPetApp` 未执行迁移，仍保留原数据 |
+| 4 3D CI | 新增 `.github/workflows/3d-build.yml`：windows-latest，下载 w64devkit 2.11.0 + SDL3 3.4.20，调用 `3d/build.ps1`，校验 PE subsystem=2 和版本 `3.1.1.0`，打包 `whale3d-whale-girl-v3-ci.zip` 并上传 artifact | 本地用同类干净工具链重跑，exe 1,323,520 B、subsystem 2；workflow 尚未在 GitHub 上首次运行 |
+| 5 包 | `3d/whale3d-whale-girl-v3.zip` 只保留 exe、SDL3.dll、README、第三方声明、VRM/GLB/atlas、placeholder 和 pet.ico | ZIP 2,809,079 B，SHA256 `7AFCD32E0F9FDCCB86F4F97038F724E43BB35B61C37125A1742AD35C899F3F0E` |
+| 6 安装包 | 用 v3 ZIP 重打 `WhaleGirlPet-3D-Setup-3.1.1.exe`；安装器内含迁移脚本与新版向导美术 | 4,420,078 B，SHA256 `BB1A46F19425AB9E8F8CF7EC02EB931A3991F95AC1B31703D3E06B09970B6E76`；未签名；未做真实 2D 数据的完整升级实跑 |
+
+边界：旧版 2D 的卸载器是**已安装产物**，无法在不重装老版本的情况下修好；v3.1.1 选择“迁移”而不是“调用旧卸载器”。如果安装器在迁移过程中被强制结束，备份目录 `WhaleGirlPetApp_userdata_<timestamp>` 会留在旧目录，脚本下次运行时可人工恢复。正式发布前仍建议先备份 `F:\WhaleGirlPetApp`。
+
 ## v3.1.0（2026-11-26）
 
 3D 第一层“身体”落地：默认角色从 GLB 切到最小 VRM 1.0，加入 4 条两骨 SpringBone；ASR/LLM/TTS 尚未接入。

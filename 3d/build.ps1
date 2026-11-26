@@ -1,16 +1,21 @@
 # Build the WhaleGirl 3D base prototype with the portable w64devkit + SDL3 SDK.
 # No system PATH changes, no Visual Studio, no CMake.
+param(
+    [string]$DevkitRoot = '',
+    [string]$SdlBase = '',
+    [string]$OutFile = ''
+)
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$devkitRoot = Join-Path $root '.toolchains\w64devkit'
+$devkitRoot = if ($DevkitRoot) { (Resolve-Path -LiteralPath $DevkitRoot).Path } else { Join-Path $root '.toolchains\w64devkit' }
 $gxx = Get-ChildItem -LiteralPath $devkitRoot -Filter 'g++.exe' -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $gxx) {
     throw "g++.exe not found under $devkitRoot. Run setup-toolchain.ps1 first."
 }
 
-$sdlBase = Join-Path $root '.toolchains\SDL3'
+$sdlBase = if ($SdlBase) { (Resolve-Path -LiteralPath $SdlBase).Path } else { Join-Path $root '.toolchains\SDL3' }
 $sdlRoot = Get-ChildItem -LiteralPath $sdlBase -Directory -Filter 'SDL3-*' |
     Select-Object -First 1
 if (-not $sdlRoot) {
@@ -20,7 +25,7 @@ $sdlInclude = Join-Path $sdlRoot.FullName 'x86_64-w64-mingw32\include'
 $sdlLib = Join-Path $sdlRoot.FullName 'x86_64-w64-mingw32\lib'
 $sdlBin = Join-Path $sdlRoot.FullName 'x86_64-w64-mingw32\bin'
 
-$out = Join-Path $PSScriptRoot 'whale3d.exe'
+$out = if ($OutFile) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutFile) } else { Join-Path $PSScriptRoot 'whale3d.exe' }
 $windres = Get-ChildItem -LiteralPath $devkitRoot -Filter 'windres.exe' -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $windres) {
@@ -47,7 +52,7 @@ $sources = @(
     (Join-Path $PSScriptRoot 'emotion_bus.cpp'),
     $resourceObj
 )
-& $gxx.FullName -std=c++17 -Os -s -Wall -Wextra `
+& $gxx.FullName -std=c++17 -Os -s -Wall -Wextra -mwindows `
     -DWHALE3D_USE_OZZ `
     -ffunction-sections -fdata-sections `
     "-I$PSScriptRoot" "-I$sdlInclude" "-I$ozzInclude" `

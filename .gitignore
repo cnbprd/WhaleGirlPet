@@ -38,6 +38,7 @@ tools/_guard_samples/
 3d/*.o
 3d/*.res.o
 3d/*.zip
+3d/*.zip.sha256
 3d/*.log
 3d/*.err.log
 3d/third_party/ozz-master.zip

@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-`WhaleGirlPet-3D-Setup-3.1.0.exe` 和 `WhaleGirlPet-3D-Setup-3.0.28.exe` 目前是**未签名**的 Inno Setup 安装包。
+`WhaleGirlPet-3D-Setup-3.1.1.exe` 和 `WhaleGirlPet-3D-Setup-3.0.28.exe` 目前是**未签名**的 Inno Setup 安装包。
 
 - 本机证书库（`Cert:\CurrentUser\My`、`Cert:\LocalMachine\My`）没有可用的代码签名证书。
 - 仓库里也没有 `.pfx` / `.p12` 代码签名私钥。
@@ -16,7 +16,7 @@
 - 项目：`WhaleGirlPet`；仓库 `https://github.com/cnbprd/WhaleGirlPet`；MIT；分类 `Gaming`；维护者类型 `Individual maintainer(s)`；构建系统 `GitHub Actions`。
 - 提交后页面显示 `Form submitted / Thank you, we'll be in touch soon.`；**没有返回申请编号**，也没有单独的邮件回执号。
 - 确认截图：`docs/_signpath_application_submitted.png`。
-- 审核不保证通过：仓库创建于 2026-11-24，当前 stars/forks/watchers 都是 0，SignPath 对可执行程序的“可验证声誉”有要求；另外表单选了 GitHub Actions，而 3D 目前是本机 `build.ps1` 构建，仓库里只有 2D 的 release workflow。
+- 审核不保证通过：仓库创建于 2026-11-24，当前 stars/forks/watchers 都是 0，SignPath 对可执行程序的“可验证声誉”有要求；申请表选了 GitHub Actions，仓库现已补上 `.github/workflows/3d-build.yml`，让申请表与实际构建方式对齐。
 - 在收到批准前，安装包和 exe **仍然是未签名状态**；不能用“已申请”代替签名结果。
 
 ## 为什么不能靠改安装脚本解决
@@ -45,7 +45,7 @@ SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚
 3. 签安装包。本机没有 `signtool.exe`，可先用 PowerShell 自带的 `Set-AuthenticodeSignature`（需要证书带私钥，且在 `Cert:\CurrentUser\My` 或 PFX 导入后）：
    ```powershell
    $cert = Get-Item Cert:\CurrentUser\My\<thumbprint>
-   Set-AuthenticodeSignature -FilePath .\dist\3d\WhaleGirlPet-3D-Setup-3.1.0.exe `
+   Set-AuthenticodeSignature -FilePath .\dist\3d\WhaleGirlPet-3D-Setup-3.1.1.exe `
      -Certificate $cert -TimestampServer http://timestamp.digicert.com -HashAlgorithm SHA256
    ```
    如果使用 `signtool`，命令是 `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 /sha1 <thumbprint> <file>`；有 PFX 时加 `/f`、`/p`。
@@ -56,7 +56,7 @@ SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚
 
 ## 最短路径（当前 MIT 公开仓库）
 
-1. 用仓库所有者账号登录 [SignPath Foundation](https://signpath.org/)，提交项目：公开仓库 `cnbprd/WhaleGirlPet`、MIT 许可证、构建脚本 `installer/build_3d_installers.ps1`。
+1. 用仓库所有者账号登录 [SignPath Foundation](https://signpath.org/)，提交项目：公开仓库 `cnbprd/WhaleGirlPet`、MIT 许可证、构建脚本 `.github/workflows/3d-build.yml`（`3d/build.ps1` 的 CI 封装）。
 2. 审核通过后，把 `whale3d.exe` 与 Setup 的签名步骤接入 GitHub Actions 或 SignPath 的托管构建；签名后再上传 Release。
 3. 若不想走审核，则购买 OV 证书（DigiCert / Sectigo / Certum 等），把 PFX + 密码或证书指纹交给我，我在本机按上面的顺序签。
 

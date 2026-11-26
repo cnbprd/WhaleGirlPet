@@ -2,7 +2,7 @@
 
 > 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
 
-> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；v3.1.0 已落地最小 VRM 1.0 + 4 条两骨 SpringBone。2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
+> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；v3.1.0 已落地最小 VRM 1.0 + 4 条两骨 SpringBone，v3.1.1 修复 Windows 安装/升级链路。2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
 
 <p align="center">
   <img src="assets/ui/pet.ico" alt="WhaleGirlPet" width="96" />
@@ -38,7 +38,7 @@
 
 仓库只放源码与文档；可执行安装包走 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases)。
 
-## 当前 3D 主线（v3.1.0，v3.2 开发中）
+## 当前 3D 主线（v3.1.1，v3.2 开发中）
 
 这一版把“身体”先接上了，认知层还没有搬进来：
 
@@ -83,8 +83,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `whale3d-whale-girl-v2.zip` | 3D 核心包，解压即用；含 `whale3d.exe` + `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone |
-| `WhaleGirlPet-3D-Setup-x.y.z.exe` | 3D 安装包，默认装到 `%LOCALAPPDATA%\WhaleGirlPet3D`，无需管理员权限；含开始菜单、可选桌面快捷方式和卸载项。v3.1.0 与 v3.0.28 共用同一安装位置，后装会覆盖升级 |
+| `whale3d-whale-girl-v3.zip` | 3D 核心包，解压即用；含 `whale3d.exe` + `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone；exe 为 GUI subsystem，不会额外弹终端框 |
+| `WhaleGirlPet-3D-Setup-x.y.z.exe` | 3D 安装包，默认装到 `%LOCALAPPDATA%\WhaleGirlPet3D`，无需管理员权限；目录页可改安装位置。检测到旧版 2D 3.0.27 时会默认回到旧版目录，并由 3D 安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.1.0 / v3.0.28 / v3.1.1 共用同一安装位置，后装覆盖升级 |
 
 安装包当前未签名；SmartScreen 若提示“未知发布者”，请先对照同名 `.sha256` 校验，再选择“更多信息 → 仍要运行”。受信任代码签名方案和接入条件见 [`docs/code-signing.md`](docs/code-signing.md)。
 
@@ -210,7 +210,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.1.0**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.1.1**。
 
 ---
 

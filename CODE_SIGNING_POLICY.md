@@ -24,8 +24,8 @@ All team members must use multi-factor authentication for GitHub and SignPath. T
 
 ## Build and metadata
 
-- Source and build scripts are public: `3d/build.ps1`, `3d/main.cpp`, `3d/model.cpp`, `3d/shell_ui.cpp`, `3d/emotion_bus.cpp`, `3d/whale3d.rc`, and `installer/whale3d.iss` / `installer/build_3d_installers.ps1`.
-- The signed executable carries the product name `WhaleGirlPet`, product version `3.1.0.0`, file description `WhaleGirl 3D desktop pet`, and original filename `whale3d.exe`.
+- Source and build scripts are public: `3d/build.ps1`, `3d/main.cpp`, `3d/model.cpp`, `3d/shell_ui.cpp`, `3d/emotion_bus.cpp`, `3d/whale3d.rc`, `installer/whale3d.iss` / `installer/build_3d_installers.ps1`, and the 3D GitHub Actions workflow `.github/workflows/3d-build.yml`.
+- The signed executable carries the product name `WhaleGirlPet`, product version `3.1.1.0`, file description `WhaleGirl 3D desktop pet`, and original filename `whale3d.exe`.
 - The Inno Setup installer uses product name `鲸鱼娘 3D` and the same version as the release tag; its version metadata is set in `installer/whale3d.iss`.
 - Signing order: sign `whale3d.exe` before packaging, compile the installer from the signed payload, then sign the installer and regenerate `.sha256`.
 

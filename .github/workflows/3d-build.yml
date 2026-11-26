@@ -1,0 +1,111 @@
+name: Build 3D (Windows)
+
+# Minimal, reproducible build for the signed 3D mainline. It uses the same
+# w64devkit 2.11.0 + SDL3 3.4.20 toolchain as the local build script, so the
+# SignPath application's "GitHub Actions" build-system answer is backed by an
+# actual workflow rather than only a local build.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '3d/**'
+      - '.github/workflows/3d-build.yml'
+  pull_request:
+    paths:
+      - '3d/**'
+      - '.github/workflows/3d-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download w64devkit 2.11.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $PWD 'ci-tools'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          $sfx = Join-Path $tools 'w64devkit.exe'
+          Invoke-WebRequest -Uri 'https://github.com/skeeto/w64devkit/releases/download/v2.11.0/w64devkit-x64-2.11.0.7z.exe' -OutFile $sfx
+          $dest = Join-Path $tools 'w64devkit'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          & $sfx -y -o"$dest"
+          if ($LASTEXITCODE -ne 0) {
+            $sevenZip = 'C:\Program Files\7-Zip\7z.exe'
+            if (-not (Test-Path $sevenZip)) { throw "w64devkit extraction failed ($LASTEXITCODE)" }
+            & $sevenZip x $sfx "-o$dest" -y
+            if ($LASTEXITCODE -ne 0) { throw "7z extraction failed ($LASTEXITCODE)" }
+          }
+          $gxx = Get-ChildItem -LiteralPath $dest -Recurse -Filter 'g++.exe' | Select-Object -First 1
+          if (-not $gxx) { throw 'g++.exe not found after extracting w64devkit' }
+          Write-Output "compiler: $($gxx.FullName)"
+
+      - name: Download SDL3 3.4.20 MinGW SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $PWD 'ci-tools'
+          $zip = Join-Path $tools 'SDL3-devel.zip'
+          Invoke-WebRequest -Uri 'https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-devel-3.4.20-mingw.zip' -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tools 'SDL3') -Force
+          $sdl = Get-ChildItem -LiteralPath (Join-Path $tools 'SDL3') -Directory -Filter 'SDL3-*' | Select-Object -First 1
+          if (-not $sdl) { throw 'SDL3 SDK directory not found' }
+          Write-Output "SDL3: $($sdl.FullName)"
+
+      - name: Build whale3d.exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $devkit = Join-Path $PWD 'ci-tools\w64devkit'
+          $sdl = Join-Path $PWD 'ci-tools\SDL3'
+          & .\3d\build.ps1 -DevkitRoot $devkit -SdlBase $sdl
+          if ($LASTEXITCODE -ne 0) { throw "3D build failed ($LASTEXITCODE)" }
+
+      - name: Assert GUI subsystem and version resource
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD '3d\whale3d.exe'
+          $bytes = [IO.File]::ReadAllBytes($exe)
+          $pe = [BitConverter]::ToInt32($bytes, 0x3c)
+          $subsystem = [BitConverter]::ToUInt16($bytes, $pe + 0x5c)
+          if ($subsystem -ne 2) { throw "expected GUI subsystem 2, got $subsystem (console window would appear)" }
+          $vi = (Get-Item -LiteralPath $exe).VersionInfo
+          if ($vi.ProductName -ne 'WhaleGirlPet') { throw "unexpected ProductName: $($vi.ProductName)" }
+          if ($vi.ProductVersion -ne '3.1.1.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
+          Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion)"
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $PWD 'ci-package'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item -LiteralPath '3d\whale3d.exe','3d\SDL3.dll','3d\README.md','3d\THIRD_PARTY_NOTICES.txt' -Destination $stage
+          New-Item -ItemType Directory -Force (Join-Path $stage 'assets\models') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $stage 'assets\ui') | Out-Null
+          Copy-Item -LiteralPath '3d\assets\models\whale_girl.vrm','3d\assets\models\whale_girl.glb','3d\assets\models\placeholder.glb','3d\assets\models\_whale_girl_atlas.png' -Destination (Join-Path $stage 'assets\models')
+          Copy-Item -LiteralPath '3d\assets\ui\pet.ico' -Destination (Join-Path $stage 'assets\ui')
+          $zip = Join-Path $PWD 'whale3d-whale-girl-v3-ci.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+          Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $(Split-Path -Leaf $zip)" -Encoding ascii
+          Write-Output "zip=$zip bytes=$((Get-Item $zip).Length) sha256=$hash"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: whale3d-v3.1.1-ci
+          path: |
+            whale3d-whale-girl-v3-ci.zip
+            whale3d-whale-girl-v3-ci.zip.sha256
+            3d/whale3d.exe
+          if-no-files-found: error

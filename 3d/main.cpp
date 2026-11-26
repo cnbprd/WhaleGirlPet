@@ -17,6 +17,42 @@
 #include <string>
 #include <vector>
 
+static FILE* gLogFile = nullptr;
+
+static std::string moduleLogPath() {
+    wchar_t modulePath[MAX_PATH];
+    DWORD length = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) return std::string();
+    std::wstring wide(modulePath, length);
+    const size_t slash = wide.find_last_of(L"\\/");
+    if (slash == std::wstring::npos) return std::string();
+    wide.erase(slash + 1);
+    wide += L"whale3d.log";
+
+    int utf8Length = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (utf8Length <= 0) return std::string();
+    std::string path(static_cast<size_t>(utf8Length - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, path.data(), utf8Length, nullptr, nullptr);
+    return path;
+}
+
+static void fileLog(void*, int, SDL_LogPriority, const char* message) {
+    if (!gLogFile || !message) return;
+    std::fputs(message, gLogFile);
+    std::fputc('\n', gLogFile);
+    std::fflush(gLogFile);
+}
+
+static void initLog() {
+    const char* overridePath = std::getenv("WHALE3D_LOG");
+    std::string path = (overridePath && *overridePath) ? overridePath : moduleLogPath();
+    if (path.empty()) return;
+    gLogFile = std::fopen(path.c_str(), "w");
+    if (!gLogFile) return;
+    SDL_SetLogOutputFunction(fileLog, nullptr);
+    SDL_Log("Log: %s", path.c_str());
+}
+
 // ---- tiny column-major matrix math for the camera ----
 struct Mat4 { GLfloat m[16]; };
 
@@ -76,6 +112,7 @@ int main(int argc, char** argv) {
         return runRelaunchHelper(argc, argv);
     }
 
+    initLog();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
