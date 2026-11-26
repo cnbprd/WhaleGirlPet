@@ -36,7 +36,7 @@ v3.2.x 的第一步已经接进 3D 壳：**本机 UDP 情绪参数总线**。它
 - 开始播放时，把最近一条 `P_LLM` 信号延长到 30 秒；播放结束/被打断时，恢复为 4 秒 TTL，之后照常衰减到 `P_AUTO`。
 - 这不是新的优先级：`P_USER` 仍然压过 `P_LLM`；只是让回复情绪覆盖整段语音。
 
-实测：`tools/test_emotion_bridge.py` 7/7 通过，包含 `P_LLM` 5 秒过期后由 `tts_active(True)` 重新拉起、20 秒仍保持、结束后 5 秒释放的用例；`py_compile` 通过。音频层还用 0.5 秒 WAV 走了一遍 `speech=True`：`play_file=True started=1 finished=1`。本轮仍没有用真实 TTS 做声画同步验收。
+实测：`tools/test_emotion_bridge.py` 7/7 通过，包含 `P_LLM` 5 秒过期后由 `tts_active(True)` 重新拉起、20 秒仍保持、结束后 5 秒释放的用例；`py_compile` 通过。音频层先用 0.5 秒 WAV 走了一遍 `speech=True`：`play_file=True started=1 finished=1`。之后用 **真实 Edge TTS 11.544 秒 MP3** 跑完整链路：音频 `speechStarted/Finished` 各 1 次，播放中段 `P_LLM` 仍为 `ttl=30.0`，结束后 4 秒由 `main._release_tts_emotion()` 补一条 `P_AUTO`；3D 日志出现两次 `Emotion: happy intensity=0.90 source=P_LLM face=smile`（初始 + 播放拉起），中段截图 `docs/_3d_tts_sync_app_mid.png`。
 
 ## 协议
 

@@ -12,6 +12,7 @@
 import json
 import os
 import subprocess
+import winreg
 
 from PySide6.QtCore import QThread, Signal
 
@@ -280,6 +281,53 @@ def suspect_processes() -> list:
     return sorted(set(hits))
 
 
+def _read_dword(path: str, name: str):
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as k:
+            return int(winreg.QueryValueEx(k, name)[0])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def security_posture() -> dict:
+    """只读检查 UAC / RDP / SMBv1 / RemoteRegistry，不改任何设置。
+
+    资料来源：Windows 安全配置策略、UAC 与远程面笔记；只把“是否暴露/被削弱”
+    变成可读状态，修复入口留给系统设置，不自动改注册表。
+    """
+    uac_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+    enable_lua = _read_dword(uac_path, "EnableLUA")
+    consent = _read_dword(uac_path, "ConsentPromptBehaviorAdmin")
+    secure_desktop = _read_dword(uac_path, "PromptOnSecureDesktop")
+    rdp = _read_dword(r"SYSTEM\CurrentControlSet\Control\Terminal Server", "fDenyTSConnections")
+    smb1_start = _read_dword(r"SYSTEM\CurrentControlSet\Services\mrxsmb10", "Start")
+    rr_start = _read_dword(r"SYSTEM\CurrentControlSet\Services\RemoteRegistry", "Start")
+
+    return {
+        "uac": {
+            "ok": enable_lua is not None,
+            "enabled": enable_lua != 0 if enable_lua is not None else None,
+            "consent": consent,
+            "secure_desktop": secure_desktop,
+            "weak": (enable_lua == 0) or (consent == 0),
+        },
+        "rdp": {
+            "ok": rdp is not None,
+            "enabled": rdp == 0 if rdp is not None else None,
+        },
+        "smb1": {
+            "ok": smb1_start is not None,
+            "disabled": smb1_start == 4 if smb1_start is not None else None,
+            "start": smb1_start,
+        },
+        "remote_registry": {
+            "ok": rr_start is not None,
+            "disabled": rr_start == 4 if rr_start is not None else None,
+            "start": rr_start,
+        },
+    }
+
+
 def build_report() -> dict:
     dv = defender_status()
     av = av_health()
@@ -288,6 +336,7 @@ def build_report() -> dict:
     starts = startup_items()
     ports = listening_ports()
     procs = suspect_processes()
+    posture = security_posture()
 
     issues = []
     if not dv.get("ok"):
@@ -308,6 +357,19 @@ def build_report() -> dict:
     off_fw = [f["name"] for f in fw if not f["enabled"]]
     if off_fw:
         issues.append({"level": "high", "text": "防火墙已关闭：" + "、".join(off_fw)})
+
+    uac = posture["uac"]
+    if uac["ok"] and not uac["enabled"]:
+        issues.append({"level": "high", "text": "UAC 已关闭；普通程序可直接拿管理员权限"})
+    elif uac["ok"] and uac["consent"] == 0:
+        issues.append({"level": "high", "text": "UAC 已设为“不提示直接提权”，等于关掉了确认环节"})
+    if posture["rdp"]["ok"] and posture["rdp"]["enabled"]:
+        issues.append({"level": "warn", "text": "远程桌面 RDP 已开启；不用时建议关闭 3389"})
+    if posture["smb1"]["ok"] and not posture["smb1"]["disabled"]:
+        issues.append({"level": "high", "text": "SMBv1 服务未禁用；旧式共享协议容易被蠕虫横向利用"})
+    if posture["remote_registry"]["ok"] and posture["remote_registry"]["start"] in (0, 1, 2):
+        issues.append({"level": "warn", "text": "RemoteRegistry 服务仍在自动/手动启动；远程注册表面建议关掉"})
+
     n_th = len(th.get("items") or [])
     if n_th:
         issues.append({"level": "info",
@@ -339,6 +401,7 @@ def build_report() -> dict:
         "startup": starts,
         "ports": ports,
         "suspect": procs,
+        "posture": posture,
         "issues": issues,
         "score": score,
         "checked_at": __import__("time").strftime("%Y-%m-%d %H:%M:%S"),

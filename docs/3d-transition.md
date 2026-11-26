@@ -460,8 +460,8 @@
 | 桥接 | `main.py` 把两个信号接到 `EmotionBridge.tts_active(True/False)` |
 | 保持 | 播放开始把最近一条 `P_LLM` 延长到 30 s；播放结束/打断恢复 4 s TTL，随后让位给 `P_AUTO` |
 | 优先级 | 不新增优先级；`P_USER` 仍高于 `P_LLM` |
-| 验收 | `tools/test_emotion_bridge.py` 7/7 通过；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；0.5 s WAV 的 `speech=True` 实测 `started=1 finished=1` |
-| 边界 | 本轮没有用真实 TTS 做声画同步验收；ASR、gaze/body lean、强度曲线仍未接 |
+| 验收 | `tools/test_emotion_bridge.py` 7/7 通过；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；0.5 s WAV 的 `speech=True` 实测 `started=1 finished=1`；真实 Edge TTS 11.544 s：`speechStarted/Finished` 各 1 次，播放中段 `P_LLM ttl=30`，结束后 `P_AUTO`；3D 日志两次 `source=P_LLM face=smile` |
+| 边界 | ASR、gaze/body lean、强度曲线仍未接；`P_AUTO` 的具体表情取决于当前心情，未保证回到中性 |
 
 这一步仍然不改 3D exe，只改 Python 侧音频信号和桥的 TTL。
 

@@ -75,6 +75,30 @@
 - 任何自动扫描/爆破/发包/提权/持久化能力
 - 把课程视频或整本 PDF 塞进 `knowledge.db`（版权、体积、检索质量都不合适）
 
+## 当前落地状态（2026-11-27 实测）
+
+已落在代码里的是 P0 的四个只读项 + P1 的三条规则，不是整份评估全部做完。
+
+### 已落地
+
+- `app/secscan.py::security_posture()`：只读 `HKLM` 四个位置：
+  - UAC：`SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System` 的 `EnableLUA / ConsentPromptBehaviorAdmin`（`PromptOnSecureDesktop` 一并读出）
+  - RDP：`SYSTEM\CurrentControlSet\Control\Terminal Server` 的 `fDenyTSConnections`
+  - SMBv1：`SYSTEM\CurrentControlSet\Services\mrxsmb10` 的 `Start`
+  - RemoteRegistry：`SYSTEM\CurrentControlSet\Services\RemoteRegistry` 的 `Start`
+  - 全部只 `QueryValueEx`，不写注册表、不自动修复。
+- `app/secscan.py::build_report()`：把 posture 写进 `posture`，并把“UAC 关闭/免提示、RDP 开启、SMBv1 未禁用、RemoteRegistry 自动/手动”并入 issues；评分仍按原汇总逻辑扣分。
+- `app/panel.py::refresh_scan()`：安全页新增“系统攻击面（只读）”段，显示 UAC / 远程桌面 / SMBv1 / RemoteRegistry 的人类可读状态。
+- `app/guard_core.py`：新增 H016 清事件日志、H017 关防火墙、H018 削弱 UAC；`tools/test_guard_core.py` 加正反例。
+- 实测真机：`UAC=开 consent=5`、`RDP=开`（本机确实开着远程桌面，报告会 warn）、`SMBv1=未安装`、`RemoteRegistry=Start 4`；`fw_off.cmd→H017`、`log_clear.ps1→H016`、`uac_off.cmd→H018`，`clean.ps1→0 条`。
+
+### 未落地
+
+- P0 里“Guest 账户、自动播放、脚本宿主、Office 宏、事件日志大小/覆盖策略”还没接。
+- P2 安全知识卡、P3 学习路线索引还没做。
+- 修复动作仍只给“去系统设置”的建议，没做一键修复；这是有意为之，避免桌宠替用户改安全配置。
+- 课程视频/PDF 都没打包进安装包，也没进 `knowledge.db`。
+
 ## 建议第一步
 
 先做 **P0 的 UAC/远程面/日志三项只读检查 + P1 的清日志/关防火墙两条规则**，一周内可验收；知识卡随后按用户提问频率补。这样资料真正落到“鲸鱼娘安全管家”，而不是变成另一套渗透工具箱。

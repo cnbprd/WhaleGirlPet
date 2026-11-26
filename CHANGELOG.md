@@ -14,10 +14,11 @@
 | 4 体积与元数据 | 只新增系统 `ws2_32.dll` 依赖，不新增运行时 DLL；新增 `3d/whale3d.rc` 版本资源，产品名/版本与安装器一致 | step 1 exe 1,315,840 → 1,321,472 B（+5,632 B，其中 1,024 B 为版本资源）；`ProductName=WhaleGirlPet`、`ProductVersion=3.1.0.0`；未重打 3.1.0 ZIP/安装器 |
 | 5 脸部交叉淡化 | shader 同时采 A/B 两帧并 `mix`；`setFace`/`toggleSmile` 走 0.16 s 过渡，自动眨眼仍瞬时；GL 增加 `glUniform1f` | dev exe **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769`；neutral→60 ms **0.121**、60 ms→happy **0.407**、neutral→happy **0.516**；截图 `_3d_emotion_crossfade.png` |
 | 6 Python 侧标签与仲裁 | 新增 `app/emotion_bridge.py`：`P_USER(3) / P_LLM(2) / P_AUTO(1)` 固定优先级 + TTL；用户显式情绪、回复隐藏标签/词表、`EmotionState` 自动提示三路；`main.py` 在聊天发送/回复/情绪衰减处接入，`_polish_reply` 移除隐藏标签 | `tools/test_emotion_bridge.py` 6/6 通过；3.1.1 exe 实测 `Emotion: happy intensity=0.90 source=P_USER face=smile`、`Emotion: sad intensity=0.65 source=P_LLM face=open`；只改 Python，不改 3D exe |
-| 7 TTS 播放保持 | `AudioManager` 新增 `speechStarted / speechFinished`，只在 TTS `speech=True` 路径触发；`main.py` 接到 `EmotionBridge.tts_active()`，播放时把最近一条 `P_LLM` 延到 30 s，结束/打断恢复 4 s TTL | `tools/test_emotion_bridge.py` 7/7 通过；0.5 s WAV 的 `speech=True` 实测 `play_file=True started=1 finished=1`；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；`py_compile` 通过；未用真实 TTS 做声画同步 |
-| 8 2D 链路稳定性 | `audio_manager` 音频解码加 64 块上限、invalid buffer 立即退出；`main.py` 联网学习改用 `_WebRelearnBridge` 信号回主线程；`panel.append_chat` 隐藏时只进 pending、`refresh_panel` 合并同一轮刷新 | FakeDecoder 死循环测试调用 1 次退出；`build/test_panel_pending.py` 隐藏 61 条不增加、show 后 63 条；`tools/_perf_panel.py` open_panel 0.74 s / refresh 0.01 s；`py_compile` 通过；Qt 退出 `0xC0000409` 仍未定位 |
+| 7 TTS 播放保持 | `AudioManager` 新增 `speechStarted / speechFinished`，只在 TTS `speech=True` 路径触发；`main.py` 接到 `EmotionBridge.tts_active()`，播放时把最近一条 `P_LLM` 延到 30 s，结束/打断恢复 4 s TTL；`_on_speech_finished()` 额外 4.3 s 后补 `P_AUTO`，避免脸停在最后一句 | `tools/test_emotion_bridge.py` 7/7 通过；0.5 s WAV `play_file=True started=1 finished=1`；**真实 Edge TTS 11.544 s**：`speechStarted/Finished` 各 1 次，播放中段 `P_LLM ttl=30.0`，结束后 `P_AUTO`；3D 日志两次 `Emotion: happy intensity=0.90 source=P_LLM face=smile`；截图 `docs/_3d_tts_sync_app_mid.png`、`_app_after.png` |
+| 8 2D 链路稳定性 | `audio_manager` 音频解码加 64 块上限、invalid buffer 立即退出；`main.py` 联网学习改用 `_WebRelearnBridge` 信号回主线程；`panel.append_chat` 隐藏时只进 pending、`refresh_panel` 合并同一轮刷新；`panel._tab_ambient` 改为切页懒加载天气，`shutdown_workers()` 退出时 quit/wait/terminate 天气/新闻/VL/迁移线程 | FakeDecoder 死循环测试调用 1 次退出；`build/test_panel_pending.py` 隐藏 61 条不增加、show 后 63 条；`tools/_perf_panel.py` open_panel 0.74 s / refresh 0.01 s；**Qt 退出 `0xC0000409` 根因已定位并修复**：`WeatherWorker` QThread 在面板构造时提前启动；`render_check` / `smoke_test` / 天气页退出均 exit 0 |
+| 9 安全资料落地 | 新增 `app/secscan.security_posture()`：只读 UAC / RDP / SMBv1 / RemoteRegistry，不自动改注册表；`build_report()` 把风险并入 issues 和 `posture`；安全页展示“系统攻击面（只读）”；`guard_core` 新增 H016 清日志、H017 关防火墙、H018 削弱 UAC | `tools/test_guard_core.py` 21 条规则：`fw_off.cmd→H017`、`log_clear.ps1→H016`、`uac_off.cmd→H018`，`clean.ps1` 0 条；真机 posture `UAC=开/consent=5`、`RDP=开`、`SMBv1=未安装`、`RemoteRegistry=4` |
 
-边界：三帧图集已能平滑交叉淡化，TTS 播放期间也能保持回复情绪，但 `intensity` 还没有幅度/时间曲线，gaze/body lean、ASR、真实 TTS 声画同步仍未接；这一步不能称为“情绪闭环完成”。细节见 `docs/3d-emotion-bus.md`。
+边界：三帧图集已能平滑交叉淡化，TTS 播放期间也能保持回复情绪，并用真实 11.544 s Edge TTS 跑通了声画同步；但 `intensity` 还没有幅度/时间曲线，gaze/body lean、ASR 仍未接；`P_AUTO` 的表情取决于当前心情，不保证回到中性。细节见 `docs/3d-emotion-bus.md`。
 
 ## v3.1.2（2026-11-27）
 
@@ -30,9 +31,9 @@
 | 3 安装包命名 | 安装器输出改为 `WhaleGirlPet-Setup-{#AppVersion}.exe`，不再带 `-3D-` | 本次产物 `WhaleGirlPet-Setup-3.1.2.exe` |
 | 4 CI | `.github/workflows/3d-build.yml` 版本校验改为 `3.1.2.0`，新增 FileDescription 不得含 `3D` 的断言，artifact 改为 `whale3d-v3.1.2-ci` | run `45861666963` 通过（53 秒）；CI exe 1,323,520 B，subsystem 2，ProductVersion `3.1.2.0` |
 | 5 资产 | 用 CI artifact 的 exe/ZIP 重打 3.1.2 安装包 | exe SHA256 `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84`；ZIP 2,809,199 B / `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`；安装包 4,418,364 B / `96B1377F31220C5B603A2D4E8976491385B0D23FD27BF14F80AA70D898BFA699` |
-| 6 安装链路修复（同日重建） | 新增 `GetExisting3DDir()`，优先读取 `WhaleGirlPet3D_is1` 的 `InstallLocation`；修复 `MigrateLegacy()` 的 `GetDateTimeString(..., '', '')` 导致的 Inno `Type Mismatch`；`Existing3D` 为真时跳过旧 2D 迁移检查 | 伪造已有 3D 目录静默安装 exit 0，`whale3d.exe` 落在已有目录；伪造旧 2D 最小目录迁移 exit 0，数据保留、旧程序/旧键移除；安装包 4,418,739 B / `5aece5a333a0af8b5d357f32ff1e10f4438614f976911e8ae81e68e124d0a3d2`；未上传 Release |
+| 6 安装链路修复（同日重建） | 新增 `GetExisting3DDir()`，优先读取 `WhaleGirlPet3D_is1` 的 `InstallLocation`；修复 `MigrateLegacy()` 的 `GetDateTimeString(..., '', '')` 导致的 Inno `Type Mismatch`；`Existing3D` 为真时跳过旧 2D 迁移检查 | 伪造已有 3D 目录静默安装 exit 0，`whale3d.exe` 落在已有目录；伪造旧 2D 最小目录迁移 exit 0；**真实 `F:\WhaleGirlPetApp` 18.673 GB → 18.501 GB 升级 exit 0**：`PrepareToInstall` 判定 legacy=1，`MigrateLegacy exit=0`，`whale3d.exe` 落盘，旧 `_internal`/`WhaleGirlPet.exe`/旧键移除，新键 `WhaleGirlPet3D_is1` 建立，`config.json`/`accounts.json`/`memory.db`/`knowledge.db`/`tts_cache` 原样保留；安装包 4,418,739 B / `5aece5a333a0af8b5d357f32ff1e10f4438614f976911e8ae81e68e124d0a3d2` |
 
-边界：本轮只改安装器、窗口标题和发布包，不改渲染/动画功能；真实 `F:\WhaleGirlPetApp` 的 18.7 GB 数据迁移仍未完整执行，旧 2D 程序文件与旧卸载登记可能仍并存。安装包未签名，SignPath 仍在审核。安装器实测只使用伪造目录，未在真实 18.7 GB 数据上执行升级。
+边界：本轮只改安装器、窗口标题和发布包，不改渲染/动画功能。真实 18.673 GB 数据迁移已在本机执行通过，数据保留、旧 2D 程序与旧卸载登记移除；其他机器的真实数据未逐一实跑。安装包未签名，SignPath 仍在审核。
 
 ## v3.1.1（2026-11-26）
 

@@ -99,6 +99,21 @@ DEFAULT_RULES = [
      "scope": "file", "kind": "regex",
      "pattern": r"(?i)(stratum\+tcp|minexmr|nanopool|xmrpool|supportxmr)",
      "why": "挖矿木马内置矿池连接串"},
+    # v3.2 安全资料落地：从日志/防火墙/UAC 章节提炼的防御侧高置信检测。
+    {"id": "H016", "name": "清除事件日志", "level": "high", "weight": 30,
+     "scope": "cmdline", "kind": "regex",
+     "pattern": r"(?i)(wevtutil(\.exe)?\s+(cl|clear-log)|Clear-EventLog|Remove-EventLog)",
+     "why": "清除事件日志是掩盖入侵痕迹的常见收尾动作"},
+    {"id": "H017", "name": "关闭防火墙", "level": "high", "weight": 28,
+     "scope": "cmdline", "kind": "regex",
+     "pattern": r"(?i)(netsh\s+(adv)?firewall\s+set\s+.*\bstate\s+off|"
+              r"Set-NetFirewallProfile\b.{0,40}-Enabled\s+(False|0))",
+     "why": "脚本主动关闭防火墙，常见于木马/挖矿落地"},
+    {"id": "H018", "name": "削弱 UAC", "level": "high", "weight": 28,
+     "scope": "cmdline", "kind": "regex",
+     "pattern": r"(?i)(EnableLUA.{0,60}(/d\s*0|=\s*0|:\s*0|\s0\b)|"
+              r"ConsentPromptBehaviorAdmin.{0,40}(/d\s*0|=\s*0|:\s*0|\s0\b))",
+     "why": "把 UAC 关掉或设为不提示提权，绕过了系统最后一道确认"},
     {"id": "AV-EICAR", "name": "EICAR 杀毒测试串", "level": "high", "weight": 40,
      "scope": "file", "kind": "str",
      "pattern": "EICAR-STANDARD-ANTIVIRUS-TEST-FILE",

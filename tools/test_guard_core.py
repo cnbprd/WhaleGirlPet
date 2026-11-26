@@ -24,6 +24,10 @@ def build_samples():
         "b64.js": "var x='" + "QUJD" * 40 + "';",
         "miner.txt": "stratum+tcp://xmr.pool:3333 wallet=4xxx",
         "clean.ps1": "Write-Host 'hello world'; Get-Date",
+        "log_clear.ps1": "wevtutil cl Security; Clear-EventLog -LogName System",
+        "fw_off.cmd": "netsh advfirewall set allprofiles state off",
+        "uac_off.cmd": "reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System "
+                        "/v EnableLUA /t REG_DWORD /d 0 /f",
     }
     for fn, text in cases.items():
         with open(os.path.join(SAMPLES, fn), "w", encoding="utf-8") as f:

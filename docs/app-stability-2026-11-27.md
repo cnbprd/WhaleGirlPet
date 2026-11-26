@@ -51,6 +51,24 @@ while dec.bufferAvailable():
 - `tools/_perf_panel.py`：`open_panel 0.74s`，`refresh() 0.01s`，12 页切换正常
 - `tools/test_emotion_bridge.py` 7/7
 
+## 4. Qt 退出 `0xC0000409`：天气 QThread 提前启动
+
+`render_check.py` / `smoke_test.py` 在打印 `saved` 后、Qt 退出阶段仍报 `0xC0000409`（STATUS_STACK_BUFFER_OVERRUN 的 fail-fast 路径）。用 `build/qt_exit_probe.py` 逐层隔离，`app`、`audio`、`ctl` 均 exit 0，只有 `panel` 崩；再用 `build/qt_panel_page_probe.py` 逐页建面板，`only:chat`、`only:settings` 等 exit 0，**只有 `only:ambient` 崩**。
+
+根因：`ControlPanel._tab_ambient()` 在面板构造时就 `QTimer.singleShot(0, self._load_weather)`，天气页即使从未显示也已创建 `ambient.WeatherWorker` QThread。脚本打开面板后马上退出，QThread 仍在跑，Qt 在解释器/对象析构阶段直接 fail-fast。
+
+修复：
+
+- `_tab_ambient()` 不再在构造期启动天气；`_on_page_changed` 切到“天气资讯”时才 `_load_weather`
+- `_load_weather` / `_load_news_cat` 增加“上一线程还在跑就不重复启动”的 guard
+- 新增 `ControlPanel.shutdown_workers()`：对 `_weather_worker / _news_worker / _vl_worker / mig_thread` 先 `quit + wait(1200ms)`，超时 `terminate`；`closeEvent` 与 `main.quit_app()` 都调用
+
+验证：
+
+- `app/render_check.py` exit 0
+- `app/smoke_test.py` exit 0
+- `build/test_weather_exit.py`：切到天气页后 300ms 退出，exit 0
+
 ## 边界
 
-`app/render_check.py` / `app/smoke_test.py` 在 Qt 退出阶段仍以 `0xC0000409` 退出；`render_check` 已打印 `saved` 后才崩，属于进程 teardown 问题，不是本轮面板/音频改动引入的明确证据。后续单独排查 Qt 退出清理顺序。
+当前测试路径下 Qt 退出已不再复现 `0xC0000409`；天气页真实加载中的长任务、以及其它页面的长驻线程，还需要更长时间的 soak 测试覆盖。`render_check` 仍会在仓库根目录生成 `render-pet*.png` / `render-panel*.png` 临时图，属于验收副作用，不是崩溃。

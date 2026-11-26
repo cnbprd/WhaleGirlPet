@@ -522,6 +522,15 @@ class Controller:
 
     def _on_speech_finished(self):
         self.emotion_bridge.tts_active(False)
+        # P_LLM 在结束/打断后只续 4 s；到点补一条 P_AUTO，让脸回到当前心情，
+        # 而不是一直停在最后一句的高兴/难过脸上。
+        QTimer.singleShot(4300, self._release_tts_emotion)
+
+    def _release_tts_emotion(self):
+        try:
+            self.emotion_bridge.auto_state(self.emotion)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _speak(self, text: str, ms: int = 2400, priority: int = 0):
         """气泡 + 可选方言语音（TTS 只合成短句，长段只显示）。
@@ -3573,6 +3582,11 @@ class Controller:
         except Exception:  # noqa: BLE001
             pass
         self.tray.hide()
+        if self.panel is not None:
+            try:
+                self.panel.shutdown_workers()
+            except Exception:  # noqa: BLE001
+                pass
         self.app.quit()
 
 

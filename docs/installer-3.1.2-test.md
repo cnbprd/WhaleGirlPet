@@ -10,7 +10,7 @@
 1. **升级默认目录没有沿用已有 3D 安装位置**：之前只看旧 2D 注册表，否则固定 `F:\WhaleGirlPetApp`；装在 D 盘/自定义目录的 3D 版升级时，默认会被拉回 F 盘。
 2. **旧 2D→3D 迁移脚本在 Inno 里一调用就 `Type Mismatch`**：`GetDateTimeString('yyyymmdd-hhnnss', '', '')` 的空字符串分隔符参数类型不对，迁移还没开始就失败。这解释了“迁移没有完整跑完”。
 
-两个都已在 `installer/whale3d.iss` 修复，并用隔离目录/伪造旧版注册表实测通过；**真实 `F:\WhaleGirlPetApp` 的 18.7 GB 数据没有动**。
+两个都已在 `installer/whale3d.iss` 修复，并用隔离目录/伪造旧版注册表实测通过；**真实 `F:\WhaleGirlPetApp` 的 18.673 GB 数据也已在 2026-11-27 01:51 完成升级**，exit 0，数据保留、旧 2D 程序与旧卸载登记移除。
 
 ## 测试 1：已有 3D 安装，默认沿用自定义目录
 
@@ -46,7 +46,23 @@ Type Mismatch.
 
 修复点：`GetDateTimeString('yyyymmdd-hhnnss', '-', ':')`，不再传空字符串分隔符。
 
-## 测试 3：和 2D 安装器对比
+## 测试 3：真实 18.7 GB 升级
+
+备份：`F:\WhaleGirlPet\build\userdata-before-3d-upgrade`（9.44 MB，含 `config.json`、`accounts.json`、`memory.db`、`knowledge.db`、`accounts`、`voices`、`tts_cache`、`workspace`、`reports`、`quarantine`、`scripts`、`ollama_library.json` 和旧卸载键 JSON）。
+
+做法：不传 `/DIR`，让 `GetPreferredDir()` 读旧 2D 键，默认到 `F:\WhaleGirlPetApp`；`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART` 运行生产包。
+
+结果：
+
+- installer exit `0`
+- 日志：`PrepareToInstall: existing3d=0 legacy=1 app=F:\WhaleGirlPetApp legacyDir=F:\WhaleGirlPetApp`、`MigrateLegacy: exit=0`
+- 目录从 18.673 GB 变为 18.501 GB（减少的是旧 2D 程序文件）
+- `whale3d.exe` 已落盘；旧 `_internal` / `WhaleGirlPet.exe` 已删除
+- `config.json` 926 B、`accounts.json` 156 B、`memory.db` 24,576 B、`knowledge.db` 16,384 B、真实 TTS 缓存 69,264 B 均保留
+- 旧键 `鲸鱼娘桌宠_is1` 已移除；新键 `WhaleGirlPet3D_is1` 建立，`UninstallString` 指向新的 `unins000.exe`
+- 迁移临时备份目录已自动清理，没有残留 `WhaleGirlPetApp_userdata_*`
+
+## 测试 4：和 2D 安装器对比
 
 | 项 | 2D `whale_pet.iss`（3.0.27） | 3D `whale3d.iss`（3.1.2 修复后） |
 |---|---|---|
@@ -61,12 +77,12 @@ Type Mismatch.
 ## 产物
 
 - 测试包：`WhaleGirlPet-Setup-3.1.2-test.exe`，仅测试；与生产包内容/哈希相同（`BuildSuffix` 只改输出文件名），测试后已清理。
-- 生产包：`dist/3d/WhaleGirlPet-Setup-3.1.2.exe`，4,418,739 B / SHA256 `5AECE5A333A0AF8B5D357F32FF1E10F4438614F976911E8AE81E68E124D0A3D2`。
-- 旧包备份测试后已清理；线上 Release 仍是旧包。
+- 生产包：`dist/3d/WhaleGirlPet-Setup-3.1.2.exe`，4,418,739 B / SHA256 `5AECE5A333A0AF8B5D357F32FF1E10F4438614F976911E8AE81E68E124D0A3D2`；真实升级使用此包。
+- 线上 Release 的替换见 `docs/release-v3.1.2.md`。
 
 ## 边界
 
-- 真实 18.7 GB `F:\WhaleGirlPetApp` 仍未迁移；本次只在最小伪造目录验证逻辑。真正升级前仍应先备份用户数据。
+- 真实 18.7 GB `F:\WhaleGirlPetApp` 已在本机升级通过；其他机器的真实数据（尤其是自定义目录、不同盘符）未逐一实跑。
 - 安装包未签名，SignPath 仍在审核。
 - 2D 安装器未改；它是历史归档，不再作为新发布目标。
-- 生产包 `dist/3d/WhaleGirlPet-Setup-3.1.2.exe` 已在本地重建，但尚未上传 Release；线上 v3.1.2 资产仍是旧包。
+- 升级前备份仍在 `build/userdata-before-3d-upgrade`，确认稳定后可删除。

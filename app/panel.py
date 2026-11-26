@@ -155,9 +155,13 @@ class ControlPanel(QWidget):
     def _on_page_changed(self, idx: int):
         """v3.0.23（第 7 条）：切到聊天页/刚打开面板时，直接停在最新一条。"""
         try:
-            if self.side.item(idx).text() == "聊天":
+            label = self.side.item(idx).text()
+            if label == "聊天":
                 QTimer.singleShot(0, self._scroll_chat_bottom)
                 QTimer.singleShot(150, self._scroll_chat_bottom)
+            elif label == "天气资讯":
+                # 懒加载：只在用户真的切到天气页时联网，避免构造面板就起 QThread。
+                QTimer.singleShot(0, self._load_weather)
         except Exception:  # noqa: BLE001
             pass
 
@@ -181,6 +185,31 @@ class ControlPanel(QWidget):
             QTimer.singleShot(0, self._load_history_safe)
         else:
             self._flush_pending_chat()
+
+    def shutdown_workers(self):
+        """退出前收掉面板起的 QThread。
+
+        天气/资讯/音色库线程都是联网阻塞型，不在事件循环里跑；如果 Python
+        退出时 QThread 还在运行，Qt 会直接 0xC0000409。这里先等，等不到再强停。
+        """
+        for attr in ("_weather_worker", "_news_worker", "_vl_worker", "mig_thread"):
+            w = getattr(self, attr, None)
+            if w is None or not w.isRunning():
+                continue
+            try:
+                w.quit()
+            except Exception:  # noqa: BLE001
+                pass
+            if not w.wait(1200):
+                try:
+                    w.terminate()
+                    w.wait(500)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def closeEvent(self, ev):  # noqa: N802
+        self.shutdown_workers()
+        super().closeEvent(ev)
 
     def resizeEvent(self, ev):  # noqa: N802
         super().resizeEvent(ev)
@@ -941,8 +970,8 @@ class ControlPanel(QWidget):
         self.txt_news.setPlaceholderText("点左边任一分类，这里列最新标题")
         news_row.addWidget(self.txt_news, 1)
         av.addLayout(news_row, 1)
-        # 打开页面就先把缓存/网络天气填上
-        QTimer.singleShot(0, self._load_weather)
+        # 天气不在构造时联网：面板默认停在聊天页，构造即拉天气会留下
+        # 一个正在跑的 QThread，退出时容易 0xC0000409。切到本页再拉。
         return self._wrap_prefs(box_amb, fill=True)
 
     def _tab_pet_behavior(self):
@@ -968,6 +997,9 @@ class ControlPanel(QWidget):
 
     def _load_weather(self):
         """后台取天气并填卡片：优先用她刚播报过的缓存，没有就现场联网。"""
+        w0 = getattr(self, "_weather_worker", None)
+        if w0 is not None and w0.isRunning():
+            return
         city = ""
         try:
             city = (self.ctl.config.get("weather_city", "") or "").strip() \
@@ -1035,6 +1067,10 @@ class ControlPanel(QWidget):
 
     def _load_news_cat(self, key: str):
         """点分类按钮 → 后台抓该类头条，结果贴到小文本框。"""
+        w0 = getattr(self, "_news_worker", None)
+        if w0 is not None and w0.isRunning():
+            self.txt_news.setPlainText("上一类还在抓，等它回来再点。")
+            return
         label = dict(ambient.NEWS_CATEGORIES).get(key, key)
         self.txt_news.setPlainText(f"正在抓{label}…")
         worker = ambient.NewsWorker(key, 12)
@@ -3144,6 +3180,30 @@ class ControlPanel(QWidget):
                 lines_.append(f"  · {p}")
         else:
             lines_.append("  未发现明显可疑进程")
+        lines_ += ["", "【系统攻击面（只读）】"]
+        po = report.get("posture") or {}
+        uac = po.get("uac") or {}
+        rdp = po.get("rdp") or {}
+        smb1 = po.get("smb1") or {}
+        rr = po.get("remote_registry") or {}
+        if uac.get("ok"):
+            lines_.append("  UAC：" + ("已开启" if uac.get("enabled") else "已关闭 ⚠")
+                          + (f"（提权提示={uac.get('consent')}）" if uac.get("consent") is not None else ""))
+        else:
+            lines_.append("  UAC：读不到")
+        if rdp.get("ok"):
+            lines_.append("  远程桌面：" + ("已开启 ⚠" if rdp.get("enabled") else "已关闭"))
+        else:
+            lines_.append("  远程桌面：读不到")
+        if smb1.get("ok"):
+            lines_.append("  SMBv1：" + ("已禁用" if smb1.get("disabled") else "未禁用 ⚠"))
+        else:
+            lines_.append("  SMBv1：未安装/读不到")
+        if rr.get("ok"):
+            rr_starts = {0: "自动", 1: "系统", 2: "自动", 3: "手动", 4: "已禁用"}
+            lines_.append("  RemoteRegistry：" + rr_starts.get(rr.get("start"), str(rr.get("start"))))
+        else:
+            lines_.append("  RemoteRegistry：读不到")
         lines_ += ["", f"综合评分：{report.get('score', '-')}/100"]
         for issue in report.get("issues", []):
             text = issue.get("text", "") if isinstance(issue, dict) else str(issue)
