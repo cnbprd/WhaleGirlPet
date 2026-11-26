@@ -13,6 +13,7 @@ if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup compiler not found:
 if (-not (Test-Path -LiteralPath $iss)) { throw "Installer script not found: $iss" }
 
 $packages = @(
+    @{ Version = '3.2.0'; Zip = '3d\whale3d-whale-girl-v3.2-dev.zip'; Suffix = '-dev' },
     @{ Version = '3.1.2'; Zip = '3d\whale3d-whale-girl-v3.zip' },
     @{ Version = '3.1.0'; Zip = '3d\whale3d-whale-girl-v2.zip' },
     @{ Version = '3.0.28'; Zip = '3d\whale3d-whale-girl-v1.zip' }
@@ -31,10 +32,10 @@ foreach ($pkg in $packages) {
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
     Expand-Archive -LiteralPath $zip -DestinationPath $payload -Force
 
-    & $iscc "/DAppVersion=$($pkg.Version)" "/DPayloadDir=$payload" $iss
+    & $iscc "/DAppVersion=$($pkg.Version)" "/DBuildSuffix=$($pkg.Suffix)" "/DPayloadDir=$payload" $iss
     if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $($pkg.Version) (exit $LASTEXITCODE)" }
 
-    $setup = Join-Path $outDir "WhaleGirlPet-Setup-$($pkg.Version).exe"
+    $setup = Join-Path $outDir "WhaleGirlPet-Setup-$($pkg.Version)$($pkg.Suffix).exe"
     if (-not (Test-Path -LiteralPath $setup)) { throw "Setup output missing: $setup" }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
     $shaFile = "$setup.sha256"

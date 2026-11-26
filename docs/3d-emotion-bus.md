@@ -185,7 +185,7 @@ Emotion: neutral intensity=0.00 attack=180ms release=420ms gaze=(0.80,-0.10)@1.0
 - `app/asr_service.py` 默认关闭；构造后不录音，按钮/热键显式 `arm_once()` 后才启动一次 `VoiceWorker`，结束自动关闭。
 - 后端仍是 Windows 离线 SAPI；`voice_cmd.recognize(min_conf=0.30)` 拒绝低置信度假词，返回空文本而不是伪造指令。
 - 识别文本仍走 `main._on_voice()` → `send_chat()` → `emotion_bridge.user_text()`；`P_USER` 优先级不变，3D 只收情绪包。
-- 真实验收：`3d/tools/asr_accept.py` 识别“别难过，笑一个”（实际文本“别难过小一个”，conf 0.494）→ `P_USER happy 0.9` → 3D 全窗 RGB 差 **0.541**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png`。
+- 真实验收：`3d/tools/asr_accept.py` 识别“别难过，笑一个”（实际文本“别难过小一个”，conf 0.494）→ `P_USER happy 0.9` → 3D 全窗 RGB 差 **0.527**（3.2.0.0 重建后复测）；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png`。
 
 ## 还没做的
 
@@ -202,7 +202,8 @@ step 1 / 1b / 4 / 5 已解决“参数进得来、脸能平滑切、强度有幅
 - 交叉淡化（step 1b）后 dev exe 为 **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769`。
 - 强度包络（step 4，含可选 trace）后 dev exe 为 **1,324,544 B**，SHA256 `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119`；相对 step 1b 增加 2,048 B。
 - 姿态层（step 5）后 dev exe **1,331,712 B**，SHA256 `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792`；相对 step 4 增加 7,168 B。运行时负载（exe + `SDL3.dll` + `whale_girl.vrm`）为 **7,068,523 B**。
-- 平滑/长跑（step 6）后 dev exe **1,332,224 B**（+512 B），SHA256 `FB8B7D6455F640CDCC444FA023C579EAE43CECFA62B94D49DE1B2B826BD27CA3`；运行时负载 **7,069,035 B**。没有用这个 exe 重打 ZIP/安装包。
+- 平滑/长跑（step 6）后 dev exe **1,332,224 B**（+512 B），SHA256 `FB8B7D6455F640CDCC444FA023C579EAE43CECFA62B94D49DE1B2B826BD27CA3`；运行时负载 **7,069,035 B**。
+- 版本资源改为 `3.2.0.0` 后重建，尺寸不变，SHA256 `AF46843D36A802049ED9ABEE90598E2875D604936B4759359A626741CB4D9D6A`；该 exe 已打进 **v3.2.0-dev 便携 ZIP** 和 **3.2.0-dev 测试安装包**。
 - 仅链接系统 `ws2_32.dll`，没有引入新运行时 DLL。
 - 只绑 `127.0.0.1`，不监听 `0.0.0.0`；没有认证，本机任意进程都能注入，这也是当前开发阶段的预期边界。
-- 当前 3.2 开发态没有重打 3.2 的 ZIP / 安装包；v3.1.2 是最新安装版（`WhaleGirlPet-Setup-3.1.2.exe`）。
+- v3.2.0-dev 已有便携 ZIP 和测试安装包；v3.1.2 仍是最新稳定安装版（`WhaleGirlPet-Setup-3.1.2.exe`）。

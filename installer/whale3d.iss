@@ -1,8 +1,8 @@
 ; 鲸鱼娘 核心包安装脚本（Inno Setup 6）
 ; 推荐编译：powershell -ExecutionPolicy Bypass -File installer\build_3d_installers.ps1
 ; 手动编译前先把对应 zip 解压到 build\3d-installer-payload\<版本>，然后：
-;   tools\inno\ISCC.exe /DAppVersion=3.1.2 "/DPayloadDir=<绝对路径>" installer\whale3d.iss
-; 3.0.28 / 3.1.0 / 3.1.1 / 3.1.2 使用同一个 AppId 与安装目录，后装覆盖升级。
+;   tools\inno\ISCC.exe /DAppVersion=3.2.0 /DBuildSuffix=-dev "/DPayloadDir=<绝对路径>" installer\whale3d.iss
+; 3.0.28 / 3.1.0 / 3.1.1 / 3.1.2 / 3.2.0-dev 使用同一个 AppId 与安装目录，后装覆盖升级。
 ; 如果检测到旧版 2D 3.0.27，默认升级到它所在目录，并由安装器内 migrate_legacy.ps1 直接迁移；旧卸载器有 bug，不再调用。
 
 #ifndef AppVersion
