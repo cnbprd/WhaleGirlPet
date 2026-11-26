@@ -1,15 +1,10 @@
-name: Release Assets
+name: Release Assets (2D archive, manual only)
 
+# 2D mainline is abandoned (see DECLARATION.md). Keep this workflow only for
+# an explicit maintainer-driven archive build; never run it automatically on
+# app/** or workflow changes. 3D releases are packaged and uploaded locally.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/release-assets.yml'
-      - 'app/**'
-      - 'assets/**'
-      - 'installer/**'
-      - 'WhaleGirlPet.spec'
 
 permissions:
   contents: write
