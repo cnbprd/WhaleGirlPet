@@ -452,3 +452,16 @@
 
 这一步没有改 3D exe，也没有重打 v3.2 安装包；它只改 Python 侧的信号生产与仲裁。
 
+## 第 11d 步（v3.2 step 3）：TTS 播放期间保持情绪
+
+| 项 | 实现 |
+| :--- | :--- |
+| 音频信号 | `AudioManager` 新增 `speechStarted` / `speechFinished`，只在 `speech=True` 的 TTS 播放路径触发 |
+| 桥接 | `main.py` 把两个信号接到 `EmotionBridge.tts_active(True/False)` |
+| 保持 | 播放开始把最近一条 `P_LLM` 延长到 30 s；播放结束/打断恢复 4 s TTL，随后让位给 `P_AUTO` |
+| 优先级 | 不新增优先级；`P_USER` 仍高于 `P_LLM` |
+| 验收 | `tools/test_emotion_bridge.py` 7/7 通过；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；0.5 s WAV 的 `speech=True` 实测 `started=1 finished=1` |
+| 边界 | 本轮没有用真实 TTS 做声画同步验收；ASR、gaze/body lean、强度曲线仍未接 |
+
+这一步仍然不改 3D exe，只改 Python 侧音频信号和桥的 TTL。
+

@@ -187,6 +187,9 @@ class Controller:
             pass
         # v3.2 step 2: Python-side emotion labels -> local 3D UDP bus.
         self.emotion_bridge = emo_bridge.EmotionBridge()
+        # v3.2 step 3: hold the reply emotion while TTS is actually speaking.
+        self.audio.speechStarted.connect(self._on_speech_started)
+        self.audio.speechFinished.connect(self._on_speech_finished)
         try:
             self.app.aboutToQuit.connect(self.emotion_bridge.close)
         except Exception:  # noqa: BLE001
@@ -506,6 +509,12 @@ class Controller:
             pass
 
     # ================= 语音 / 情绪 =================
+    def _on_speech_started(self):
+        self.emotion_bridge.tts_active(True)
+
+    def _on_speech_finished(self):
+        self.emotion_bridge.tts_active(False)
+
     def _speak(self, text: str, ms: int = 2400, priority: int = 0):
         """气泡 + 可选方言语音（TTS 只合成短句，长段只显示）。
         priority：喂食/拍拍 2 > 对话回复 1 > 闲聊/自主/播报 0。

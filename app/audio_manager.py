@@ -11,7 +11,7 @@ import os
 import shutil
 import struct
 
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtMultimedia import QAudioDecoder, QAudioFormat, QAudioOutput, QMediaPlayer
 
 import sysvol
@@ -21,6 +21,9 @@ AUDIO_EXTS = (".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".wma")
 
 
 class AudioManager(QObject):
+    speechStarted = Signal()
+    speechFinished = Signal()
+
     def __init__(self, config: dict):
         super().__init__()
         self.config = config
@@ -46,6 +49,9 @@ class AudioManager(QObject):
         """播完/停下时把优先级归零，别让上一句的高优先级一直压着。"""
         if st != QMediaPlayer.PlayingState:
             self._prio = 0
+            if self._speech:
+                self._speech = False
+                self.speechFinished.emit()
 
     # ---------- 音量 ----------
     def _apply_volume(self):
@@ -108,6 +114,7 @@ class AudioManager(QObject):
             self.player.play()
             if speech:
                 self._begin_envelope(path)
+                self.speechStarted.emit()
             else:
                 self._clear_envelope()
             return True

@@ -76,6 +76,18 @@ class BridgeTests(unittest.TestCase):
     def test_unknown_render_emotion_rejected(self):
         self.assertIsNone(self.bridge._submit_and_emit("not-an-emotion", 0.5, "P_USER", 3, 8))
 
+    def test_tts_hold_keeps_llm_face_through_long_speech(self):
+        self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
+        self.clock.t += 5.0
+        self.assertIsNone(self.bridge.arbiter.current())
+        self.bridge.tts_active(True)
+        self.assertEqual(self.bridge.arbiter.current().source, "P_LLM")
+        self.clock.t += 20.0
+        self.assertEqual(self.bridge.arbiter.current().source, "P_LLM")
+        self.bridge.tts_active(False)
+        self.clock.t += 5.0
+        self.assertIsNone(self.bridge.arbiter.current())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

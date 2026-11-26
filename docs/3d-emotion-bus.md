@@ -1,4 +1,4 @@
-# 3D 情绪总线 v3.2（step 1 + step 1b + step 2）
+# 3D 情绪总线 v3.2（step 1 + step 1b + step 2 + step 3）
 
 日期：2026-11-26
 
@@ -26,6 +26,17 @@ v3.2.x 的第一步已经接进 3D 壳：**本机 UDP 情绪参数总线**。它
 - 系统提示只在 3D bridge 开启时要求模型在末尾附一个隐藏标签；`_polish_reply()` 会在气泡/TTS 前移除标签，用户看不到。
 
 实测：`tools/test_emotion_bridge.py` 6 项单元测试通过；启动 3.1.1 的 `whale3d.exe` 后，`P_USER` 日志为 `Emotion: happy intensity=0.90 source=P_USER face=smile`，`P_LLM` 日志为 `Emotion: sad intensity=0.65 source=P_LLM face=open`。这两条只是本机回环验收，不代表真实 LLM 每次都会输出标签。
+
+## v3.2 step 3：TTS 播放期间保持回复情绪
+
+`P_LLM` 原本只有 4 秒 TTL，长句还没念完脸就掉回 `P_AUTO`。这一步把“真实播放”接进桥，而不是按文本长度猜：
+
+- `AudioManager` 新增 `speechStarted` / `speechFinished` 信号，只在 TTS 的 `speech=True` 播放路径触发；动作音效、试听、普通音频不走这两个信号。
+- `main.py` 把两个信号接到 `EmotionBridge.tts_active(True/False)`。
+- 开始播放时，把最近一条 `P_LLM` 信号延长到 30 秒；播放结束/被打断时，恢复为 4 秒 TTL，之后照常衰减到 `P_AUTO`。
+- 这不是新的优先级：`P_USER` 仍然压过 `P_LLM`；只是让回复情绪覆盖整段语音。
+
+实测：`tools/test_emotion_bridge.py` 7/7 通过，包含 `P_LLM` 5 秒过期后由 `tts_active(True)` 重新拉起、20 秒仍保持、结束后 5 秒释放的用例；`py_compile` 通过。音频层还用 0.5 秒 WAV 走了一遍 `speech=True`：`play_file=True started=1 finished=1`。本轮仍没有用真实 TTS 做声画同步验收。
 
 ## 协议
 

@@ -215,6 +215,7 @@ class EmotionBridge:
         self.sender = UdpSender(port=port or int(os.environ.get("WHALE3D_EMOTION_PORT", DEFAULT_PORT)),
                                 enabled=self.enabled)
         self.last_emitted: Optional[Signal] = None
+        self.last_llm: Optional[Signal] = None
 
     def close(self):
         self.sender.close()
@@ -252,7 +253,24 @@ class EmotionBridge:
             found = infer_from_text(text)
         if found is None:
             return None
-        return self._submit_and_emit(found[0], found[1], "P_LLM", P_LLM, 4.0)
+        signal = self._submit_and_emit(found[0], found[1], "P_LLM", P_LLM, 4.0)
+        if signal is not None:
+            self.last_llm = signal
+        return signal
+
+    def tts_active(self, active: bool) -> Optional[Signal]:
+        """Keep the reply emotion alive while TTS is actually speaking.
+
+        The normal P_LLM TTL is 4 s; a spoken reply can easily be longer. The
+        audio layer calls this on real playback start/stop, so the face does
+        not fall back to P_AUTO halfway through a sentence. This is a TTL
+        extension, not a new priority level.
+        """
+        if not self.enabled or self.last_llm is None:
+            return None
+        ttl = 30.0 if active else 4.0
+        return self._submit_and_emit(
+            self.last_llm.emotion, self.last_llm.intensity, "P_LLM", P_LLM, ttl)
 
     def auto_state(self, emotion_state) -> Optional[Signal]:
         """Existing expression hint -> P_AUTO, 12 s."""
