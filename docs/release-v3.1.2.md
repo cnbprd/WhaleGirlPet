@@ -44,6 +44,10 @@
 - exe `FileVersion/ProductVersion`：`3.1.2.0`
 - PE subsystem：`2`（GUI，不额外弹终端框）
 
+## 发布状态
+
+v3.1.2 Release 的同名资产已替换为上面的新包；从 GitHub 重新下载后校验为 4,418,739 B / `5AECE5A333A0AF8B5D357F32FF1E10F4438614F976911E8AE81E68E124D0A3D2`。tag 仍为 `v3.1.2`，未改版本号。
+
 ## 边界
 
 - 安装包仍未签名，SignPath Foundation 的申请仍在审核。
