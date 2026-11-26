@@ -3,7 +3,7 @@
 ; 手动编译前先把对应 zip 解压到 build\3d-installer-payload\<版本>，然后：
 ;   tools\inno\ISCC.exe /DAppVersion=3.1.1 "/DPayloadDir=<绝对路径>" installer\whale3d.iss
 ; 3.0.28 / 3.1.0 / 3.1.1 使用同一个 AppId 与安装目录，后装覆盖升级。
-; 如果检测到旧版 2D 3.0.27，默认升级到它所在目录，并在安装前运行旧卸载器。
+; 如果检测到旧版 2D 3.0.27，默认升级到它所在目录，并由安装器内 migrate_legacy.ps1 直接迁移；旧卸载器有 bug，不再调用。
 
 #ifndef AppVersion
   #define AppVersion "3.1.1"
@@ -21,8 +21,8 @@ AppPublisher=cnbprd
 AppPublisherURL=https://github.com/cnbprd/WhaleGirlPet
 AppSupportURL=https://github.com/cnbprd/WhaleGirlPet/issues
 AppUpdatesURL=https://github.com/cnbprd/WhaleGirlPet/releases
-VersionInfoVersion={#AppVersion}
-VersionInfoProductVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}.0
+VersionInfoProductVersion={#AppVersion}.0
 VersionInfoCompany=cnbprd
 VersionInfoDescription=鲸鱼娘 3D 安装包
 DefaultDirName={code:GetPreferredDir}

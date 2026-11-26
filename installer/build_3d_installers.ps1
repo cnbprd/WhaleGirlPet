@@ -14,6 +14,7 @@ if (-not (Test-Path -LiteralPath $iss)) { throw "Installer script not found: $is
 
 $packages = @(
     @{ Version = '3.1.1'; Zip = '3d\whale3d-whale-girl-v3.zip' },
+    @{ Version = '3.1.0'; Zip = '3d\whale3d-whale-girl-v2.zip' },
     @{ Version = '3.0.28'; Zip = '3d\whale3d-whale-girl-v1.zip' }
 )
 

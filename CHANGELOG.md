@@ -45,6 +45,8 @@
 | 6 回归 | 真实鼠标点击穿透、托盘、in-place 换模沿用 v3.0.28 路径 | 透明角 underlay `BN_CLICKED id=1 count=1`；中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；私有字节 97,837,056 → 98,078,720 四轮不增长 |
 | 7 Windows 安装器 | 新增 `installer/whale3d.iss` 与 `build_3d_installers.ps1`，从 v2 包构建 Inno Setup 安装包；默认装到 `%LOCALAPPDATA%\WhaleGirlPet3D`，无需管理员 | `WhaleGirlPet-3D-Setup-3.1.0.exe` 3,951,977 B，SHA256 `33A49BFD1335F105F7BF2B674EE74C6E29FBA1D29C660AFC7984F45500A2A88E`；静默安装/启动/卸载 exit 0，启动日志 4 chains / vrm=1 |
 
+> 2026-11-27 修复重发：v3.1.0 Release 资产已替换为 GUI subsystem 的 `3.1.0.0` exe、2,805,751 B 便携包和 4,417,521 B 安装器；上面第 7 行是原包历史值，不再对应当前下载。修复包详情见 [`docs/release-v3.1.0-repaired.md`](docs/release-v3.1.0-repaired.md)。
+
 ## v3.0.28（2026-11-26）
 
 3D 核心壳三项可用性收口；本次 Release 附 `whale3d-whale-girl-v1.zip`，2D 安装包不重建。
