@@ -15,6 +15,7 @@
 | 5 脸部交叉淡化 | shader 同时采 A/B 两帧并 `mix`；`setFace`/`toggleSmile` 走 0.16 s 过渡，自动眨眼仍瞬时；GL 增加 `glUniform1f` | dev exe **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769`；neutral→60 ms **0.121**、60 ms→happy **0.407**、neutral→happy **0.516**；截图 `_3d_emotion_crossfade.png` |
 | 6 Python 侧标签与仲裁 | 新增 `app/emotion_bridge.py`：`P_USER(3) / P_LLM(2) / P_AUTO(1)` 固定优先级 + TTL；用户显式情绪、回复隐藏标签/词表、`EmotionState` 自动提示三路；`main.py` 在聊天发送/回复/情绪衰减处接入，`_polish_reply` 移除隐藏标签 | `tools/test_emotion_bridge.py` 6/6 通过；3.1.1 exe 实测 `Emotion: happy intensity=0.90 source=P_USER face=smile`、`Emotion: sad intensity=0.65 source=P_LLM face=open`；只改 Python，不改 3D exe |
 | 7 TTS 播放保持 | `AudioManager` 新增 `speechStarted / speechFinished`，只在 TTS `speech=True` 路径触发；`main.py` 接到 `EmotionBridge.tts_active()`，播放时把最近一条 `P_LLM` 延到 30 s，结束/打断恢复 4 s TTL | `tools/test_emotion_bridge.py` 7/7 通过；0.5 s WAV 的 `speech=True` 实测 `play_file=True started=1 finished=1`；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；`py_compile` 通过；未用真实 TTS 做声画同步 |
+| 8 2D 链路稳定性 | `audio_manager` 音频解码加 64 块上限、invalid buffer 立即退出；`main.py` 联网学习改用 `_WebRelearnBridge` 信号回主线程；`panel.append_chat` 隐藏时只进 pending、`refresh_panel` 合并同一轮刷新 | FakeDecoder 死循环测试调用 1 次退出；`build/test_panel_pending.py` 隐藏 61 条不增加、show 后 63 条；`tools/_perf_panel.py` open_panel 0.74 s / refresh 0.01 s；`py_compile` 通过；Qt 退出 `0xC0000409` 仍未定位 |
 
 边界：三帧图集已能平滑交叉淡化，TTS 播放期间也能保持回复情绪，但 `intensity` 还没有幅度/时间曲线，gaze/body lean、ASR、真实 TTS 声画同步仍未接；这一步不能称为“情绪闭环完成”。细节见 `docs/3d-emotion-bus.md`。
 
@@ -25,12 +26,13 @@
 | 项 | 改动 | 实测 |
 |---|---|---|
 | 1 应用名 | `installer/whale3d.iss` 的 `AppName / AppVerName / DefaultGroupName / UninstallDisplayName / SetupWindowTitle / VersionInfoDescription` 全部改为“鲸鱼娘”；3D 窗口标题从 `WhaleGirl 3D Placeholder` 改为 `鲸鱼娘`；托盘提示和设置页标题同步去掉“3D” | 安装器标题 `安装鲸鱼娘 3.1.2`；主窗口标题 `鲸鱼娘`；首屏不再出现“3D 主版” |
-| 2 默认目录 | `GetPreferredDir()` 改为：有旧版 2D 时用旧版目录；否则 F 盘存在时默认 `F:\WhaleGirlPetApp`；只有没有 F 盘才回退 `%LOCALAPPDATA%\WhaleGirlPet3D`。`DisableDirPage=no` 保留，目录页仍可改 | GUI 目录页实测路径框 `F:\WhaleGirlPetApp`，不是 C 盘；`Browse` 可用 |
+| 2 默认目录 | `GetPreferredDir()` 改为：已有 3D 安装时优先用其 `InstallLocation`；否则有旧版 2D 时用旧版目录；否则 F 盘存在时默认 `F:\WhaleGirlPetApp`；只有没有 F 盘才回退 `%LOCALAPPDATA%\WhaleGirlPet3D`。`DisableDirPage=no` 保留，目录页仍可改 | GUI 目录页实测路径框 `F:\WhaleGirlPetApp`，不是 C 盘；`Browse` 可用；已有 3D 自定义目录的隔离安装测试 exit 0 |
 | 3 安装包命名 | 安装器输出改为 `WhaleGirlPet-Setup-{#AppVersion}.exe`，不再带 `-3D-` | 本次产物 `WhaleGirlPet-Setup-3.1.2.exe` |
 | 4 CI | `.github/workflows/3d-build.yml` 版本校验改为 `3.1.2.0`，新增 FileDescription 不得含 `3D` 的断言，artifact 改为 `whale3d-v3.1.2-ci` | run `45861666963` 通过（53 秒）；CI exe 1,323,520 B，subsystem 2，ProductVersion `3.1.2.0` |
 | 5 资产 | 用 CI artifact 的 exe/ZIP 重打 3.1.2 安装包 | exe SHA256 `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84`；ZIP 2,809,199 B / `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`；安装包 4,418,364 B / `96B1377F31220C5B603A2D4E8976491385B0D23FD27BF14F80AA70D898BFA699` |
+| 6 安装链路修复（同日重建） | 新增 `GetExisting3DDir()`，优先读取 `WhaleGirlPet3D_is1` 的 `InstallLocation`；修复 `MigrateLegacy()` 的 `GetDateTimeString(..., '', '')` 导致的 Inno `Type Mismatch`；`Existing3D` 为真时跳过旧 2D 迁移检查 | 伪造已有 3D 目录静默安装 exit 0，`whale3d.exe` 落在已有目录；伪造旧 2D 最小目录迁移 exit 0，数据保留、旧程序/旧键移除；安装包 4,418,739 B / `5aece5a333a0af8b5d357f32ff1e10f4438614f976911e8ae81e68e124d0a3d2`；未上传 Release |
 
-边界：本轮只改安装器、窗口标题和发布包，不改渲染/动画功能；真实 `F:\WhaleGirlPetApp` 的 19 GB 数据迁移仍未完整执行，旧 2D 程序文件与旧卸载登记可能仍并存。安装包未签名，SignPath 仍在审核。
+边界：本轮只改安装器、窗口标题和发布包，不改渲染/动画功能；真实 `F:\WhaleGirlPetApp` 的 18.7 GB 数据迁移仍未完整执行，旧 2D 程序文件与旧卸载登记可能仍并存。安装包未签名，SignPath 仍在审核。安装器实测只使用伪造目录，未在真实 18.7 GB 数据上执行升级。
 
 ## v3.1.1（2026-11-26）
 

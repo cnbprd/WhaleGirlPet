@@ -176,7 +176,11 @@ class ControlPanel(QWidget):
     def showEvent(self, ev):  # noqa: N802
         super().showEvent(ev)
         if not getattr(self, "_history_loaded", False):
+            # 历史加载会从 chat_log.jsonl 读到隐藏期间的条目，先丢掉内存里的 pending，避免双份。
+            self._pending_chat = []
             QTimer.singleShot(0, self._load_history_safe)
+        else:
+            self._flush_pending_chat()
 
     def resizeEvent(self, ev):  # noqa: N802
         super().resizeEvent(ev)
@@ -523,6 +527,7 @@ class ControlPanel(QWidget):
         self.chat_lay.addStretch(1)
         self.chat_scroll.setWidget(self.chat_box)
         self._chat_log = []          # [{'t':.., 'role':.., 'text':.., 'attach':..}]
+        self._pending_chat = []      # 面板隐藏时的聊天，等打开再一次性补气泡
         lay.addWidget(self.chat_scroll, 1)
 
         self.chat_status = QLabel("")
@@ -619,6 +624,7 @@ class ControlPanel(QWidget):
 
     def clear_chat(self):
         self._chat_log = []
+        self._pending_chat = []
         while self.chat_lay.count() > 1:
             item = self.chat_lay.takeAt(0)
             wdt = item.widget()
@@ -2067,20 +2073,44 @@ class ControlPanel(QWidget):
         import datetime
         import json
 
-        who = "我" if role == "user" else self.ctl.get_name()
-        now = datetime.datetime.now().strftime("%H:%M")
-        row = self._bubble_row(role, text, attachment, who, now)
-        self.chat_lay.insertWidget(self.chat_lay.count() - 1, row)
-        QTimer.singleShot(0, self._scroll_chat_bottom)
-
-        self._chat_log.append({"t": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                               "role": role, "text": text, "attach": attachment})
+        entry = {"t": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                 "role": role, "text": text, "attach": attachment}
+        self._chat_log.append(entry)
         try:
             if not getattr(self, "_loading", False):
                 with open(self._chat_file(), "a", encoding="utf-8") as f:
-                    f.write(json.dumps(self._chat_log[-1], ensure_ascii=False) + "\n")
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except OSError:
             pass
+
+        # 面板没开着时不创建气泡控件：一晚上自主闲聊会堆几十个 QLabel，
+        # 等下次打开面板再一次性补，既省 UI 线程也省内存。
+        if not self.isVisible():
+            self._pending_chat.append(entry)
+            if len(self._pending_chat) > 120:
+                self._pending_chat.pop(0)
+            return
+
+        self._insert_bubble(entry)
+        QTimer.singleShot(0, self._scroll_chat_bottom)
+
+    def _insert_bubble(self, entry: dict):
+        import datetime
+
+        who = "我" if entry.get("role") == "user" else self.ctl.get_name()
+        t = str(entry.get("t") or "")
+        now = t[-5:] if len(t) >= 5 else datetime.datetime.now().strftime("%H:%M")
+        row = self._bubble_row(entry.get("role", "pet"), entry.get("text", ""),
+                               entry.get("attach", "") or "", who, now)
+        self.chat_lay.insertWidget(self.chat_lay.count() - 1, row)
+
+    def _flush_pending_chat(self):
+        rows = self._pending_chat
+        self._pending_chat = []
+        for entry in rows:
+            self._insert_bubble(entry)
+        if rows:
+            QTimer.singleShot(0, self._scroll_chat_bottom)
 
     def _scroll_chat_bottom(self):
         bar = self.chat_scroll.verticalScrollBar()

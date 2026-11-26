@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from PySide6.QtCore import QProcess, QSharedMemory, QTimer, Qt, QUrl
+from PySide6.QtCore import QObject, QProcess, QSharedMemory, QTimer, Qt, QUrl, Signal
 from PySide6.QtGui import (QAction, QDesktopServices, QIcon, QKeySequence,
                            QShortcut)
 from PySide6.QtWidgets import (QApplication, QMenu, QMessageBox, QSystemTrayIcon)
@@ -61,6 +61,11 @@ try:
     _HAS_WINSOUND = True
 except ImportError:
     _HAS_WINSOUND = False
+
+
+class _WebRelearnBridge(QObject):
+    """把联网学习线程的结果排队回 GUI 线程；QTimer.singleShot 在裸线程里没有事件循环。"""
+    done = Signal(str, str, str)
 
 
 DEFAULT_CONFIG = {
@@ -168,6 +173,9 @@ class Controller:
         self.update_dl = None
         self.llm_worker = None
         self.scan_worker = None
+        self._panel_refresh_pending = False
+        self._web_bridge = _WebRelearnBridge(self.app)
+        self._web_bridge.done.connect(self._after_web_relearn)
         # v3.0.10 安全管家
         self.guard_worker = None
         self.defender_worker = None
@@ -1384,7 +1392,17 @@ class Controller:
         self.pet.bubble.show_text("数据目录已打开：记忆、知识库、语音缓存都在里面。", 4200)
 
     def refresh_panel(self):
-        if self.panel is not None:
+        # 面板隐藏时不刷；同一轮里多次状态变化合并成一次 refresh，避免每个定时器都重排控件。
+        if self.panel is None or not self.panel.isVisible():
+            return
+        if self._panel_refresh_pending:
+            return
+        self._panel_refresh_pending = True
+        QTimer.singleShot(0, self._do_refresh_panel)
+
+    def _do_refresh_panel(self):
+        self._panel_refresh_pending = False
+        if self.panel is not None and self.panel.isVisible():
             self.panel.refresh()
 
     def hide_pet(self):
@@ -1715,7 +1733,9 @@ class Controller:
                 ctx = websearch.context_block(question, k=5, max_chars=1100)
             except Exception:  # noqa: BLE001
                 ctx = ""
-            QTimer.singleShot(0, lambda: self._after_web_relearn(question, ctx, draft))
+            # 这是 Python 裸线程，不能直接 QTimer.singleShot 到 GUI；
+            # 用信号排队，否则 QTimer 可能落在没有事件循环的线程里，回调永远不来。
+            self._web_bridge.done.emit(question, ctx, draft)
 
         threading.Thread(target=work, daemon=True).start()
 

@@ -191,10 +191,15 @@ class AudioManager(QObject):
 
     def _read_decode_buffer(self, dec):
         try:
-            while dec.bufferAvailable():
+            # QAudioDecoder 在异常/坏文件上可能一直报 bufferAvailable 但 read() 返回无效缓冲；
+            # 直接 continue 会把 GUI 线程卡死。这里限定单次最多消费 64 块，遇到无效缓冲立刻退出，
+            # 后续 bufferReady 会再次触发。
+            for _ in range(64):
+                if not dec.bufferAvailable():
+                    break
                 buf = dec.read()
                 if not buf.isValid():
-                    continue
+                    break
                 fmt = buf.format()
                 if fmt.sampleFormat() != QAudioFormat.SampleFormat.Float:
                     continue

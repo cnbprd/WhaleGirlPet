@@ -85,7 +85,7 @@
 | 文件 | 说明 |
 |---|---|
 | `whale3d-whale-girl-v3.zip` | 3D 核心包，解压即用；含 `whale3d.exe` + `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone；exe 为 GUI subsystem，不会额外弹终端框 |
-| `WhaleGirlPet-Setup-x.y.z.exe` | 鲸鱼娘安装包，默认装到 `F:\WhaleGirlPetApp`，无需管理员权限；目录页可改安装位置。检测到旧版 2D 3.0.27 时会默认回到旧版目录，并由安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.0.28 / v3.1.0 / v3.1.1 / v3.1.2 共用同一安装位置，后装覆盖升级。只有机器上没有 F 盘时才回退 `%LOCALAPPDATA%\WhaleGirlPet3D` |
+| `WhaleGirlPet-Setup-x.y.z.exe` | 鲸鱼娘安装包，无需管理员权限；目录页可改安装位置。默认目录按顺序：已有 3D 安装的 `InstallLocation` → 旧版 2D 3.0.27 目录 → `F:\WhaleGirlPetApp` → `%LOCALAPPDATA%\WhaleGirlPet3D`。检测到旧版 2D 时由安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.0.28 / v3.1.0 / v3.1.1 / v3.1.2 共用同一安装位置，后装覆盖升级 |
 
 安装包当前未签名；SmartScreen 若提示“未知发布者”，请先对照同名 `.sha256` 校验，再选择“更多信息 → 仍要运行”。受信任代码签名方案和接入条件见 [`docs/code-signing.md`](docs/code-signing.md)。
 

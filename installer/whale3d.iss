@@ -11,6 +11,9 @@
 #ifndef PayloadDir
   #define PayloadDir "..\3d\_installer\3.1.2"
 #endif
+#ifndef BuildSuffix
+  #define BuildSuffix ""
+#endif
 
 [Setup]
 AppId=WhaleGirlPet3D
@@ -39,7 +42,7 @@ PrivilegesRequired=lowest
 ; 这里显式关闭，保证检测到 3.0.27 时目录页默认回到旧版安装目录。
 UsePreviousAppDir=no
 OutputDir=..\dist\3d
-OutputBaseFilename=WhaleGirlPet-Setup-{#AppVersion}
+OutputBaseFilename=WhaleGirlPet-Setup-{#AppVersion}{#BuildSuffix}
 SetupIconFile=..\3d\assets\ui\pet.ico
 LicenseFile=..\LICENSE
 DisableWelcomePage=yes
@@ -93,6 +96,26 @@ var
   BtnRemoveLegacy: TNewButton;
   LegacyFound: Boolean;
   LegacyDir: String;
+  Existing3D: Boolean;
+
+function GetExisting3DDir(): String;
+var
+  Loc, Cmd: String;
+begin
+  Result := '';
+  if RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\WhaleGirlPet3D_is1',
+    'InstallLocation', Loc) and DirExists(Loc) then
+    Result := RemoveBackslashUnlessRoot(Loc)
+  else if RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\WhaleGirlPet3D_is1',
+    'UninstallString', Cmd) then
+  begin
+    Cmd := RemoveQuotes(Cmd);
+    if FileExists(Cmd) then
+      Result := ExtractFileDir(Cmd);
+  end;
+end;
 
 function GetLegacyDir(): String;
 var
@@ -117,15 +140,22 @@ function GetPreferredDir(Param: String): String;
 var
   Loc: String;
 begin
-  // 不再默认装 C 盘：F 盘可用时装到 F:\WhaleGirlPetApp；只有没有 F 盘才回退 LocalAppData。
-  if DirExists('F:\') then
-    Result := 'F:\WhaleGirlPetApp'
+  // 升级优先沿用当前 3D 安装位置；用户仍可在目录页改成别的文件夹。
+  Loc := GetExisting3DDir();
+  if Loc <> '' then
+    Result := Loc
   else
-    Result := ExpandConstant('{localappdata}\WhaleGirlPet3D');
-  if RegQueryStringValue(HKCU,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\鲸鱼娘桌宠_is1',
-    'InstallLocation', Loc) and DirExists(Loc) then
-    Result := RemoveBackslashUnlessRoot(Loc);
+  begin
+    // 首次安装：旧版 2D 位置优先；没有旧版时才用 F 盘，最后回退 LocalAppData。
+    if RegQueryStringValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\鲸鱼娘桌宠_is1',
+      'InstallLocation', Loc) and DirExists(Loc) then
+      Result := RemoveBackslashUnlessRoot(Loc)
+    else if DirExists('F:\') then
+      Result := 'F:\WhaleGirlPetApp'
+    else
+      Result := ExpandConstant('{localappdata}\WhaleGirlPet3D');
+  end;
 end;
 
 function MigrateLegacy(): Boolean;
@@ -134,19 +164,28 @@ var
   BackupDir, Cmd: String;
 begin
   Result := False;
-  if (LegacyDir = '') or (not DirExists(LegacyDir)) then
+  Log('MigrateLegacy: begin');
+  Log('MigrateLegacy: dir=' + LegacyDir);
+  if LegacyDir = '' then
     Exit;
+  Log('MigrateLegacy: nonempty');
+  if not DirExists(LegacyDir) then
+    Exit;
+  Log('MigrateLegacy: exists');
 
   BackupDir := LegacyDir + '\WhaleGirlPetApp_userdata_' +
-               GetDateTimeString('yyyymmdd-hhnnss', '', '');
+               GetDateTimeString('yyyymmdd-hhnnss', '-', ':');
+  Log('MigrateLegacy: backup=' + BackupDir);
   Cmd := '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
          ExpandConstant('{tmp}\migrate_legacy.ps1') + '" -AppDir "' +
          LegacyDir + '" -BackupDir "' + BackupDir + '"';
+  Log('MigrateLegacy: exec');
   if not Exec('powershell.exe', Cmd, '', SW_HIDE, ewWaitUntilTerminated, Code) then
   begin
     MsgBox('无法启动旧版迁移脚本，数据没有改动。', mbError, MB_OK);
     Exit;
   end;
+  Log('MigrateLegacy: exit=' + IntToStr(Code));
   if Code <> 0 then
   begin
     MsgBox('旧版 2D 迁移失败（退出码 ' + IntToStr(Code) +
@@ -165,6 +204,12 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  Log('PrepareToInstall: existing3d=' + IntToStr(Ord(Existing3D)) +
+      ' legacy=' + IntToStr(Ord(LegacyFound)) +
+      ' app=' + ExpandConstant('{app}') + ' legacyDir=' + LegacyDir);
+  // 已有 3D 安装时这是覆盖升级：默认目录已经沿用当前安装位置，不再被旧 2D 迁移拦住。
+  if Existing3D then
+    Exit;
   if not LegacyFound then
     Exit;
 
@@ -220,7 +265,8 @@ begin
   ExtractTemporaryFile('whale.png');
   ExtractTemporaryFile('migrate_legacy.ps1');
   LegacyDir := GetLegacyDir();
-  LegacyFound := LegacyDir <> '';
+  Existing3D := GetExisting3DDir() <> '';
+  LegacyFound := (LegacyDir <> '') and (not Existing3D);
 
   HeroPage := CreateCustomPage(wpWelcome, '鲸鱼娘', '先认识一下，再开始安装');
 
@@ -271,7 +317,7 @@ begin
   Body.AutoSize := False;
   Body.WordWrap := True;
   Body.Caption := '透明置顶、VRM 身体、头发和尾巴弹簧、托盘菜单与设置页。' + #13#10 +
-                  '安装位置可以修改；不需要管理员权限。';
+                  '升级时默认沿用当前安装目录，也可以在这里改；不需要管理员权限。';
   Body.Font.Name := 'Microsoft YaHei UI';
   Body.Font.Size := 9;
 
@@ -288,8 +334,11 @@ begin
   if LegacyFound then
     Hint.Caption := '检测到旧版 2D 3.0.27。旧版卸载器本身有 bug，不能直接运行；' +
                     '默认升级到旧版目录，点下面按钮由安装器迁移并保留数据。'
+  else if Existing3D then
+    Hint.Caption := '检测到已安装的 3D 版本，默认沿用当前安装目录；' +
+                    '想换位置可以在目录页修改。'
   else
-    Hint.Caption := '没有检测到旧版 2D，直接安装即可。';
+    Hint.Caption := '没有检测到旧版安装，直接安装即可。';
 
   if LegacyFound then
   begin
