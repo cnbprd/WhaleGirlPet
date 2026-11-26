@@ -6,9 +6,9 @@
 
 ## 目的与边界
 
-只验证临时目录的全新安装、启动、卸载，不覆盖本机已有的 `F:\WhaleGirlPetApp` 3.1.2 安装。已有目录包含大量用户数据，本轮不做原地升级回归；升级路径需要在有备份的独立环境另测。
+验证临时目录的全新安装、3.1.2 → 3.2.0-dev 原地升级、启动、卸载，不覆盖本机已有的 `F:\WhaleGirlPetApp` 3.1.2 安装。已有目录包含大量用户数据，本轮不对它做升级；真实安装的升级回归仍需在独立备份环境另测。
 
-## 步骤与结果
+## 全新安装与卸载
 
 | 检查项 | 结果 |
 |---|---|
@@ -22,8 +22,19 @@
 | 卸载后 | 安装目录只剩本次 smoke 日志；`WhaleGirlPet3D_is1` 注册表键已删除；Start Menu `鲸鱼娘` 组已删除 |
 | 恢复原安装 | 删除测试残留日志；`reg import` 恢复 3.1.2 注册；重建 Start Menu 两个快捷方式指向 `F:\WhaleGirlPetApp`；复核 `DisplayVersion=3.1.2`、安装位置 `F:\WhaleGirlPetApp\`、稳定 exe 1,323,520 B / SHA256 `F67F...E84` |
 
+## 临时目录 3.1.2 → 3.2.0-dev 升级
+
+| 检查项 | 结果 |
+|---|---|
+| 先装稳定版 | `WhaleGirlPet-Setup-3.1.2.exe` 静默安装到 `F:\WhaleGirlPet\build\_upgradetest_v32`，退出码 0；exe `3.1.2.0` / 1,323,520 B；注册表 `DisplayVersion=3.1.2` |
+| 覆盖升级 | `WhaleGirlPet-Setup-3.2.0-dev.exe` 指向同一目录静默安装，退出码 0；日志 `Installation process succeeded`；注册表 `DisplayName=鲸鱼娘 3.2.0`、`DisplayVersion=3.2.0` |
+| 升级后文件 | exe **1,332,224 B**，`FileVersion/ProductVersion=3.2.0.0` |
+| 升级后启动 | 真实窗口出现；日志 `Model springs: 4 chains, vrm=1`、`Pose bones: head=5 neck=4 spine=2 chest=3`、`Hit mask ready: 420x620 center_alpha=255`、`fps=26.2–28.7`；关闭后退出 |
+| 升级后卸载 | `unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`；退出码 0；注册表键删除，目录只剩 smoke 日志 |
+| 恢复原安装 | `reg import` 恢复 3.1.2 注册；重建 Start Menu 快捷方式指向 `F:\WhaleGirlPetApp`；复核 `DisplayVersion=3.1.2`、稳定 exe 1,323,520 B |
+
 ## 结论
 
-- 全新安装、启动、卸载三条路径均通过；安装器内嵌的 exe 与 ZIP 是同一份 3.2.0.0 构建。
+- 临时目录的全新安装、3.1.2 → 3.2.0-dev 覆盖升级、启动、卸载均通过；安装器内嵌 exe 与 ZIP 是同一份 3.2.0.0 构建。
 - `/NOICONS` 没有阻止脚本创建 Start Menu 组，这是 Inno 脚本现有行为；卸载会删除该组，测试后已恢复原 3.1.2 快捷方式。
-- 未验证：从现有 3.1.2 原地升级到 3.2.0-dev；旧版 2D 迁移路径；安装器签名。这三项仍是边界，不写成已完成。
+- 未验证：对本机现有 `F:\WhaleGirlPetApp` 3.1.2 的真实原地升级；旧版 2D 迁移路径；安装器签名。这三项仍是边界，不写成已完成。
