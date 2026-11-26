@@ -14,6 +14,7 @@
 | 4 设置与默认路径 | 设置页模型项改为 `鲸鱼娘 v1 (VRM)`；默认加载 `.vrm`；in-place cache 对新路径仍生效 | 切 placeholder 首次 4–8 ms；切回 `.vrm` 0 ms；同一 PID、无子进程、exit 0 |
 | 5 包与体积 | 新包 `whale3d-whale-girl-v2.zip`；exe 增加 13,312 B | exe 1,315,840 B；运行负载 7,052,651 B；ZIP 2,803,800 B，SHA256 `C76621D1856F092F859D9A97BE0DE64E70C56D3988E0DD6BD4F721D3422B871E` |
 | 6 回归 | 真实鼠标点击穿透、托盘、in-place 换模沿用 v3.0.28 路径 | 透明角 underlay `BN_CLICKED id=1 count=1`；中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；私有字节 97,837,056 → 98,078,720 四轮不增长 |
+| 7 Windows 安装器 | 新增 `installer/whale3d.iss` 与 `build_3d_installers.ps1`，从 v2 包构建 Inno Setup 安装包；默认装到 `%LOCALAPPDATA%\WhaleGirlPet3D`，无需管理员 | `WhaleGirlPet-3D-Setup-3.1.0.exe` 3,951,977 B，SHA256 `33A49BFD1335F105F7BF2B674EE74C6E29FBA1D29C660AFC7984F45500A2A88E`；静默安装/启动/卸载 exit 0，启动日志 4 chains / vrm=1 |
 
 ## v3.0.28（2026-11-26）
 
@@ -26,6 +27,7 @@
 | 3 真正 in-place 换模 | `Model` 内部 `Impl` cache；切换只改 active 指针，不隐藏窗口、不重启进程、不启 helper | 首次 placeholder 4ms、缓存命中 0ms；四轮后私有字节 98,201,600 B 不增长；同一 PID、无子进程、exit 0 |
 | 4 包与文档 | 新包 `whale3d-whale-girl-v1.zip`；README 和 `docs/3d-transition.md` 同步 | ZIP 2,727,089 B，SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`；包内 exe 1,302,528 B，SHA256 `53F6113B...B6D0478` |
 | 5 路线声明 | 放弃 2D 主线，主线转向 3D；2D 源码/素材/历史 Release 保留归档 | `DECLARATION.md` 随版本生效 |
+| 6 Windows 安装器 | 同一脚本改用 v1 包构建 3.0.28 安装包；与 3.1.0 共用 AppId/目录，后装覆盖升级 | `WhaleGirlPet-3D-Setup-3.0.28.exe` 3,946,164 B，SHA256 `C8A5ED41030A3037AACC88CF3E22E0260762F958D5ECCA8C44211A72067FDB9B`；静默安装/启动/卸载 exit 0，加载 `whale_girl.glb` |
 
 ## v3.0.27（2026-11-26）
 

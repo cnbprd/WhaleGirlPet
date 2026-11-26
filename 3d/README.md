@@ -150,6 +150,8 @@ The exe grew by 13,312 bytes over the v3.0.28 shell (1,302,528 → 1,315,840). T
 
 The v3.0.28 package remains as `whale3d-whale-girl-v1.zip` (2,727,089 B, exe `1,302,528 B`, SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`); the expression-only package is preserved as `whale3d-whale-girl-v1-expression.zip` (2,695,131 B, exe `1,260,544 B`, SHA256 `534FA2B87C83D2ACFDB5B380B3954F9E07D2815168EE5B20845D11A76C161435`). Do not mix their numbers with this build.
 
+Windows installers are built from the release ZIPs by `installer/whale3d.iss` (compiled with `installer/build_3d_installers.ps1`). `WhaleGirlPet-3D-Setup-3.1.0.exe` and `WhaleGirlPet-3D-Setup-3.0.28.exe` install under `%LOCALAPPDATA%\WhaleGirlPet3D` without elevation, add Start Menu shortcuts plus an optional desktop shortcut, and register an uninstaller. Both use the same AppId, so installing 3.1.0 upgrades 3.0.28 in place. The installers are unsigned; verify the adjacent `.sha256` before running if SmartScreen warns.
+
 ## Known limitations
 
 1. The model is deliberately stylized/chibi: a curved face decal on a low-poly head, approximated side/back hair, a single-piece fluke and no contact shadow. It is v1, not final art.

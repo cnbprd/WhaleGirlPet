@@ -83,6 +83,9 @@
 | 文件 | 说明 |
 |---|---|
 | `whale3d-whale-girl-v2.zip` | 3D 核心包，解压即用；含 `whale3d.exe` + `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone |
+| `WhaleGirlPet-3D-Setup-x.y.z.exe` | 3D 安装包，默认装到 `%LOCALAPPDATA%\WhaleGirlPet3D`，无需管理员权限；含开始菜单、可选桌面快捷方式和卸载项。v3.1.0 与 v3.0.28 共用同一安装位置，后装会覆盖升级 |
+
+安装包未做代码签名，SmartScreen 可能提示“未知发布者”；下载后请对照同名 `.sha256` 校验。
 
 2D 安装包是历史归档，不再作为新版本发布目标；下表只用于旧 Release 说明：
 
