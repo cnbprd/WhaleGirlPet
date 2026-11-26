@@ -80,6 +80,12 @@ def main() -> int:
     env["WHALE3D_FACE"] = "open"
     env["WHALE3D_CLIP"] = "idle"
     env["WHALE3D_FREEZE"] = "1"
+    # Pose-layer acceptance intentionally isolates head/neck/spine/chest from
+    # the independent hair/tail spring sine wave; otherwise neutral/reset
+    # frames differ because secondary bones are at a different phase.
+    # Set WHALE3D_POSE_SPRING=1 to reproduce the default-spring residual.
+    env["WHALE3D_SPRING"] = os.environ.get("WHALE3D_POSE_SPRING", "0")
+    env["WHALE3D_POSE_TRACE"] = "1"
     env["WHALE3D_LOG"] = str(ROOT / "pose_accept.log")
     log_path = ROOT / "pose_accept.err.log"
     log = open(log_path, "w", encoding="utf-8", buffering=1)
@@ -98,23 +104,44 @@ def main() -> int:
         neutral = capture(hwnd, DOCS / "_3d_pose_neutral.png")
 
         send(gaze={"x": 0.8, "y": -0.1, "weight": 1.0})
-        time.sleep(0.35)
+        time.sleep(0.06)
+        gaze_mid = capture(hwnd, DOCS / "_3d_pose_gaze_60ms.png")
+        time.sleep(0.30)
         gaze = capture(hwnd, DOCS / "_3d_pose_gaze.png")
 
+        send()
+        time.sleep(0.8)
+        lean_base = capture(hwnd, DOCS / "_3d_pose_lean_base.png")
         send(lean={"x": 0.8, "y": 0.0, "weight": 0.8})
-        time.sleep(0.35)
+        time.sleep(0.06)
+        lean_mid = capture(hwnd, DOCS / "_3d_pose_lean_60ms.png")
+        time.sleep(0.30)
         lean = capture(hwnd, DOCS / "_3d_pose_lean.png")
 
         send()
-        time.sleep(0.25)
+        time.sleep(0.12)
+        release = capture(hwnd, DOCS / "_3d_pose_release_120ms.png")
+        time.sleep(0.08)
+        release2 = capture(hwnd, DOCS / "_3d_pose_release_200ms.png")
+        time.sleep(0.92)
         reset = capture(hwnd, DOCS / "_3d_pose_reset.png")
+        time.sleep(2.0)
+        reset2 = capture(hwnd, DOCS / "_3d_pose_reset_3s.png")
 
+        print("mean neutral->gaze_60ms delta:", round(mean_delta(neutral, gaze_mid), 3))
         print("mean neutral->gaze delta:", round(mean_delta(neutral, gaze), 3))
-        print("mean gaze->lean delta:", round(mean_delta(gaze, lean), 3))
-        print("mean neutral->lean delta:", round(mean_delta(neutral, lean), 3))
+        print("mean lean_base->lean_60ms delta:", round(mean_delta(lean_base, lean_mid), 3))
+        print("mean lean_base->lean delta:", round(mean_delta(lean_base, lean), 3))
+        print("mean lean->release_120ms delta:", round(mean_delta(lean, release), 3))
+        print("mean lean->release_200ms delta:", round(mean_delta(lean, release2), 3))
         print("mean neutral->reset delta:", round(mean_delta(neutral, reset), 3))
-        for name in ("_3d_pose_neutral.png", "_3d_pose_gaze.png",
-                     "_3d_pose_lean.png", "_3d_pose_reset.png"):
+        print("mean neutral->reset_3s delta:", round(mean_delta(neutral, reset2), 3))
+        print("mean reset->reset_3s delta:", round(mean_delta(reset, reset2), 3))
+        for name in ("_3d_pose_neutral.png", "_3d_pose_gaze_60ms.png",
+                     "_3d_pose_gaze.png", "_3d_pose_lean_base.png",
+                     "_3d_pose_lean_60ms.png", "_3d_pose_lean.png",
+                     "_3d_pose_release_120ms.png", "_3d_pose_release_200ms.png",
+                     "_3d_pose_reset.png", "_3d_pose_reset_3s.png"):
             print("saved:", DOCS / name)
 
         user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)

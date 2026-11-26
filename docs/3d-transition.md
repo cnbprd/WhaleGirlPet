@@ -487,11 +487,27 @@
 | 解析 | `EmotionBus::Frame` 增加 6 个字段，`jsonObject()` / `readPose()` 从嵌套对象读取 |
 | 骨骼 | `buildOzz()` 记录 `head=5 neck=4 spine=2 chest=3`；gaze 转 head/neck（35% / 65%），lean 倾 spine/chest（各 50%） |
 | 应用 | `applyPoseOffsets()` 在 ozz 采样后、世界矩阵前改局部四元数；`applyPoseOffsetsSelf()` 在自研采样后、`computeGlobals()` 前改节点旋转 |
-| 回正 | 新包不带 gaze/lean 时 weight=0；当前即时切换，无平滑/回正包络 |
+| 回正 | 新包不带 gaze/lean 时 weight=0；11f 首版是即时切换，11g 已补 180/420 ms 包络（见下） |
 | 验收 | `3d/tools/pose_accept.py` 冻结动画：neutral→gaze **0.948**、gaze→lean **1.330**、neutral→lean **1.600**、neutral→reset **0.641**；self 路径 **0.809 / 1.336 / 0.648** |
 | 长跑 | `3d/tools/emotion_longrun.py` 90 秒、正常 idle + `FACE=auto`：alive，动画帧差 **0.284**，RSS 67.5 MB 稳定，CPU 33.4–36.9%，FPS 25.4–28.9（平均 27.76） |
 | 截图 | `docs/_3d_pose_neutral.png`、`_gaze.png`、`_lean.png`、`_reset.png`；`_3d_pose_self_gaze.png`、`_self_lean.png`；`_3d_longrun_anim_a.png`、`_anim_b.png`、`_final.png` |
 | 体积 | dev exe **1,331,712 B**，SHA256 `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792`；运行时负载 7,068,523 B |
-| 边界 | gaze 只转 head/neck，不是眼骨/BlendShape；pose 无平滑；reset 0.641 残差未完全解释；90 秒不等于 24 小时浸泡；未重打 ZIP/安装包 |
+| 边界 | gaze 只转 head/neck，不是眼骨/BlendShape；11f 首版 pose 无平滑、reset 0.641 未解释；11g 已补包络并用 spring-off 对照归因；90 秒不等于 24 小时浸泡；未重打 ZIP/安装包 |
 
 下一步只剩 ASR：独立输入服务，默认关闭，识别结果走文本/情绪事件，不塞进渲染循环。
+
+## 第 11g 步（v3.2 step 6）：ASR 单句、pose 平滑、长时浸泡
+
+这一步补的是 11f 留下的边界，而不是再开新表现：
+
+| 项 | 实现/实测 |
+| :--- | :--- |
+| ASR | `app/asr_service.py` 默认关闭；按钮/热键 `arm_once()` 后只启动一次 SAPI `VoiceWorker`，结束自动关闭；`voice_cmd.recognize(min_conf=0.30)` 拒绝低置信度假词；结果走 `main._on_voice()` → `send_chat()` → `emotion_bridge.user_text()`，3D 只收情绪包 |
+| ASR 验收 | `tools/test_asr.py` / `tools/test_asr_ui.py` / `3d/tools/asr_accept.py` 通过；合成“打开面板” conf 0.377；静音 `no_speech`；噪声“阿丽阿娜” conf 0.16 被拒；真实“别难过小一个” conf 0.494 → `P_USER happy 0.9`，3D 全窗 RGB 差 **0.541**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png` |
+| pose 平滑 | `model` 增加 target/current 两套值和 `updatePose(dt)`；180 ms attack / 420 ms release；应用层改用 `*Current`；`WHALE3D_POSE_TRACE=1` 输出中间值 |
+| pose 验收 | `pose_accept.py` 冻结动画、`WHALE3D_SPRING=0` 隔离次级弹簧：neutral→gaze 60 ms **0.164** / 满值 **0.712**；lean 基线→lean 60 ms **0.310** / 满值 **1.174**；lean→release 120 ms **0.758** / 200 ms **1.051**；空 pose 后 reset **0.000**、3 s **0.000** |
+| residual 归因 | 默认弹簧下 reset 仍有约 **0.817**（1 s）/ **0.572**（3 s），但 `PoseTrace` 六个 current 值全为 0；切 `WHALE3D_SPRING=0` 后同一流程 reset **0.000**。残差来自头发/尾巴 SpringBone 独立正弦相位，不是姿态未归零 |
+| 长时浸泡 | `emotion_longrun.py` 从 90 s 扩到 10 分钟（600 s），20 s 一轮 happy+gaze → lean → 空包回正；`alive_after_soak=True`，动画帧差 **0.284**，RSS 67.6→67.8 MB（全样本 67.2–67.9），CPU 平均 **35.4%** / 峰值 **38.5%**，FPS 19.7–28.9 / 平均 **27.68**；截图 `_3d_longrun_anim_a.png`、`_anim_b.png`、`_3d_longrun_10m_mid.png`、`_3d_longrun_final.png` |
+| 边界 | 5 条证据依赖规则仍人工核对；ASR 仍单句/显式一次录音，无连续识别/口型；没有重打安装包/ZIP；10 分钟是 bounded soak，不是 24 小时 |
+
+ASR 与姿态层都接在 Python/参数层，渲染进程仍只认情绪与姿态参数。

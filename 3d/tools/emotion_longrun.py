@@ -2,8 +2,11 @@
 """v3.2 normal-animation + long-run acceptance.
 
 Unlike emotion_accept.py this does NOT set WHALE3D_FREEZE. It runs the real
-idle animation, cycles intensity envelopes for 90 s, samples RSS/CPU and
-writes two "animation is alive" frames plus a final frame.
+idle animation, cycles emotion and gaze/lean envelopes, samples RSS/CPU/FPS,
+and writes "animation is alive" frames plus a final frame.
+
+Default duration is 10 minutes. Override with WHALE3D_LONGRUN_SECONDS.
+This is still not a 24-hour soak; it is a bounded leak/stability probe.
 """
 from __future__ import annotations
 
@@ -23,8 +26,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT.parent / "docs"
 user32 = ctypes.windll.user32
 WM_CLOSE = 0x0010
-DURATION = 90.0
-CYCLE = 8.0
+DURATION = float(os.environ.get("WHALE3D_LONGRUN_SECONDS", "600"))
+CYCLE = 20.0
+SAMPLE_INTERVAL = 10.0
 
 
 def find_window(timeout: float = 12.0) -> int:
@@ -47,19 +51,23 @@ def capture(hwnd: int, path: Path) -> Image.Image:
     return image
 
 
-def send(emotion: str, intensity: float) -> None:
+def send(emotion: str, intensity: float, gaze=None, lean=None) -> None:
     payload = {
         "emotion": emotion,
         "intensity": intensity,
         "source": "longrun",
         "curve": {"attack_ms": 180, "release_ms": 420},
     }
+    if gaze is not None:
+        payload["gaze"] = gaze
+    if lean is not None:
+        payload["lean"] = lean
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.sendto(json.dumps(payload).encode("utf-8"), ("127.0.0.1", 47832))
     finally:
         sock.close()
-    print(f"sent {emotion} {intensity}")
+    print(f"sent {emotion} {intensity} gaze={gaze is not None} lean={lean is not None}")
 
 
 def mean_delta(a: Image.Image, b: Image.Image) -> float:
@@ -113,19 +121,39 @@ def main() -> int:
         anim_b = capture(hwnd, DOCS / "_3d_longrun_anim_b.png")
 
         start = time.monotonic()
-        next_cycle = start
         next_sample = start
+        next_pose = start
+        cycle_index = -1
+        phase = 0
+        mid = None
         while time.monotonic() - start < DURATION:
             now = time.monotonic()
-            if now >= next_cycle:
-                send("happy", 0.8)
-                time.sleep(0.9)
-                send("neutral", 0.0)
-                next_cycle += CYCLE
+            elapsed = now - start
+            idx = int(elapsed // CYCLE)
+            if idx != cycle_index:
+                cycle_index = idx
+                phase = 0
+                next_pose = start + idx * CYCLE
+            if phase >= 4:
+                if next_pose < start + (idx + 1) * CYCLE:
+                    next_pose = start + (idx + 1) * CYCLE
+            elif now >= next_pose:
+                if phase == 0:
+                    send("happy", 0.8, gaze={"x": 0.8, "y": -0.1, "weight": 1.0})
+                elif phase == 1:
+                    send("neutral", 0.0, lean={"x": 0.8, "y": 0.0, "weight": 0.8})
+                else:
+                    send("neutral", 0.0)
+                phase += 1
+                if phase < 4:
+                    next_pose = start + idx * CYCLE + (6.0 if phase == 1 else
+                                                      12.0 if phase == 2 else 16.0)
             if now >= next_sample:
-                samples.append((round(now - start, 1), ps.memory_info().rss,
+                samples.append((round(elapsed, 1), ps.memory_info().rss,
                                 ps.cpu_percent(interval=None)))
-                next_sample += 10.0
+                next_sample += SAMPLE_INTERVAL
+            if mid is None and elapsed >= DURATION / 2:
+                mid = capture(hwnd, DOCS / "_3d_longrun_10m_mid.png")
             time.sleep(0.2)
         send("neutral", 0.0)
         time.sleep(2.0)
@@ -133,13 +161,16 @@ def main() -> int:
 
         rss_mb = [round(r / (1024 * 1024), 1) for _, r, _ in samples]
         cpu = [c for _, _, c in samples]
-        print("alive_after_90s:", proc.poll() is None)
+        print("duration_s:", DURATION)
+        print("alive_after_soak:", proc.poll() is None)
         print("animation_mean_delta:", round(mean_delta(anim_a, anim_b), 3))
-        print("rss_mb:", rss_mb)
-        print("cpu_percent_samples:", [round(c, 1) for c in cpu])
+        print("rss_start_mb:", rss_mb[0] if rss_mb else None)
+        print("rss_end_mb:", rss_mb[-1] if rss_mb else None)
+        print("rss_min_max_mb:", (min(rss_mb), max(rss_mb)) if rss_mb else None)
+        print("cpu_percent_avg_max:", (round(sum(cpu) / len(cpu), 1), round(max(cpu), 1)) if cpu else None)
         print("fps_min_max_avg:", tuple(round(x, 2) for x in fps_range(log_path)))
         for name in ("_3d_longrun_anim_a.png", "_3d_longrun_anim_b.png",
-                     "_3d_longrun_final.png"):
+                     "_3d_longrun_10m_mid.png", "_3d_longrun_final.png"):
             print("saved:", DOCS / name)
 
         user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)

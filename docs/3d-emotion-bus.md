@@ -65,23 +65,30 @@ v3.2.x 的第一步已经接进 3D 壳：**本机 UDP 情绪参数总线**。它
 - `EmotionBus::Frame` 增加 `gazeX/gazeY/gazeWeight`、`leanX/leanY/leanWeight`；`emotion_bus.cpp` 的 `readPose()` 从嵌套对象读取并夹紧。
 - `Model::applyGazeLean()` 只写目标值；`applyPoseOffsets()` 在 `updateOzz()` 的 `SamplingJob` 之后、`LocalToModelJob` 之前修改 `ozzLocals` 的局部四元数；自研采样路径由 `applyPoseOffsetsSelf()` 在 `sampleAnimation()` 之后、`computeGlobals()` 之前修改节点旋转。
 - 骨骼映射由 `buildOzz()` 记录：`head=5 neck=4 spine=2 chest=3`。`gaze` 最大 yaw 0.38 rad、pitch 0.26 rad，neck 承担 35%、head 承担 65%；`lean` 最大 roll 0.18 rad、pitch 0.12 rad，spine 与 chest 各承担 50%。
-- 每个新 UDP 包不带 `gaze`/`lean` 时读取为 0，等于回正；当前是即时切换，没有时间平滑或回正包络。
+- 每个新 UDP 包不带 `gaze`/`lean` 时读取为 0，等于回正；step 5 首次落地时是即时切换，11g 已补 180/420 ms 平滑/回正包络（见后文）。
 - 新增 `3d/tools/pose_accept.py`：冻结动画，先抓 neutral，再发 `gaze {x:0.8,y:-0.1,weight:1}`，抓图；再发 `lean {x:0.8,y:0,weight:0.8}`，抓图；最后发空 pose，抓 reset。
 
 真实窗口验收（2026-11-27，默认 ozz，`WHALE3D_FREEZE=1`）：
 
-- 全窗 RGB 平均差：neutral→gaze **0.948**、gaze→lean **1.330**、neutral→lean **1.600**；空 pose 回正后 neutral→reset **0.641**。reset 截图与 neutral 肉眼近似，但 0.641 的残差没有完全解释，可能来自自动眨眼、弹簧链余摆或抗锯齿，不能宣称“严格零残差”。
+- 全窗 RGB 平均差（step 5 首版）：neutral→gaze **0.948**、gaze→lean **1.330**、neutral→lean **1.600**；空 pose 回正后 neutral→reset **0.641**。11g 用 `WHALE3D_SPRING=0` 对照后 reset **0.000**，证明首版残差来自头发/尾巴 SpringBone 的独立相位，而不是姿态值未归零；pose 层截图因此默认关弹簧。
 - 自研 self 路径另跑一遍：先设 `$env:WHALE3D_ANIMATOR='self'`，再跑同一脚本；neutral→gaze **0.809**、neutral→lean **1.336**、neutral→reset **0.648**；截图 `docs/_3d_pose_self_gaze.png`、`_3d_pose_self_lean.png`。
 - 日志：`Pose bones: head=5 neck=4 spine=2 chest=3`；pose 包日志 `gaze=(0.80,-0.10)@1.00 lean=(0.00,0.00)@0.00 source=pose_acceptance face=open`。
 
-## 正常动画与 90 秒长跑
+## 正常动画与长跑
 
-`3d/tools/emotion_longrun.py` 不设置 `WHALE3D_FREEZE`，使用 `WHALE3D_FACE=auto`、`WHALE3D_CLIP=idle`，每 8 秒发一次 `happy 0.8` 再发 `neutral 0`，共 90 秒：
+`3d/tools/emotion_longrun.py` 不设置 `WHALE3D_FREEZE`，使用 `WHALE3D_FACE=auto`、`WHALE3D_CLIP=idle`。11g 起默认 10 分钟、20 秒一轮 `happy 0.8 + gaze` → `lean` → 空包回正，并每 10 秒采 RSS/CPU；旧 90 秒数据只作为历史基线：
 
 - `alive_after_90s=True`；动画前后帧全窗平均差 **0.284**，说明 idle 在动。
 - RSS 采样 `67.9 / 67.5 / 67.5 / 67.5 / 67.5 / 67.5 / 67.5 / 67.5 / 67.5 MB`；CPU 采样 `0 / 33.4 / 35.5 / 35.6 / 36.9 / 33.9 / 34.1 / 36.1 / 35.4 %`（首个 0 是 psutil 首次采样的空值）。
 - FPS 最小/最大/平均 **25.4 / 28.9 / 27.76**。
-- 截图 `docs/_3d_longrun_anim_a.png`、`_anim_b.png`、`_final.png`。这只覆盖 90 秒、单一 idle 和自动眨眼；不等于 24 小时浸泡或内存泄漏结论。
+- 截图 `docs/_3d_longrun_anim_a.png`、`_anim_b.png`、`_final.png`。旧 90 秒只覆盖单一 idle 和自动眨眼，不等于 24 小时浸泡。
+
+11g 的 10 分钟实测（600 s，20 s 一轮 happy+gaze → lean → 空包回正）：
+
+- `alive_after_soak=True`；动画帧差 **0.284**。
+- RSS 起 **67.6 MB** / 止 **67.8 MB**，全样本 **67.2–67.9 MB**；CPU 平均 **35.4%** / 峰值 **38.5%**。
+- FPS 最小/最大/平均 **19.7 / 28.9 / 27.68**；最低值来自启动/截图窗口，稳定段约 27–28。
+- 截图 `docs/_3d_longrun_anim_a.png`、`_anim_b.png`、`_3d_longrun_10m_mid.png`、`_3d_longrun_final.png`。这是 bounded soak，不是 24 小时无泄漏结论。
 
 ## 协议
 
@@ -166,7 +173,9 @@ Emotion: neutral intensity=0.00 attack=180ms release=420ms gaze=(0.80,-0.10)@1.0
 ## 姿态层实现
 
 - `emotion_bus.h/.cpp` 的 `Frame` 增加 `gazeX/gazeY/gazeWeight`、`leanX/leanY/leanWeight`；`jsonObject()` 找到嵌套对象，`readPose()` 读 `x/y/weight`，对象缺失 weight=0、对象存在但缺 weight=1，x/y 夹 [-1,1]，weight 夹 [0,1]。
-- `Model::Impl` 增加 `gazeX/gazeY/gazeWeight`、`leanX/leanY/leanWeight`；`applyGazeLean()` 只存目标。
+- `Model::Impl` 增加目标值 `gazeX/gazeY/gazeWeight`、`leanX/leanY/leanWeight` 和平滑后的 `*Current` 值；`applyGazeLean()` 只存目标。
+- `updatePose(dt)` 用 180 ms attack / 420 ms release 线性逼近 6 个值；`applyPoseOffsets()` 和 `applyPoseOffsetsSelf()` 使用 `*Current`，所以包到达/空包回正都不会瞬切。
+- `WHALE3D_POSE_TRACE=1` 每 100 ms 输出 `PoseTrace gaze=(x,y)@weight lean=(x,y)@weight`，用于确认中间态。
 - `applyPoseOffsets()` 在 ozz `SamplingJob` 之后、`LocalToModelJob` 之前，把 `head/neck` 的局部四元数绕本地 X/Y 轴旋转，把 `spine/chest` 做小角度 roll/pitch；`applyPoseOffsetsSelf()` 在自研 `sampleAnimation()` 之后、`computeGlobals()` 之前改 `Node::r[]` 并 `recompose()`。
 - `buildOzz()` 用节点名记录 `head/neck/spine/chest` 索引并写 `Pose bones` 日志；`main.cpp` 收到包后调用 `applyGazeLean()`，日志增加 `gaze=(...)@... lean=(...)@...`。
 - 每个新包不带 `gaze`/`lean` 时，`Frame` 的 weight 默认 0；因此空包会回正，不保留上一次姿态。
@@ -176,13 +185,13 @@ Emotion: neutral intensity=0.00 attack=180ms release=420ms gaze=(0.80,-0.10)@1.0
 - `app/asr_service.py` 默认关闭；构造后不录音，按钮/热键显式 `arm_once()` 后才启动一次 `VoiceWorker`，结束自动关闭。
 - 后端仍是 Windows 离线 SAPI；`voice_cmd.recognize(min_conf=0.30)` 拒绝低置信度假词，返回空文本而不是伪造指令。
 - 识别文本仍走 `main._on_voice()` → `send_chat()` → `emotion_bridge.user_text()`；`P_USER` 优先级不变，3D 只收情绪包。
-- 真实验收：`3d/tools/asr_accept.py` 识别“别难过，笑一个”（实际文本“别难过小一个”，conf 0.494）→ `P_USER happy 0.9` → 3D 全窗 RGB 差 **0.523**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png`。
+- 真实验收：`3d/tools/asr_accept.py` 识别“别难过，笑一个”（实际文本“别难过小一个”，conf 0.494）→ `P_USER happy 0.9` → 3D 全窗 RGB 差 **0.541**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png`。
 
 ## 还没做的
 
 step 1 / 1b / 4 / 5 已解决“参数进得来、脸能平滑切、强度有幅度和时间曲线、头和身体能做小角度姿态”。以下仍属于 v3.2.x 后续：
 
-1. **姿态层限制**：`gaze` 目前只转 head/neck 骨，没有眼骨或 BlendShape，视觉上接近“转头”而不是严格“转眼”；pose 是即时切换，没有平滑/回正包络；90 秒长跑只覆盖 idle + 自动眨眼，不是 24 小时浸泡。
+1. **姿态层限制**：`gaze` 目前只转 head/neck 骨，没有眼骨或 BlendShape，视觉上接近“转头”而不是严格“转眼”；11g 已加 180/420 ms 平滑/回正包络；10 分钟 soak 覆盖 idle + 自动眨眼 + 周期姿态，仍不是 24 小时浸泡。
 2. **ASR/TTS 闭环**：ASR 的显式单句输入已在 `app/asr_service.py` 接到 `voice_cmd`，识别文本走 `main.send_chat` → `emotion_bridge.user_text`，因此能产生 `P_USER`；但还没有连续识别、音素级口型，TTS 侧只做到播放期延长 `P_LLM` TTL。
 3. **标签可靠性**：`P_LLM` 的隐藏标签依赖模型遵循提示；小模型可能不输出，当前用回复词表兜底。跨云端/本地/Ollama 三后端的实际命中率还没有统计。
 4. **仲裁边界**：当前是固定优先级 + TTL，不是“打扰预算”；用户连续说话时不会主动降频，后续可按会话强度再加节流。
@@ -192,7 +201,8 @@ step 1 / 1b / 4 / 5 已解决“参数进得来、脸能平滑切、强度有幅
 - 新增 `emotion_bus.cpp` 后，`whale3d.exe` 从 1,315,840 B 增至 **1,321,472 B**（+5,632 B；其中 1,024 B 是版本资源）。
 - 交叉淡化（step 1b）后 dev exe 为 **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769`。
 - 强度包络（step 4，含可选 trace）后 dev exe 为 **1,324,544 B**，SHA256 `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119`；相对 step 1b 增加 2,048 B。
-- 姿态层（step 5）后当前 dev exe 为 **1,331,712 B**，SHA256 `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792`；相对 step 4 增加 7,168 B。运行时负载（exe + `SDL3.dll` + `whale_girl.vrm`）为 **7,068,523 B**。
+- 姿态层（step 5）后 dev exe **1,331,712 B**，SHA256 `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792`；相对 step 4 增加 7,168 B。运行时负载（exe + `SDL3.dll` + `whale_girl.vrm`）为 **7,068,523 B**。
+- 平滑/长跑（step 6）后 dev exe **1,332,224 B**（+512 B），SHA256 `FB8B7D6455F640CDCC444FA023C579EAE43CECFA62B94D49DE1B2B826BD27CA3`；运行时负载 **7,069,035 B**。没有用这个 exe 重打 ZIP/安装包。
 - 仅链接系统 `ws2_32.dll`，没有引入新运行时 DLL。
 - 只绑 `127.0.0.1`，不监听 `0.0.0.0`；没有认证，本机任意进程都能注入，这也是当前开发阶段的预期边界。
 - 当前 3.2 开发态没有重打 3.2 的 ZIP / 安装包；v3.1.2 是最新安装版（`WhaleGirlPet-Setup-3.1.2.exe`）。

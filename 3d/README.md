@@ -10,7 +10,7 @@ This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell 
 - The face is a 3-frame atlas (open / blink / smile) sampled by a shader UV offset. Auto blink is driven by the shell; `E` toggles smile and `B` triggers a blink.
 - **v3.2 step 1:** a localhost UDP emotion bus (`127.0.0.1:47832`) accepts `{"emotion":"happy","intensity":0.8,"source":"llm"}` and maps it to the same three face frames. It is data-only; ASR/LLM/TTS stay outside the render process. See `docs/3d-emotion-bus.md`.
 - **v3.2 step 1b/4:** emotion changes cross-fade over 0.16 s, and `intensity` is the actual neutral↔smile blend amplitude. `curve.attack_ms` / `release_ms` default to 180 / 420 ms; 0.8 means 80% smile, not a binary face swap.
-- **v3.2 step 5:** optional `gaze` / `lean` pose layer rotates `head/neck` and `spine/chest` locally after animation sampling. It is a small-angle approximation, not eye-bone tracking; absent fields reset to zero.
+- **v3.2 step 5:** optional `gaze` / `lean` pose layer rotates `head/neck` and `spine/chest` locally after animation sampling. It is a small-angle approximation, not eye-bone tracking; absent fields reset to zero. Targets enter and release through the same 180 / 420 ms linear envelopes, and `PoseTrace` confirms the intermediate frames.
 - The shell has a **native Win32 tray icon, native popup menu and native modal settings page**. No Qt, no PySide6, no UI toolkit.
 - Model switching is a same-process, same-GL-context **model cache**: the first load of a path builds an `Impl`, and switching to a cached path only changes the active pointer. No window hide, no helper, no blank frame.
 - The window is borderless, always on top, non-focus-stealing, and draggable with the left mouse button. Right-click opens the tray menu instead of quitting immediately. Only pixels whose alpha is above 16 belong to the Win32 window region, so transparent corners and gaps pass clicks through to the window below.
@@ -64,7 +64,7 @@ Inject one manually while the pet is running:
 .venv\Scripts\python.exe 3d\tools\send_emotion.py neutral 0 --lean-x 0.8 --lean-weight 0.8
 ```
 
-The log then shows `Emotion: happy intensity=0.80 attack=180ms release=420ms source=manual face=smile`. Positive emotions blend neutral→smile by `intensity`; neutral/negative emotions release back to zero. The shader cross-fades the two atlas frames over 0.16 s, while `curve` controls the amplitude envelope. `gaze` and `lean` are optional nested objects: x/y are clamped to [-1,1], weight to [0,1]; an object with no `weight` defaults to 1.0, while a missing object resets that layer to zero. At startup the log prints `Pose bones: head=5 neck=4 spine=2 chest=3`. Both the default ozz sampler and the in-house `self` sampler apply the pose offsets. This is a local-rotation approximation: it turns the head/neck rather than the eyes alone, and it has no smoothing envelope. ASR now has a single-shot input layer in `app/asr_service.py` (off by default, SAPI, explicit one-shot); continuous recognition and lip-sync remain later work. See `docs/3d-emotion-bus.md`.
+The log then shows `Emotion: happy intensity=0.80 attack=180ms release=420ms source=manual face=smile`. Positive emotions blend neutral→smile by `intensity`; neutral/negative emotions release back to zero. The shader cross-fades the two atlas frames over 0.16 s, while `curve` controls the amplitude envelope. `gaze` and `lean` are optional nested objects: x/y are clamped to [-1,1], weight to [0,1]; an object with no `weight` defaults to 1.0, while a missing object resets that layer to zero. At startup the log prints `Pose bones: head=5 neck=4 spine=2 chest=3`. Both the default ozz sampler and the in-house `self` sampler apply the pose offsets. This is a local-rotation approximation: it turns the head/neck rather than the eyes alone. Targets are smoothed with 180 ms attack / 420 ms release; `WHALE3D_POSE_TRACE=1` prints the current values. ASR now has a single-shot input layer in `app/asr_service.py` (off by default, SAPI, explicit one-shot); continuous recognition and lip-sync remain later work. See `docs/3d-emotion-bus.md`.
 
 ## Tray, menu and settings
 
@@ -143,14 +143,15 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` (v3.2 step 5 dev) | 1,331,712 bytes (1.27 MiB), with VRM + spring bones + tray + settings + in-place cache + alpha region + emotion bus + face cross-fade + intensity envelope + gaze/lean pose + version resource |
+| `whale3d.exe` (v3.2 step 6 dev) | 1,332,224 bytes (1.27 MiB), with VRM + spring bones + tray + settings + in-place cache + alpha region + emotion bus + face cross-fade + intensity envelope + smoothed gaze/lean pose + version resource |
+| exe SHA256 (v3.2 step 6) | `FB8B7D6455F640CDCC444FA023C579EAE43CECFA62B94D49DE1B2B826BD27CA3` |
 | exe SHA256 (v3.2 step 5) | `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792` |
 | `whale3d.exe` (v3.1.2 GUI) | 1,323,520 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + face cross-fade + version resource; PE subsystem 2 |
 | exe SHA256 (v3.1.2) | `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
-| Runtime payload (v3.2 step 5 dev exe + DLL + VRM) | 7,068,523 bytes (6.74 MiB) |
+| Runtime payload (v3.2 step 6 dev exe + DLL + VRM) | 7,069,035 bytes (6.74 MiB) |
 | Spring chains | 4 (`hair_side.L/R`, `hair_back`, `tail`); 19 VRM humanoid bones |
 | Spring solver | 7.63–10.80 µs/frame idle; 4 spring chains on 28 joints |
 | Tray promotion | `HKCU\Control Panel\NotifyIconSettings\674768749172540869\IsPromoted=1`; exact-rect crop shows the blue-haired icon |
@@ -170,7 +171,7 @@ The v3.1.2 GUI exe is 1,323,520 bytes (1,024 B above the 1,322,496-byte v3.2 ste
 
 ## Runnable package
 
-`F:\WhaleGirlPet\3d\whale3d-whale-girl-v3.zip` is **2,809,199 B** with SHA256 `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`. It contains `whale3d.exe` (1,323,520 B, GUI subsystem, VRM+spring/tray/settings/in-place-cache/alpha-region/emotion-bus/face-cross-fade), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0.
+`F:\WhaleGirlPet\3d\whale3d-whale-girl-v3.zip` is **2,809,199 B** with SHA256 `A98008C569A4A5686FA136EA091C0D1EAB4B338058B6D97D23433EE6EB8273C3`. It contains `whale3d.exe` (1,323,520 B, GUI subsystem, VRM+spring/tray/settings/in-place-cache/alpha-region/emotion-bus/face-cross-fade), `SDL3.dll`, `README.md`, `THIRD_PARTY_NOTICES.txt`, `assets/models/whale_girl.vrm` (351,708 B), `assets/models/whale_girl.glb` (350,332 B, fallback), `assets/models/_whale_girl_atlas.png` (32,232 B), `assets/models/placeholder.glb` (38,288 B) and `assets/ui/pet.ico` (9,001 B). It is extracted to a temp folder and launched there; the extracted build logs `Model springs: 4 chains, vrm=1`, loads `whale_girl.vrm` with 2,076 triangles, reports `Hit mask ready: 420x620 center_alpha=255`, opens the settings page, switches to `placeholder.glb` in the same process via the model cache, and exits 0. **This ZIP is not repacked with the step 6 dev exe (1,332,224 B); it remains the older runnable package.**
 
 **v3.1.2 is the current installable build.** The v3.1.0 assets were repaired and re-uploaded on 2026-11-27 (GUI subsystem, 3.1.0.0 version resource, installer directory page); the v3.2 source work is still in `main` but not a separate release package yet.
 
@@ -189,7 +190,7 @@ Windows installers are built from the release ZIPs by `installer/whale3d.iss` (c
 7. No behavior state machine, audio, cloud/AI integration or PySide6 replacement yet. The existing `ai_profiles`, `_chat_cloud` and cloud API routes stay in the Python service and are not packaged into this core zip.
 8. The VRM support is a deliberately minimal subset: `VRMC_vrm` humanoid mapping and `VRMC_springBone` two-bone chains only. MToon materials, expressions, look-at, spring colliders and full per-joint spring bones are not integrated. The runtime does not import arbitrary VRM avatars yet; the `.vrm` is generated from the project's own GLB.
 9. The spring layer is wired into the default `ozz` path. Selecting the `self` sampler in the settings page bypasses `applySpringBones`; this is a known gap, not a claim that both samplers are equivalent. The new gaze/lean offsets do run on both samplers.
-10. The pose layer is an immediate local-rotation change, with no smoothing or return envelope. The 90 s long run covers one idle clip plus auto blink only; it is not a 24-hour soak. The pose reset screenshot is visually close to neutral, but the whole-window RGB residual (0.641) is not fully explained, so “strictly zero residual” is not claimed.
+10. The pose layer is smoothed with 180 / 420 ms envelopes. The earlier whole-window neutral→reset residual (0.641) is now explained by the independent hair/tail SpringBone sine phase, not by a stale pose: with `WHALE3D_SPRING=0` the same reset run measures exactly 0.000, while `PoseTrace` shows all six current values at zero. Pose-layer screenshots therefore run with springs off; the 10-minute soak runs the default spring path separately. This is still a bounded soak, not a 24-hour claim.
 
 ## Not in this step
 

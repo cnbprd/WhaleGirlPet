@@ -497,14 +497,25 @@ struct Model::Impl {
     bool emotionActive = false;
     bool emotionTrace = false;
     float nextEmotionTrace = 0.0f;
-    // v3.2 optional gaze/body lean. These are local-space bone offsets added
-    // after animation sampling, never written back to the clip.
+    // v3.2 optional gaze/body lean. `gazeX/gazeY/gazeWeight` are targets from
+    // the UDP bus; `*Current` are the smoothed values applied to bones so a
+    // new pose or an empty pose does not snap between frames.
     float gazeX = 0.0f;
     float gazeY = 0.0f;
     float gazeWeight = 0.0f;
     float leanX = 0.0f;
     float leanY = 0.0f;
     float leanWeight = 0.0f;
+    float gazeXCurrent = 0.0f;
+    float gazeYCurrent = 0.0f;
+    float gazeWeightCurrent = 0.0f;
+    float leanXCurrent = 0.0f;
+    float leanYCurrent = 0.0f;
+    float leanWeightCurrent = 0.0f;
+    float poseAttack = 0.18f;
+    float poseRelease = 0.42f;
+    bool poseTrace = false;
+    float poseTraceAccum = 0.0f;
     int gazeHeadOzz = -1;
     int gazeNeckOzz = -1;
     int leanSpineOzz = -1;
@@ -1080,30 +1091,30 @@ static void rotateNodeLocal(Model::Impl& m, const char* name,
 }
 
 static void applyPoseOffsets(Model::Impl& m) {
-    if (m.gazeWeight > 0.001f) {
-        const float yaw = m.gazeX * m.gazeWeight * 0.38f;
-        const float pitch = m.gazeY * m.gazeWeight * 0.26f;
+    if (m.gazeWeightCurrent > 0.001f) {
+        const float yaw = m.gazeXCurrent * m.gazeWeightCurrent * 0.38f;
+        const float pitch = m.gazeYCurrent * m.gazeWeightCurrent * 0.26f;
         rotateOzzJointLocal(m, m.gazeNeckOzz, pitch * 0.35f, yaw * 0.35f, 0.0f);
         rotateOzzJointLocal(m, m.gazeHeadOzz, pitch * 0.65f, yaw * 0.65f, 0.0f);
     }
-    if (m.leanWeight > 0.001f) {
-        const float roll = m.leanX * m.leanWeight * 0.18f;
-        const float pitch = m.leanY * m.leanWeight * 0.12f;
+    if (m.leanWeightCurrent > 0.001f) {
+        const float roll = m.leanXCurrent * m.leanWeightCurrent * 0.18f;
+        const float pitch = m.leanYCurrent * m.leanWeightCurrent * 0.12f;
         rotateOzzJointLocal(m, m.leanSpineOzz, pitch * 0.5f, 0.0f, roll * 0.5f);
         rotateOzzJointLocal(m, m.leanChestOzz, pitch * 0.5f, 0.0f, roll * 0.5f);
     }
 }
 
 static void applyPoseOffsetsSelf(Model::Impl& m) {
-    if (m.gazeWeight > 0.001f) {
-        const float yaw = m.gazeX * m.gazeWeight * 0.38f;
-        const float pitch = m.gazeY * m.gazeWeight * 0.26f;
+    if (m.gazeWeightCurrent > 0.001f) {
+        const float yaw = m.gazeXCurrent * m.gazeWeightCurrent * 0.38f;
+        const float pitch = m.gazeYCurrent * m.gazeWeightCurrent * 0.26f;
         rotateNodeLocal(m, "neck", pitch * 0.35f, yaw * 0.35f, 0.0f);
         rotateNodeLocal(m, "head", pitch * 0.65f, yaw * 0.65f, 0.0f);
     }
-    if (m.leanWeight > 0.001f) {
-        const float roll = m.leanX * m.leanWeight * 0.18f;
-        const float pitch = m.leanY * m.leanWeight * 0.12f;
+    if (m.leanWeightCurrent > 0.001f) {
+        const float roll = m.leanXCurrent * m.leanWeightCurrent * 0.18f;
+        const float pitch = m.leanYCurrent * m.leanWeightCurrent * 0.12f;
         rotateNodeLocal(m, "spine", pitch * 0.5f, 0.0f, roll * 0.5f);
         rotateNodeLocal(m, "chest", pitch * 0.5f, 0.0f, roll * 0.5f);
     }
@@ -1467,11 +1478,16 @@ bool Model::applyEmotion(const std::string& emotion, float intensity,
 bool Model::applyGazeLean(float gazeX, float gazeY, float gazeWeight,
                           float leanX, float leanY, float leanWeight) {
     if (!impl_) return false;
-    impl_->gazeX = std::clamp(gazeX, -1.0f, 1.0f);
-    impl_->gazeY = std::clamp(gazeY, -1.0f, 1.0f);
+    const bool gazeOn = gazeWeight > 0.001f;
+    const bool leanOn = leanWeight > 0.001f;
+    // A zero weight means "release this layer": drop x/y targets too, so the
+    // smoothed bone offset returns to the sampled animation pose instead of
+    // holding a stale direction at zero weight.
+    impl_->gazeX = gazeOn ? std::clamp(gazeX, -1.0f, 1.0f) : 0.0f;
+    impl_->gazeY = gazeOn ? std::clamp(gazeY, -1.0f, 1.0f) : 0.0f;
     impl_->gazeWeight = std::clamp(gazeWeight, 0.0f, 1.0f);
-    impl_->leanX = std::clamp(leanX, -1.0f, 1.0f);
-    impl_->leanY = std::clamp(leanY, -1.0f, 1.0f);
+    impl_->leanX = leanOn ? std::clamp(leanX, -1.0f, 1.0f) : 0.0f;
+    impl_->leanY = leanOn ? std::clamp(leanY, -1.0f, 1.0f) : 0.0f;
     impl_->leanWeight = std::clamp(leanWeight, 0.0f, 1.0f);
     return true;
 }
@@ -1543,6 +1559,19 @@ bool Model::loadImpl(const std::string& path) {
     m.leanX = 0.0f;
     m.leanY = 0.0f;
     m.leanWeight = 0.0f;
+    m.gazeXCurrent = 0.0f;
+    m.gazeYCurrent = 0.0f;
+    m.gazeWeightCurrent = 0.0f;
+    m.leanXCurrent = 0.0f;
+    m.leanYCurrent = 0.0f;
+    m.leanWeightCurrent = 0.0f;
+    m.poseAttack = 0.18f;
+    m.poseRelease = 0.42f;
+    m.poseTrace = false;
+    m.poseTraceAccum = 0.0f;
+    if (const char* poseTrace = std::getenv("WHALE3D_POSE_TRACE")) {
+        m.poseTrace = std::strcmp(poseTrace, "0") != 0;
+    }
     m.gazeHeadOzz = -1;
     m.gazeNeckOzz = -1;
     m.leanSpineOzz = -1;
@@ -2155,6 +2184,50 @@ static void updateEmotion(Model::Impl& m, float dt) {
     }
 }
 
+static void updatePose(Model::Impl& m, float dt) {
+    if (dt <= 0.0f) return;
+    auto approach = [dt](float current, float target, float attack, float release) {
+        const float delta = target - current;
+        if (std::fabs(delta) <= 0.0001f) return target;
+        const float rate = (delta > 0.0f) ? attack : release;
+        const float step = (rate > 0.001f) ? (dt / rate) : 1.0f;
+        if (std::fabs(delta) <= step) return target;
+        return current + ((delta > 0.0f) ? step : -step);
+    };
+
+    // v3.2 step 5b: gaze/lean enter and release through short linear envelopes.
+    // The same 180 / 420 ms defaults as the face envelope keep the body from
+    // snapping when a pose packet arrives or an empty packet clears it.
+    m.gazeXCurrent = approach(m.gazeXCurrent, m.gazeX, m.poseAttack, m.poseRelease);
+    m.gazeYCurrent = approach(m.gazeYCurrent, m.gazeY, m.poseAttack, m.poseRelease);
+    m.gazeWeightCurrent = approach(m.gazeWeightCurrent, m.gazeWeight,
+                                   m.poseAttack, m.poseRelease);
+    m.leanXCurrent = approach(m.leanXCurrent, m.leanX, m.poseAttack, m.poseRelease);
+    m.leanYCurrent = approach(m.leanYCurrent, m.leanY, m.poseAttack, m.poseRelease);
+    m.leanWeightCurrent = approach(m.leanWeightCurrent, m.leanWeight,
+                                   m.poseAttack, m.poseRelease);
+
+    if (m.gazeWeightCurrent <= 0.001f) {
+        m.gazeWeightCurrent = 0.0f;
+        m.gazeXCurrent = 0.0f;
+        m.gazeYCurrent = 0.0f;
+    }
+    if (m.leanWeightCurrent <= 0.001f) {
+        m.leanWeightCurrent = 0.0f;
+        m.leanXCurrent = 0.0f;
+        m.leanYCurrent = 0.0f;
+    }
+    if (m.poseTrace) {
+        m.poseTraceAccum += dt;
+        if (m.poseTraceAccum >= 0.1f) {
+            m.poseTraceAccum = 0.0f;
+            SDL_Log("PoseTrace gaze=(%.3f,%.3f)@%.3f lean=(%.3f,%.3f)@%.3f",
+                    m.gazeXCurrent, m.gazeYCurrent, m.gazeWeightCurrent,
+                    m.leanXCurrent, m.leanYCurrent, m.leanWeightCurrent);
+        }
+    }
+}
+
 static void updateFace(Model::Impl& m, float timeSeconds, float dt) {
     if (m.faceTransition) {
         // 0.16 s cross-fade between the two blend frames. It is deliberately
@@ -2187,6 +2260,7 @@ void Model::update(float timeSeconds) {
     }
     m.lastUpdateTime = timeSeconds;
     updateEmotion(m, dt);
+    updatePose(m, dt);
     if (m.emotionTrace && timeSeconds >= m.nextEmotionTrace) {
         SDL_Log("EmotionTrace t=%.3f current=%.4f target=%.4f active=%d",
                 timeSeconds, m.emotionCurrent, m.emotionIntensity,
