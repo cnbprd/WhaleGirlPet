@@ -1,0 +1,2 @@
+F:\WhaleGirlPet\.toolchains\w64devkit\w64devkit\bin\ar.exe qc libozz_geometry_r.a CMakeFiles/ozz_geometry.dir/skinning_job.cc.obj
+F:\WhaleGirlPet\.toolchains\w64devkit\w64devkit\bin\ranlib.exe libozz_geometry_r.a

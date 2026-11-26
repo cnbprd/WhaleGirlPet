@@ -5,6 +5,8 @@
   assets/skins/layers/<skin>_base.png    去掉裙摆/尾巴的底图
   assets/skins/layers/<skin>_skirt.png   裙摆层（含透明画布）
   assets/skins/layers/<skin>_tail.png    尾巴层（含透明画布）
+  assets/skins/layers/<skin>_hair_l.png  default 左外侧发束层（整图底叠加）
+  assets/skins/layers/<skin>_hair_r.png  default 右外侧发束层（整图底叠加）
   assets/skins/layers/layers.json        枢轴点与层参数
   assets/skins/layers/<name>@2x.png      2x 版本
 
@@ -35,8 +37,17 @@ SPECS = {
                  (0.86, 0.54), (0.92, 0.53), (0.98, 0.56), (1.00, 0.60),
                  (0.97, 0.63), (0.90, 0.64), (0.83, 0.62), (0.76, 0.61),
                  (0.69, 0.59), (0.63, 0.57), (0.60, 0.55)],
+        # default 追加：左右外侧发束，整图底 + 4° 叠加，不挖底图
+        "hair_l": [(0.03, 0.26), (0.08, 0.22), (0.14, 0.22), (0.20, 0.25),
+                   (0.22, 0.31), (0.20, 0.38), (0.18, 0.46), (0.14, 0.53),
+                   (0.10, 0.57), (0.06, 0.55), (0.03, 0.48), (0.01, 0.38)],
+        "hair_r": [(0.72, 0.26), (0.77, 0.22), (0.81, 0.22), (0.84, 0.26),
+                   (0.85, 0.33), (0.84, 0.41), (0.82, 0.49), (0.79, 0.54),
+                   (0.76, 0.53), (0.74, 0.47), (0.72, 0.38), (0.71, 0.32)],
         "skirt_pivot": (0.50, 0.43),
         "tail_pivot": (0.63, 0.55),
+        "hair_l_pivot": (0.14, 0.23),
+        "hair_r_pivot": (0.78, 0.23),
     },
     "jk": {
         "skirt": [(0.28, 0.44), (0.34, 0.42), (0.41, 0.43), (0.48, 0.42),
@@ -91,6 +102,15 @@ def _color_gate(src, kind):
     return ImageChops.lighter(dark, white)
 
 
+def _hair_gate(src):
+    """蓝/紫发色：B 明显高于 R；白蕾丝、皮肤、黑裙都不会过。"""
+    r, g, b, a = src.split()
+    diff = ImageChops.subtract(b, r)
+    blue = diff.point(lambda v: 255 if v >= 12 else 0)
+    dark = b.point(lambda v: 255 if v >= 45 else 0)
+    return ImageChops.multiply(a, ImageChops.multiply(blue, dark))
+
+
 def _compose(src, mask):
     out = src.copy()
     a = ImageChops.multiply(src.getchannel("A"), mask)
@@ -128,7 +148,19 @@ def build_one(skin, spec, factor=1):
     base.save(os.path.join(OUT, f"{skin}_base{suffix}.png"))
     skirt.save(os.path.join(OUT, f"{skin}_skirt{suffix}.png"))
     tail.save(os.path.join(OUT, f"{skin}_tail{suffix}.png"))
-    return base, skirt, tail
+
+    hairs = {}
+    gate = _hair_gate(src)
+    for part in ("hair_l", "hair_r"):
+        pts = spec.get(part)
+        if not pts:
+            continue
+        m = ImageChops.multiply(_poly_mask(size, pts, blur=0.6 * factor), gate)
+        m = m.filter(ImageFilter.GaussianBlur(0.6 * factor))
+        hair = _compose(src, m)
+        hair.save(os.path.join(OUT, f"{skin}_{part}{suffix}.png"))
+        hairs[part] = hair
+    return base, skirt, tail, hairs
 
 
 def preview(default_base, default_skirt, default_tail, jk_base, jk_skirt, jk_tail):
@@ -172,8 +204,8 @@ def main():
     meta = {"skins": {}}
     previews = {}
     for skin, spec in SPECS.items():
-        b1, s1, t1 = build_one(skin, spec, 1)
-        b2, s2, t2 = build_one(skin, spec, 2)
+        b1, s1, t1, h1 = build_one(skin, spec, 1)
+        b2, s2, t2, h2 = build_one(skin, spec, 2)
         # 2x 预览只用 1x 资产
         previews[skin] = (b1, s1, t1)
         meta["skins"][skin] = {
@@ -186,7 +218,13 @@ def main():
             "skirt_2x": f"{skin}_skirt@2x.png",
             "tail_2x": f"{skin}_tail@2x.png",
         }
-        print("built", skin, b1.size, b2.size)
+        for part in ("hair_l", "hair_r"):
+            if part not in h1:
+                continue
+            meta["skins"][skin][part] = f"{skin}_{part}.png"
+            meta["skins"][skin][part + "_2x"] = f"{skin}_{part}@2x.png"
+            meta["skins"][skin][part + "_pivot"] = list(spec[part + "_pivot"])
+        print("built", skin, b1.size, b2.size, "hair", list(h1))
     with open(os.path.join(OUT, "layers.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     preview(previews["default"][0], previews["default"][1], previews["default"][2],

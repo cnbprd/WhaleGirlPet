@@ -1,0 +1,30 @@
+{
+  "skin": "default",
+  "base": "default_base_cut.png",
+  "parts": {
+    "hair_l": {
+      "file": "default_hair_l.png",
+      "pivot": [
+        0.14,
+        0.23
+      ],
+      "mode": "rotate",
+      "max_deg": 8.0,
+      "stiffness": 34.0,
+      "damping": 10.0,
+      "gain": 1.35
+    },
+    "hair_r": {
+      "file": "default_hair_r.png",
+      "pivot": [
+        0.78,
+        0.23
+      ],
+      "mode": "rotate",
+      "max_deg": 8.0,
+      "stiffness": 34.0,
+      "damping": 10.0,
+      "gain": 1.35
+    }
+  }
+}

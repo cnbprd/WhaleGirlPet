@@ -1,0 +1,10 @@
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+GL version : 3.3.0 NVIDIA 582.78
+ozz ready: 28 joints, clips=idle/walk
+Model loaded: F:\WhaleGirlPet\_pkg_verify\assets/models/whale_girl.glb (2076 triangles, 28 joints, 1 animations)
+Animator: ozz; clip: idle; face: open
+Tray icon ready: rect=(1611,0)-(1643,48)
+fps=29.4 triangles=2076 update_us=7.28 animator=ozz clip=idle face=open
+fps=29.8 triangles=2076 update_us=6.65 animator=ozz clip=idle face=open
+Settings applied: model=whale_girl.glb model_ok=1 clip=walk face=smile animator=ozz ok=1
+fps=5.9 triangles=2076 update_us=7.39 animator=ozz clip=walk face=smile

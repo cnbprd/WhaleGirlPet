@@ -166,7 +166,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v2.9.6**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.0.28**。
 
 ---
 

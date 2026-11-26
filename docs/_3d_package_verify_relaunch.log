@@ -1,0 +1,21 @@
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+GL version : 3.3.0 NVIDIA 582.78
+ozz ready: 28 joints, clips=idle/walk
+Model loaded: C:\Users\yangmengke\AppData\Local\Temp\whale3d_pkg_verify_relaunch\assets/models/whale_girl.glb (2076 triangles, 28 joints, 1 animations)
+Animator: ozz; clip: idle; face: open
+Tray icon ready: rect=(1611,0)-(1643,48)
+Hit mask ready: 420x620 center_alpha=255
+fps=26.1 triangles=2076 update_us=6.89 animator=ozz clip=idle face=open
+Restart helper requested for model: C:\Users\yangmengke\AppData\Local\Temp\whale3d_pkg_verify_relaunch\assets/models/placeholder.glb
+relaunch helper: old_pid=24992 model=C:\Users\yangmengke\AppData\Local\Temp\whale3d_pkg_verify_relaunch\assets/models/placeholder.glb
+fps=17.5 triangles=2076 update_us=7.51 animator=ozz clip=idle face=open
+relaunch helper: started new pet pid=14996
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+GL version : 3.3.0 NVIDIA 582.78
+ozz ready: 13 joints, clips=idle/walk
+Model loaded: C:\Users\yangmengke\AppData\Local\Temp\whale3d_pkg_verify_relaunch\assets/models/placeholder.glb (216 triangles, 13 joints, 1 animations)
+Animator: ozz; clip: walk; face: open
+Tray icon ready: rect=(1611,0)-(1643,48)
+Hit mask ready: 420x620 center_alpha=255
+fps=27.3 triangles=216 update_us=5.81 animator=ozz clip=walk face=open
+fps=26.3 triangles=216 update_us=4.67 animator=ozz clip=walk face=open

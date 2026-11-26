@@ -1,0 +1,40 @@
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+GL version : 3.3.0 NVIDIA 582.78
+ozz ready: 28 joints, clips=idle/walk
+Model loaded: C:\Users\YANGME~1\AppData\Local\Temp\whale3d_pkg_inplace_verify\assets/models/whale_girl.glb (2076 triangles, 28 joints, 1 animations)
+Animator: ozz; clip: idle; face: open
+ShellUi: tray promotion registry key not found
+Tray icon ready: rect=(1611,0)-(1643,48)
+Hit mask ready: 420x620 center_alpha=255
+fps=27.5 triangles=2076 update_us=6.64 animator=ozz clip=idle face=open
+fps=29.1 triangles=2076 update_us=7.30 animator=ozz clip=idle face=open
+fps=29.0 triangles=2076 update_us=5.89 animator=ozz clip=idle face=open
+fps=27.7 triangles=2076 update_us=7.02 animator=ozz clip=idle face=open
+fps=29.1 triangles=2076 update_us=6.83 animator=ozz clip=idle face=open
+fps=29.0 triangles=2076 update_us=6.15 animator=ozz clip=idle face=open
+fps=29.1 triangles=2076 update_us=8.68 animator=ozz clip=idle face=open
+In-place model switch requested: C:\Users\YANGME~1\AppData\Local\Temp\whale3d_pkg_inplace_verify\assets/models/placeholder.glb
+ozz ready: 13 joints, clips=idle/walk
+In-place model load: placeholder.glb ok=1 ms=4
+Settings applied: model=placeholder.glb model_ok=1 clip=idle face=open animator=ozz ok=1
+fps=6.5 triangles=216 update_us=8.83 animator=ozz clip=idle face=open
+fps=28.8 triangles=216 update_us=4.43 animator=ozz clip=idle face=open
+fps=28.6 triangles=216 update_us=5.05 animator=ozz clip=idle face=open
+In-place model switch requested: C:\Users\YANGME~1\AppData\Local\Temp\whale3d_pkg_inplace_verify\assets/models/whale_girl.glb
+In-place model load: whale_girl.glb ok=1 ms=0
+Settings applied: model=whale_girl.glb model_ok=1 clip=idle face=open animator=ozz ok=1
+fps=6.1 triangles=2076 update_us=4.98 animator=ozz clip=idle face=open
+fps=28.3 triangles=2076 update_us=7.71 animator=ozz clip=idle face=open
+fps=27.8 triangles=2076 update_us=6.61 animator=ozz clip=idle face=open
+In-place model switch requested: C:\Users\YANGME~1\AppData\Local\Temp\whale3d_pkg_inplace_verify\assets/models/placeholder.glb
+In-place model load: placeholder.glb ok=1 ms=0
+Settings applied: model=placeholder.glb model_ok=1 clip=idle face=open animator=ozz ok=1
+fps=5.4 triangles=216 update_us=5.72 animator=ozz clip=idle face=open
+fps=28.3 triangles=216 update_us=4.44 animator=ozz clip=idle face=open
+fps=28.4 triangles=216 update_us=4.35 animator=ozz clip=idle face=open
+In-place model switch requested: C:\Users\YANGME~1\AppData\Local\Temp\whale3d_pkg_inplace_verify\assets/models/whale_girl.glb
+In-place model load: whale_girl.glb ok=1 ms=0
+Settings applied: model=whale_girl.glb model_ok=1 clip=idle face=open animator=ozz ok=1
+fps=4.3 triangles=2076 update_us=4.80 animator=ozz clip=idle face=open
+fps=28.1 triangles=2076 update_us=7.08 animator=ozz clip=idle face=open
+fps=27.5 triangles=2076 update_us=6.72 animator=ozz clip=idle face=open

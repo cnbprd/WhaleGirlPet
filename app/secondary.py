@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """v3.0.26 第三阶段：裙摆 / 尾巴的 alpha 分层 + Verlet spring。
 
+本阶段起 default 追加左右外侧发束（4° 整图叠加，不挖底图）。
 设计口径：
 - 资产层由 `tools/make_secondary_layers.py` 生成；运行时只读，不再抠图。
 - 裙摆用「上端固定在腰、越往下摆幅越大」的剪切形变，不绕腰硬转，
@@ -103,6 +104,14 @@ class SecondaryMotion:
             LayerSpec("skirt", tuple(self.meta.get("skirt_pivot", (0.5, 0.43))),
                       "shear", 7.0, 32.0, 10.0, 1.0),
         )
+        # A 案：default 追加左右外侧发束，整图底叠加，最大 4°，不挖底图
+        if self.meta.get("hair_l") and self.meta.get("hair_r"):
+            specs += (
+                LayerSpec("hair_l", tuple(self.meta.get("hair_l_pivot", (0.14, 0.23))),
+                          "rotate", 4.0, 34.0, 10.0, 1.35),
+                LayerSpec("hair_r", tuple(self.meta.get("hair_r_pivot", (0.78, 0.23))),
+                          "rotate", 4.0, 34.0, 10.0, 1.35),
+            )
         for spec in specs:
             name = self.meta.get(spec.part, "")
             if self.two:
@@ -145,18 +154,27 @@ class SecondaryMotion:
             tail.step(dt, _clamp(tail_target, -10.0, 10.0))
         if skirt is not None:
             skirt.step(dt, _clamp(skirt_target, -6.0, 6.0))
+        # 发束跟裙摆同向滞后，但限幅更小；发根不离开头皮
+        hair_target = (vx * 1.7 + breathe * 0.9 * amp) * amp
+        hair_target += -vy * 0.45
+        for name in ("hair_l", "hair_r"):
+            spring = self.springs.get(name)
+            if spring is not None:
+                spring.step(dt, _clamp(hair_target, -4.0, 4.0))
 
     def angles(self) -> dict:
         return {k: round(v.angle, 2) for k, v in self.springs.items()}
 
     def paint(self, p: QPainter, pw: int, ph: int):
-        """按顺序画：尾巴（在后面）→ 裙摆（压住尾巴根）。
+        """按顺序画：发束（最里）→ 尾巴（在后面）→ 裙摆（压住尾巴根）。
 
         底图保留完整立绘，层只覆盖可动区域；静止时层与原图像素重合，
         动起来时不会在裙腰/尾巴根留下透明洞，只是边缘会保留一点原位布料。
         """
         if not self.enabled:
             return
+        self._paint_one(p, pw, ph, "hair_l")
+        self._paint_one(p, pw, ph, "hair_r")
         self._paint_one(p, pw, ph, "tail")
         self._paint_one(p, pw, ph, "skirt")
 

@@ -14,7 +14,19 @@
       "tail": "default_tail.png",
       "base_2x": "default_base@2x.png",
       "skirt_2x": "default_skirt@2x.png",
-      "tail_2x": "default_tail@2x.png"
+      "tail_2x": "default_tail@2x.png",
+      "hair_l": "default_hair_l.png",
+      "hair_l_2x": "default_hair_l@2x.png",
+      "hair_l_pivot": [
+        0.14,
+        0.23
+      ],
+      "hair_r": "default_hair_r.png",
+      "hair_r_2x": "default_hair_r@2x.png",
+      "hair_r_pivot": [
+        0.78,
+        0.23
+      ]
     },
     "jk": {
       "skirt_pivot": [

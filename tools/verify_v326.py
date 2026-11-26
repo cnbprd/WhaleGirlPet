@@ -144,7 +144,8 @@ def split_checks():
     for skin in ("default", "jk"):
         sec = sm.SecondaryMotion(1.0)
         ok = sec.set_skin(skin, False)
-        ck("分层资产可加载 %s" % skin, ok and set(sec.pix) == {"skirt", "tail"}, list(sec.pix))
+        expected = {"skirt", "tail"} | ({"hair_l", "hair_r"} if skin == "default" else set())
+        ck("分层资产可加载 %s" % skin, ok and set(sec.pix) == expected, list(sec.pix))
     sec_other = sm.SecondaryMotion(1.0)
     ok_other = sec_other.set_skin("blackgown", False)
     ck("未做分层的皮肤自动回退平图", not ok_other and not sec_other.enabled, ok_other)

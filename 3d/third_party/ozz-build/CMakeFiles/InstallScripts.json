@@ -1,0 +1,18 @@
+{
+	"InstallScripts" : 
+	[
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/base/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/options/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/runtime/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/offline/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/offline/tools/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/offline/fbx/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/animation/offline/gltf/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/geometry/cmake_install.cmake",
+		"F:/WhaleGirlPet/3d/third_party/ozz-build/src/geometry/runtime/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

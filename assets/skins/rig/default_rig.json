@@ -1,0 +1,170 @@
+{
+  "format": "whale-rig/1",
+  "spine": "4.0.0",
+  "skeleton": {
+    "width": 267.0,
+    "height": 512.0,
+    "x": 0,
+    "y": 0
+  },
+  "meta": {
+    "generator": "tools/build_rig_json.py",
+    "skin": "default",
+    "note": "Spine-compatible data only; rendered by app/rig_runtime.py"
+  },
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "x": 133.5,
+      "y": 300.032,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "spine",
+      "parent": "root",
+      "x": 0.0,
+      "y": -79.872,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "head",
+      "parent": "spine",
+      "x": 0.0,
+      "y": -97.28,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "hair_l",
+      "parent": "head",
+      "x": -96.12,
+      "y": -5.12,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "hair_r",
+      "parent": "head",
+      "x": 74.76,
+      "y": -5.12,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "tail",
+      "parent": "root",
+      "x": 34.71,
+      "y": -18.432,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    },
+    {
+      "name": "skirt",
+      "parent": "root",
+      "x": 0.0,
+      "y": -79.872,
+      "rotation": 0.0,
+      "scaleX": 1.0,
+      "scaleY": 1.0
+    }
+  ],
+  "slots": [
+    {
+      "name": "body",
+      "bone": "root",
+      "attachment": "body",
+      "z": 0
+    },
+    {
+      "name": "hair_l",
+      "bone": "hair_l",
+      "attachment": "hair_l",
+      "z": 1
+    },
+    {
+      "name": "hair_r",
+      "bone": "hair_r",
+      "attachment": "hair_r",
+      "z": 2
+    },
+    {
+      "name": "tail",
+      "bone": "tail",
+      "attachment": "tail",
+      "z": 3
+    },
+    {
+      "name": "skirt",
+      "bone": "skirt",
+      "attachment": "skirt",
+      "z": 4
+    }
+  ],
+  "skins": [
+    {
+      "name": "default",
+      "attachments": {
+        "body": {
+          "body": {
+            "type": "region",
+            "path": "../layers/default_base.png",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 267.0,
+            "height": 512.0
+          }
+        },
+        "hair_l": {
+          "hair_l": {
+            "type": "region",
+            "path": "../layers/default_hair_l.png",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 267.0,
+            "height": 512.0
+          }
+        },
+        "hair_r": {
+          "hair_r": {
+            "type": "region",
+            "path": "../layers/default_hair_r.png",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 267.0,
+            "height": 512.0
+          }
+        },
+        "tail": {
+          "tail": {
+            "type": "region",
+            "path": "../layers/default_tail.png",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 267.0,
+            "height": 512.0
+          }
+        },
+        "skirt": {
+          "skirt": {
+            "type": "region",
+            "path": "../layers/default_skirt.png",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 267.0,
+            "height": 512.0
+          }
+        }
+      }
+    }
+  ],
+  "animations": {}
+}

@@ -2,6 +2,17 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.0.28（2026-11-26）
+
+3D 核心壳三项可用性收口；本次 Release 附 `whale3d-whale-girl-v1.zip`，2D 安装包不重建。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 真实鼠标点击穿透 | `3d/real_mouse_accept.py` 用 `SetCursorPos` + `mouse_event`，修正旧 ctypes WndProc 的 `LPARAM` 截断和 `FillRect` 调错库 | 透明角落 underlay `BN_CLICKED id=1 count=1`；角色中心拖拽 `(1200,300)-(1620,920)` → `(1235,325)-(1655,945)`；pet exit 0 |
+| 2 Win11 托盘固定 | `ShellUi::promoteTrayIcon` 按 `ExecutablePath` 匹配 `NotifyIconSettings` 并写 `IsPromoted=1` | 实际路径 key `674768749172540869`；Explorer 重启后 `(1611,0)-(1643,48)` 精确裁剪为蓝发鲸鱼娘图标 |
+| 3 真正 in-place 换模 | `Model` 内部 `Impl` cache；切换只改 active 指针，不隐藏窗口、不重启进程、不启 helper | 首次 placeholder 4ms、缓存命中 0ms；四轮后私有字节 98,201,600 B 不增长；同一 PID、无子进程、exit 0 |
+| 4 包与文档 | 新包 `whale3d-whale-girl-v1.zip`；README 和 `docs/3d-transition.md` 同步 | ZIP 2,727,089 B，SHA256 `9EB9CCAAA1B42D5CFA440E77FFB4E331A0746F6EF35A07D0843B47CE712BE461`；包内 exe 1,302,528 B，SHA256 `53F6113B...B6D0478` |
+
 ## v3.0.27（2026-11-26）
 
 | 项 | 改动 | 实测 |

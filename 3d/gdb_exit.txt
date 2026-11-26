@@ -1,0 +1,99 @@
+No symbol "exception" in current context.
+[New Thread 28980.0xf08 (id 2)]
+[New Thread 28980.0x6900 (id 3)]
+[New Thread 28980.0x3d50 (id 4)]
+[New Thread 28980.0x246c (id 5)]
+[New Thread 28980.0x6894 (id 6)]
+[New Thread 28980.0x9a8 (id 7)]
+[New Thread 28980.0x46c4 (id 8)]
+[Thread 28980.0x6894 (id 6) exited with code 0]
+[Thread 28980.0x9a8 (id 7) exited with code 0]
+[Thread 28980.0x46c4 (id 8) exited with code 0]
+[New Thread 28980.0x2b00 (id 9)]
+[New Thread 28980.0x1e88 (id 10)]
+[New Thread 28980.0x309c (id 11)]
+[New Thread 28980.0x6174 (id 12)]
+[New Thread 28980.0x7924 (id 13)]
+[New Thread 28980.0x7700 (id 14)]
+[New Thread 28980.0x669c (id 15)]
+[New Thread 28980.0x7f18 (id 16)]
+[New Thread 28980.0x395c (id 17)]
+warning: GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+warning: GL version : 3.3.0 NVIDIA 582.78
+
+GL version : 3.3.0 NVIDIA 582.78
+warning: ozz ready: 28 joints, clips=idle/walk
+
+ozz ready: 28 joints, clips=idle/walk
+warning: Model loaded: F:\WhaleGirlPet\3d\assets/models/whale_girl.glb (2076 triangles, 28 joints, 1 animations)
+
+Model loaded: F:\WhaleGirlPet\3d\assets/models/whale_girl.glb (2076 triangles, 28 joints, 1 animations)
+warning: Animator: ozz; clip: idle; face: open
+
+Animator: ozz; clip: idle; face: open
+warning: Tray icon ready: rect=(1611,0)-(1643,48)
+
+Tray icon ready: rect=(1611,0)-(1643,48)
+warning: ShellUi shutdown: begin settings=0000000000000000 hwnd=00000000005b02c6 icon=00000000008e0ed3
+
+ShellUi shutdown: begin settings=0000000000000000 hwnd=00000000005b02c6 icon=00000000008e0ed3
+warning: ShellUi shutdown: tray removed
+
+ShellUi shutdown: tray removed
+warning: ShellUi shutdown: wndproc restored
+
+ShellUi shutdown: wndproc restored
+warning: ShellUi shutdown: icon destroyed
+
+ShellUi shutdown: icon destroyed
+warning: main shutdown: ui done
+
+main shutdown: ui done
+warning: main shutdown: model done
+
+main shutdown: model done
+warning: main shutdown: gl context done
+
+main shutdown: gl context done
+warning: main shutdown: window done
+
+main shutdown: window done
+[Thread 28980.0x246c (id 5) exited with code 0]
+warning: Critical error detected c0000374
+
+Thread 1 received signal SIGTRAP, Trace/breakpoint trap.
+0x00007ffe7d3e5a35 in ntdll!LdrResSearchResource () from C:/WINDOWS/SYSTEM32/ntdll.dll
+#0  0x00007ffe7d3e5a35 in ntdll!LdrResSearchResource () from C:/WINDOWS/SYSTEM32/ntdll.dll
+#1  0x00007ffe7d35ae02 in ntdll!RtlSetProcessPreferredUILanguages () from C:/WINDOWS/SYSTEM32/ntdll.dll
+#2  0x00007ffe7d47338a in ntdll!RtlLengthCurrentClearRunForwardEx () from C:/WINDOWS/SYSTEM32/ntdll.dll
+#3  0x00007ffe7d37790a in ntdll!RtlFreeHeap () from C:/WINDOWS/SYSTEM32/ntdll.dll
+#4  0x00007ffe7c9cd60c in msvcrt!free () from C:/WINDOWS/System32/msvcrt.dll
+#5  0x00007ffdff6c12ed in SDL_QuitFilesystem () from F:/WhaleGirlPet/3d/SDL3.dll
+#6  0x00007ffdff6626e3 in SDL_Quit_REAL () from F:/WhaleGirlPet/3d/SDL3.dll
+#7  0x00007ff79bba2bf9 in main (argc=1, argv=0x7879e0) at F:/WhaleGirlPet/3d/main.cpp:284
+rax            0x0                 0
+rbx            0xc0000374          3221226356
+rcx            0x843ab1984f3c0000  -8918620844331368448
+rdx            0x8045a0            8406432
+rsi            0x1                 1
+rdi            0x7ffe7d5220e0      140731000955104
+rbp            0x5ffa40            0x5ffa40
+rsp            0x5ff6e0            0x5ff6e0
+r8             0x804590            8406416
+r9             0x10                16
+r10            0x7ffe7d3a266d      140730999383661
+r11            0x0                 0
+r12            0x7ff79bd340e8      140701447962856
+r13            0x0                 0
+r14            0x780000            7864320
+r15            0x0                 0
+rip            0x7ffe7d3e5a35      0x7ffe7d3e5a35 <ntdll!LdrResSearchResource+2037>
+eflags         0x200202            [ IF ID ]
+cs             0x33                51
+ss             0x2b                43
+ds             0x2b                43
+es             0x2b                43
+fs             0x53                83
+gs             0x2b                43
