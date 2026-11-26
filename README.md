@@ -50,7 +50,8 @@
 | 基础动画 | ozz 采样 idle/walk；自研采样保留 A/B |
 | 头发/尾巴二次动力学 | 已通；窗口位移惯性输入，`WHALE3D_SPRING=0` 可关闭 |
 | 情绪参数总线 | v3.2 step 1 已通；本机 UDP `127.0.0.1:47832`，`happy 0.8 → smile`，见 `docs/3d-emotion-bus.md` |
-| 认知层（ASR/LLM/TTS） | 仍在 Python 侧，未进 3D 渲染进程；下一步 v3.2.x |
+| 认知层 | Python 侧已接情绪桥：`P_USER / P_LLM / P_AUTO` 仲裁后发本机 UDP；ASR/TTS 仍未进 3D 渲染进程 |
+| 情绪桥 | v3.2 step 2 已通；聊天发送/回复/情绪衰减三路接入，3D 端日志可看到 `source=P_USER/P_LLM`，见 `docs/3d-emotion-bus.md` |
 
 细节：[`3d/README.md`](3d/README.md)、[`docs/3d-transition.md`](docs/3d-transition.md)。下面的“功能概览”是 2D 历史归档能力，不代表当前 3D 核心包已全部迁移。
 

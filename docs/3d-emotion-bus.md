@@ -1,4 +1,4 @@
-# 3D 情绪总线 v3.2 第一步
+# 3D 情绪总线 v3.2（step 1 + step 1b + step 2）
 
 日期：2026-11-26
 
@@ -12,6 +12,20 @@ v3.2.x 的第一步已经接进 3D 壳：**本机 UDP 情绪参数总线**。它
 - 3D 进程收到后映射到当前最小 VRM 的 `open / blink / smile` 三帧脸部图集，并把结果写进日志。
 - v3.2 step 1b：情绪触发的换脸现在走 **0.16 s 两帧交叉淡化**（shader 内 `mix` 两张图集采样），不再硬切；`blink` 仍保持瞬时闭眼。
 - `3d/tools/send_emotion.py` 是手工注入工具；`3d/tools/emotion_accept.py` 是带截图的黑盒验收，并额外抓 60 ms 中间帧。
+
+## v3.2 step 2：Python 侧标签与 P_USER / P_LLM / P_AUTO 仲裁
+
+这一段把“手工注入”推进到“聊天时自动发情绪”。渲染进程仍然只收 UDP，不引入 Python 进程或模型运行时。
+
+- `app/emotion_bridge.py` 负责产生信号、按优先级仲裁，并只在当前有效信号变化时发一个 UDP 包。
+- 优先级：`P_USER(3) > P_LLM(2) > P_AUTO(1)`。高优先级信号未过期时，低优先级包不会覆盖当前表情。
+- `P_USER`：显式说法，例如“笑一个”“别难过”“冷静点”；TTL 8 秒，强度 0.75–0.90。
+- `P_LLM`：优先读模型回复里的隐藏标签 `[[emo:happy:0.7]]`；模型没给标签时，从回复文本做保守词表兜底；TTL 4 秒。
+- `P_AUTO`：沿用 `EmotionState.expression_hint()` 和 `mood_score()`；TTL 12 秒，强度 0.15–0.85。
+- `main.py` 在用户发话时提交 `P_USER`，在 `_finish_reply()` 提交 `P_LLM`，在 5 分钟情绪衰减定时器里提交 `P_AUTO`。
+- 系统提示只在 3D bridge 开启时要求模型在末尾附一个隐藏标签；`_polish_reply()` 会在气泡/TTS 前移除标签，用户看不到。
+
+实测：`tools/test_emotion_bridge.py` 6 项单元测试通过；启动 3.1.1 的 `whale3d.exe` 后，`P_USER` 日志为 `Emotion: happy intensity=0.90 source=P_USER face=smile`，`P_LLM` 日志为 `Emotion: sad intensity=0.65 source=P_LLM face=open`。这两条只是本机回环验收，不代表真实 LLM 每次都会输出标签。
 
 ## 协议
 
@@ -78,8 +92,9 @@ Emotion: happy intensity=0.80 source=manual face=smile
 
 1. **强度缓动**：`intensity` 目前只决定选 `smile` 还是 `auto/open`，还没有把 0–1 映射成表情幅度或时间曲线。
 2. **姿态/视线**：`body_lean`、`gaze_target` 还没有接进骨骼后处理；当前模型没有对应 BlendShape。
-3. **LLM/ASR/TTS 闭环**：Python 侧还没有把对话情绪标签发到 UDP；这条总线目前只被手工工具和验收脚本使用。
-4. **权限/仲裁**：`source` 只记录，还没有 `P_USER` / `P_LLM` / `P_AUTO` 优先级和打扰预算。
+3. **ASR/TTS 闭环**：语音输入和语音输出还没有把情绪标签送进这条总线；当前自动信号只覆盖文本聊天和 `EmotionState`。
+4. **标签可靠性**：`P_LLM` 的隐藏标签依赖模型遵循提示；小模型可能不输出，当前用回复词表兜底。跨云端/本地/Ollama 三后端的实际命中率还没有统计。
+5. **仲裁边界**：当前是固定优先级 + TTL，不是“打扰预算”；用户连续说话时不会主动降频，后续可按会话强度再加节流。
 
 ## 体积与安全
 
@@ -87,4 +102,4 @@ Emotion: happy intensity=0.80 source=manual face=smile
 - 交叉淡化（step 1b）后当前 dev exe 为 **1,322,496 B**，SHA256 `5139593C63050D63572B4663763290274422975176923204B26D285C0C1EF769`；相对 step 1 只增加 1,024 B，来自 shader uniform 与状态字段。
 - 仅链接系统 `ws2_32.dll`，没有引入新运行时 DLL。
 - 只绑 `127.0.0.1`，不监听 `0.0.0.0`；没有认证，本机任意进程都能注入，这也是当前开发阶段的预期边界。
-- 当前改动是开发态，**没有重新打 v3.1.0 的 ZIP / 安装包**；Release 里的 3.1.0 仍是旧 exe。
+- 当前 3.2 开发态没有重打 3.2 的 ZIP / 安装包；v3.1.0 Release 已在 2026-11-27 替换为 GUI 修复包（3.1.0.0），v3.1.1 仍是最新版本。

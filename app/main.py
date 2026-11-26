@@ -24,6 +24,7 @@ import care_ui
 import companion
 import director as director_mod
 import emotion as emo
+import emotion_bridge as emo_bridge
 import feedback as feedback_mod
 import hardware
 import knowledge
@@ -182,6 +183,12 @@ class Controller:
         self.emotion = emo.EmotionState()
         try:
             self.emotion.from_dict(self.config.get("emotion") or {})
+        except Exception:  # noqa: BLE001
+            pass
+        # v3.2 step 2: Python-side emotion labels -> local 3D UDP bus.
+        self.emotion_bridge = emo_bridge.EmotionBridge()
+        try:
+            self.app.aboutToQuit.connect(self.emotion_bridge.close)
         except Exception:  # noqa: BLE001
             pass
         self.memory = mem.MemoryStore()
@@ -536,6 +543,10 @@ class Controller:
     def _on_emotion_decay(self):
         try:
             self.emotion.decay()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.emotion_bridge.auto_state(self.emotion)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1413,6 +1424,9 @@ class Controller:
             if ctx:
                 parts.append(ctx)
         parts.append("用口语回答，2 到 4 句，不要分点罗列，不要用书面腔；不确定就说不确定。")
+        if getattr(self, "emotion_bridge", None) is not None and self.emotion_bridge.enabled:
+            parts.append("如果这句话有明显的情绪，在最后单独一行只写一个隐藏标签，"
+                         "格式如 [[emo:happy:0.7]]；正文不要解释这个标签。")
         if no_think:
             parts.append("/no_think")
         return "\n\n".join([x for x in parts if x])
@@ -1473,6 +1487,10 @@ class Controller:
                 pass
         self.emotion.apply_text(text)      # v2.9.6：聊什么都能让性格慢慢长一点
         self.emotion.apply("chat", 1.0)
+        try:
+            self.emotion_bridge.user_text(ask_text)
+        except Exception:  # noqa: BLE001
+            pass
 
         import skills as sk
         blocked, why = sk.guard(ask_text)
@@ -1599,6 +1617,7 @@ class Controller:
         只做清字，不改语义，清洗后的文本同时用于气泡、聊天记录和 TTS。
         """
         t = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+        t = emo_bridge.strip_tag(t)
         t = re.sub(r"^\s*(?:assistant|user|bot|AI|Reply|Answer)\s*[:：]\s*", "", t, flags=re.I)
         t = re.sub(r"```.*?```", " ", t, flags=re.S)
         t = re.sub(r"`([^`\n]{0,60})`", r"\1", t)
@@ -1625,6 +1644,7 @@ class Controller:
 
     def _finish_reply(self, content: str, source: str = ""):
         self.feedback.end_thinking()
+        raw_content = content
         content = self._polish_reply(content)
         if not content:
             self._on_ai_failed("empty")
@@ -1642,6 +1662,10 @@ class Controller:
                 pass
         self.state.chat_bonus()
         self.emotion.apply("chat", 1.0)
+        try:
+            self.emotion_bridge.llm_reply(raw_content)
+        except Exception:  # noqa: BLE001
+            pass
         self.panel and self.panel.append_chat("assistant", content)
         self.panel and self.panel.set_chat_status(source)
         # v3.0.27：对话回复归 L2；不再散落三处各调一次，避免重复气泡/音效

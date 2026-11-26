@@ -434,3 +434,21 @@
 | 边界 | 仍无 intensity 幅度/时间曲线、gaze/body lean、优先级仲裁；仍未重打 ZIP/安装包 |
 
 下一步仍是 Python 侧 LLM 情绪标签生产与 `P_USER/P_LLM/P_AUTO` 仲裁，而不是继续堆脸部帧。
+
+## 第 11c 步（v3.2 step 2）：Python 侧标签与仲裁
+
+这一步把“手工发 UDP”接到真实聊天路径，但仍不把认知层搬进 3D：
+
+| 项 | 实现 |
+| :--- | :--- |
+| 新模块 | `app/emotion_bridge.py`：`Signal`、`Arbiter`、`UdpSender`、`EmotionBridge` |
+| 优先级 | `P_USER(3) > P_LLM(2) > P_AUTO(1)`；高优先级未过期时低优先级不发包 |
+| P_USER | “笑一个 / 别难过 / 冷静点”等显式说法；TTL 8 s |
+| P_LLM | 回复末尾隐藏标签 `[[emo:happy:0.7]]`，无标签时用回复词表兜底；TTL 4 s |
+| P_AUTO | `EmotionState.expression_hint()` + `mood_score()`；TTL 12 s |
+| 集成 | `main.send_chat()` 提交 P_USER；`_finish_reply()` 提交 P_LLM；情绪衰减定时器提交 P_AUTO；`_polish_reply()` 移除隐藏标签 |
+| 验收 | `tools/test_emotion_bridge.py` 6/6 通过；3.1.1 exe 实测 `Emotion: happy intensity=0.90 source=P_USER face=smile`、`Emotion: sad intensity=0.65 source=P_LLM face=open` |
+| 边界 | 模型标签依赖提示遵循；小模型可能不输出；ASR/TTS、gaze/body lean、强度曲线仍未接 |
+
+这一步没有改 3D exe，也没有重打 v3.2 安装包；它只改 Python 侧的信号生产与仲裁。
+
