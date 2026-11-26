@@ -506,7 +506,7 @@
 | ASR 验收 | `tools/test_asr.py` / `tools/test_asr_ui.py` / `3d/tools/asr_accept.py` 通过；合成“打开面板” conf 0.377；静音 `no_speech`；噪声“阿丽阿娜” conf 0.16 被拒；真实“别难过小一个” conf 0.494 → `P_USER happy 0.9`，3D 全窗 RGB 差 **0.541**；截图 `docs/_3d_asr_neutral.png`、`_3d_asr_happy.png` |
 | pose 平滑 | `model` 增加 target/current 两套值和 `updatePose(dt)`；180 ms attack / 420 ms release；应用层改用 `*Current`；`WHALE3D_POSE_TRACE=1` 输出中间值 |
 | pose 验收 | `pose_accept.py` 冻结动画、`WHALE3D_SPRING=0` 隔离次级弹簧：neutral→gaze 60 ms **0.164** / 满值 **0.712**；lean 基线→lean 60 ms **0.310** / 满值 **1.174**；lean→release 120 ms **0.758** / 200 ms **1.051**；空 pose 后 reset **0.000**、3 s **0.000** |
-| residual 归因 | 默认弹簧下 reset 仍有约 **0.817**（1 s）/ **0.572**（3 s），但 `PoseTrace` 六个 current 值全为 0；切 `WHALE3D_SPRING=0` 后同一流程 reset **0.000**。残差来自头发/尾巴 SpringBone 独立正弦相位，不是姿态未归零 |
+| residual 归因 | 默认弹簧下 reset 仍有约 **0.4–0.8**（随弹簧相位变化；本轮 **0.413**（1 s）/ **0.707**（3 s），另次 **0.817 / 0.572**），但 `PoseTrace` 六个 current 值全为 0；切 `WHALE3D_SPRING=0` 后同一流程 reset **0.000**。残差来自头发/尾巴 SpringBone 独立正弦相位，不是姿态未归零；spring-on 对照截图 `docs/_3d_pose_neutral_spring.png`、`_3d_pose_reset_spring.png` |
 | 长时浸泡 | `emotion_longrun.py` 从 90 s 扩到 10 分钟（600 s），20 s 一轮 happy+gaze → lean → 空包回正；`alive_after_soak=True`，动画帧差 **0.284**，RSS 67.6→67.8 MB（全样本 67.2–67.9），CPU 平均 **35.4%** / 峰值 **38.5%**，FPS 19.7–28.9 / 平均 **27.68**；截图 `_3d_longrun_anim_a.png`、`_anim_b.png`、`_3d_longrun_10m_mid.png`、`_3d_longrun_final.png` |
 | 边界 | 5 条证据依赖规则仍人工核对；ASR 仍单句/显式一次录音，无连续识别/口型；没有重打安装包/ZIP；10 分钟是 bounded soak，不是 24 小时 |
 
