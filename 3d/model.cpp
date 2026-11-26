@@ -497,6 +497,18 @@ struct Model::Impl {
     bool emotionActive = false;
     bool emotionTrace = false;
     float nextEmotionTrace = 0.0f;
+    // v3.2 optional gaze/body lean. These are local-space bone offsets added
+    // after animation sampling, never written back to the clip.
+    float gazeX = 0.0f;
+    float gazeY = 0.0f;
+    float gazeWeight = 0.0f;
+    float leanX = 0.0f;
+    float leanY = 0.0f;
+    float leanWeight = 0.0f;
+    int gazeHeadOzz = -1;
+    int gazeNeckOzz = -1;
+    int leanSpineOzz = -1;
+    int leanChestOzz = -1;
 
     ~Impl() { shutdown(false); }
 
@@ -972,6 +984,23 @@ static bool buildOzz(Model::Impl& m) {
     }
 
     m.skinToOzz = std::move(skinToOzz);
+    auto findOzzJoint = [&](const char* name) {
+        for (size_t j = 0; j < skin.joints.size(); ++j) {
+            const int ni = skin.joints[j];
+            if (ni >= 0 && ni < (int)m.nodes.size() &&
+                m.nodes[(size_t)ni].name == name &&
+                j < m.skinToOzz.size()) {
+                return m.skinToOzz[j];
+            }
+        }
+        return -1;
+    };
+    m.gazeHeadOzz = findOzzJoint("head");
+    m.gazeNeckOzz = findOzzJoint("neck");
+    m.leanSpineOzz = findOzzJoint("spine");
+    m.leanChestOzz = findOzzJoint("chest");
+    SDL_Log("Pose bones: head=%d neck=%d spine=%d chest=%d",
+            m.gazeHeadOzz, m.gazeNeckOzz, m.leanSpineOzz, m.leanChestOzz);
     m.ozzLocals.resize((size_t)m.ozzSkeleton->num_soa_joints());
     m.ozzModels.resize((size_t)m.ozzSkeleton->num_joints());
     m.ozzContext = std::make_unique<ozz::animation::SamplingJob::Context>(
@@ -987,6 +1016,99 @@ static int findNodeByName(const Model::Impl& m, const std::string& name) {
     }
     return -1;
 }
+
+static float simdLane(ozz::math::SimdFloat4 v, int lane) {
+    alignas(16) float values[4];
+    ozz::math::StorePtr(v, values);
+    return values[lane];
+}
+
+static ozz::math::SimdFloat4 setSimdLane(ozz::math::SimdFloat4 v, int lane,
+                                         float value) {
+    return ozz::math::SetI(v, ozz::math::simd_float4::Load1(value), lane);
+}
+
+static void rotateOzzJointLocal(Model::Impl& m, int joint,
+                                float pitch, float yaw, float roll) {
+    if (joint < 0 || m.ozzLocals.empty() ||
+        joint >= (int)m.ozzSkeleton->num_joints()) {
+        return;
+    }
+    const int soa = joint / 4;
+    const int lane = joint % 4;
+    if (soa >= (int)m.ozzLocals.size()) return;
+    auto& q = m.ozzLocals[(size_t)soa].rotation;
+    const float qx = simdLane(q.x, lane);
+    const float qy = simdLane(q.y, lane);
+    const float qz = simdLane(q.z, lane);
+    const float qw = simdLane(q.w, lane);
+    const ozz::math::Quaternion base = ozz::math::NormalizeSafe(
+        ozz::math::Quaternion(qx, qy, qz, qw),
+        ozz::math::Quaternion::identity());
+    const ozz::math::Quaternion offset =
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(0, 1, 0), yaw) *
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(1, 0, 0), pitch) *
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(0, 0, 1), roll);
+    const ozz::math::Quaternion out = ozz::math::NormalizeSafe(
+        base * offset, base);
+    q.x = setSimdLane(q.x, lane, out.x);
+    q.y = setSimdLane(q.y, lane, out.y);
+    q.z = setSimdLane(q.z, lane, out.z);
+    q.w = setSimdLane(q.w, lane, out.w);
+}
+
+static void rotateNodeLocal(Model::Impl& m, const char* name,
+                            float pitch, float yaw, float roll) {
+    const int ni = findNodeByName(m, name);
+    if (ni < 0) return;
+    Node& n = m.nodes[(size_t)ni];
+    if (n.hasMatrix) return;
+    const ozz::math::Quaternion base = ozz::math::NormalizeSafe(
+        ozz::math::Quaternion(n.r[0], n.r[1], n.r[2], n.r[3]),
+        ozz::math::Quaternion::identity());
+    const ozz::math::Quaternion offset =
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(0, 1, 0), yaw) *
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(1, 0, 0), pitch) *
+        ozz::math::Quaternion::FromAxisAngle(ozz::math::Float3(0, 0, 1), roll);
+    const ozz::math::Quaternion out = ozz::math::NormalizeSafe(
+        base * offset, base);
+    n.r[0] = out.x;
+    n.r[1] = out.y;
+    n.r[2] = out.z;
+    n.r[3] = out.w;
+    n.recompose();
+}
+
+static void applyPoseOffsets(Model::Impl& m) {
+    if (m.gazeWeight > 0.001f) {
+        const float yaw = m.gazeX * m.gazeWeight * 0.38f;
+        const float pitch = m.gazeY * m.gazeWeight * 0.26f;
+        rotateOzzJointLocal(m, m.gazeNeckOzz, pitch * 0.35f, yaw * 0.35f, 0.0f);
+        rotateOzzJointLocal(m, m.gazeHeadOzz, pitch * 0.65f, yaw * 0.65f, 0.0f);
+    }
+    if (m.leanWeight > 0.001f) {
+        const float roll = m.leanX * m.leanWeight * 0.18f;
+        const float pitch = m.leanY * m.leanWeight * 0.12f;
+        rotateOzzJointLocal(m, m.leanSpineOzz, pitch * 0.5f, 0.0f, roll * 0.5f);
+        rotateOzzJointLocal(m, m.leanChestOzz, pitch * 0.5f, 0.0f, roll * 0.5f);
+    }
+}
+
+static void applyPoseOffsetsSelf(Model::Impl& m) {
+    if (m.gazeWeight > 0.001f) {
+        const float yaw = m.gazeX * m.gazeWeight * 0.38f;
+        const float pitch = m.gazeY * m.gazeWeight * 0.26f;
+        rotateNodeLocal(m, "neck", pitch * 0.35f, yaw * 0.35f, 0.0f);
+        rotateNodeLocal(m, "head", pitch * 0.65f, yaw * 0.65f, 0.0f);
+    }
+    if (m.leanWeight > 0.001f) {
+        const float roll = m.leanX * m.leanWeight * 0.18f;
+        const float pitch = m.leanY * m.leanWeight * 0.12f;
+        rotateNodeLocal(m, "spine", pitch * 0.5f, 0.0f, roll * 0.5f);
+        rotateNodeLocal(m, "chest", pitch * 0.5f, 0.0f, roll * 0.5f);
+    }
+}
+
 
 static void addSpringSpec(Model::Impl& m, const std::string& name, int rootNode, int tipNode,
                           float stiffness, float dragForce, float gravityPower) {
@@ -1342,6 +1464,18 @@ bool Model::applyEmotion(const std::string& emotion, float intensity,
     return true;
 }
 
+bool Model::applyGazeLean(float gazeX, float gazeY, float gazeWeight,
+                          float leanX, float leanY, float leanWeight) {
+    if (!impl_) return false;
+    impl_->gazeX = std::clamp(gazeX, -1.0f, 1.0f);
+    impl_->gazeY = std::clamp(gazeY, -1.0f, 1.0f);
+    impl_->gazeWeight = std::clamp(gazeWeight, 0.0f, 1.0f);
+    impl_->leanX = std::clamp(leanX, -1.0f, 1.0f);
+    impl_->leanY = std::clamp(leanY, -1.0f, 1.0f);
+    impl_->leanWeight = std::clamp(leanWeight, 0.0f, 1.0f);
+    return true;
+}
+
 const char* Model::emotionName() const {
     return impl_ ? impl_->emotion.c_str() : "neutral";
 }
@@ -1403,6 +1537,16 @@ bool Model::loadImpl(const std::string& path) {
     m.freezeAnimation = false;
     m.emotionTrace = false;
     m.nextEmotionTrace = 0.0f;
+    m.gazeX = 0.0f;
+    m.gazeY = 0.0f;
+    m.gazeWeight = 0.0f;
+    m.leanX = 0.0f;
+    m.leanY = 0.0f;
+    m.leanWeight = 0.0f;
+    m.gazeHeadOzz = -1;
+    m.gazeNeckOzz = -1;
+    m.leanSpineOzz = -1;
+    m.leanChestOzz = -1;
     if (const char* spring = std::getenv("WHALE3D_SPRING")) {
         m.springEnabled = std::strcmp(spring, "0") != 0;
     }
@@ -1971,6 +2115,8 @@ static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
     sampling.output = ozz::make_span(m.ozzLocals);
     if (!sampling.Run()) return false;
 
+    applyPoseOffsets(m);
+
     ozz::animation::LocalToModelJob localToModel;
     localToModel.skeleton = m.ozzSkeleton.get();
     localToModel.input = ozz::make_span(m.ozzLocals);
@@ -2056,6 +2202,7 @@ void Model::update(float timeSeconds) {
     } else {
         for (auto& n : m.nodes) n.resetLocal();
     }
+    applyPoseOffsetsSelf(m);
     computeGlobals(m);
 
     for (auto& skin : m.skins) {

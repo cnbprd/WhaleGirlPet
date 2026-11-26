@@ -19,6 +19,13 @@ public:
         // v3.2 intensity envelope: milliseconds. Missing fields use these defaults.
         float attackMs = 180.0f;
         float releaseMs = 420.0f;
+        // v3.2 optional gaze / body lean. Weight 0 means no override.
+        float gazeX = 0.0f;
+        float gazeY = 0.0f;
+        float gazeWeight = 0.0f;
+        float leanX = 0.0f;
+        float leanY = 0.0f;
+        float leanWeight = 0.0f;
     };
 
     EmotionBus();

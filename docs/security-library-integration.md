@@ -136,7 +136,7 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日
 
 - 事件日志的 `Security` 档在非管理员权限下只能提示“需要管理员权限”，无法读取真实大小；要完整检查需以管理员运行。不能因为“读不到”就推断日志没问题。
 - WSH、Office 受保护视图、Security 日志循环覆盖策略已接成只读检查；System/Application 日志大小/模式可读，Security 仍受权限限制。
-- v3.2 的 intensity 曲线已实现并实测；gaze/body lean、ASR 仍是路线项，本轮没有为了“继续”硬开新的 3D 功能；验收见 `docs/v3.2-next.md`。
+- v3.2 的 intensity 曲线已实现并实测；gaze/body lean 也已作为可选姿态层接进 3D，ASR 仍是路线项；本轮没有为了“继续”硬开新的 3D 功能；验收见 `docs/v3.2-next.md`。
 - 所有修复仍只给系统设置入口，不做一键改注册表。
 - 课程视频/PDF 都没打包进安装包，也没进 `knowledge.db`；P3 学习路线已取消，不再提供目录索引。
 - “Kali/注入/木马/Rootkit/DDoS”只作为**防守识别卡**存在，不存攻击步骤，也不提供可执行工具链。

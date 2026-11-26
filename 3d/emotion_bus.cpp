@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 
 namespace {
 constexpr int kMaxPacket = 512;
@@ -45,6 +46,45 @@ bool jsonNumber(const std::string& raw, const char* key, float& out) {
     if (errno != 0 || end == raw.c_str() + p) return false;
     out = value;
     return true;
+}
+
+bool jsonObject(const std::string& raw, const char* key, std::string& out) {
+    const std::string needle = std::string("\"") + key + "\"";
+    size_t p = raw.find(needle);
+    if (p == std::string::npos) return false;
+    p = raw.find('{', p + needle.size());
+    if (p == std::string::npos) return false;
+    int depth = 0;
+    for (size_t i = p; i < raw.size(); ++i) {
+        if (raw[i] == '{') {
+            ++depth;
+        } else if (raw[i] == '}') {
+            if (--depth == 0) {
+                out = raw.substr(p, i - p + 1);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void readPose(const std::string& raw, const char* key,
+              float& x, float& y, float& weight) {
+    x = 0.0f;
+    y = 0.0f;
+    weight = 0.0f;
+    std::string body;
+    if (!jsonObject(raw, key, body)) return;
+    jsonNumber(body, "x", x);
+    jsonNumber(body, "y", y);
+    weight = 1.0f;
+    jsonNumber(body, "weight", weight);
+    if (!std::isfinite(x)) x = 0.0f;
+    if (!std::isfinite(y)) y = 0.0f;
+    if (!std::isfinite(weight)) weight = 0.0f;
+    x = std::clamp(x, -1.0f, 1.0f);
+    y = std::clamp(y, -1.0f, 1.0f);
+    weight = std::clamp(weight, 0.0f, 1.0f);
 }
 }  // namespace
 
@@ -151,10 +191,21 @@ bool EmotionBus::poll(Frame& out) {
         if (!std::isfinite(releaseMs) || releaseMs < 40.0f) releaseMs = 40.0f;
         if (releaseMs > 2000.0f) releaseMs = 2000.0f;
 
+        float gazeX = 0.0f, gazeY = 0.0f, gazeWeight = 0.0f;
+        float leanX = 0.0f, leanY = 0.0f, leanWeight = 0.0f;
+        readPose(raw, "gaze", gazeX, gazeY, gazeWeight);
+        readPose(raw, "lean", leanX, leanY, leanWeight);
+
         out.emotion = emotion;
         out.intensity = intensity;
         out.attackMs = attackMs;
         out.releaseMs = releaseMs;
+        out.gazeX = gazeX;
+        out.gazeY = gazeY;
+        out.gazeWeight = gazeWeight;
+        out.leanX = leanX;
+        out.leanY = leanY;
+        out.leanWeight = leanWeight;
         out.raw = raw;
         out.source.clear();
         jsonString(raw, "source", out.source);

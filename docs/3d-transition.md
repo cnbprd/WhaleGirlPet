@@ -475,7 +475,23 @@
 | 验收 | `tools/test_emotion_bridge.py` 8/8；真实窗口 27.2 fps：0→0.8 约 182 ms、0.8→0 约 353 ms；全窗 RGB 差 0.117 / 0.414 / 0.521 |
 | 截图 | `docs/_3d_emotion_neutral.png`、`_crossfade.png`、`_happy.png`、`_release.png`、`_after.png` |
 | 体积 | dev exe **1,324,544 B**，SHA256 `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119` |
-| 边界 | 仍只做脸；gaze/body lean、ASR、negative 表情帧都未接；未重打 ZIP/安装包 |
+| 边界 | 仍只做脸；当时 gaze/body lean 未接；ASR、negative 表情帧也未接；未重打 ZIP/安装包 |
 
-`WHALE3D_EMOTION_TRACE=1` 只输出 `EmotionTrace` 采样，用于验收，不参与渲染。下一步仍是 gaze/body lean，先做可选表现层、默认关闭；ASR 最后接。
+`WHALE3D_EMOTION_TRACE=1` 只输出 `EmotionTrace` 采样，用于验收，不参与渲染。下一步是 gaze/body lean，先做可选表现层、默认关闭；ASR 最后接。
 
+## 第 11f 步（v3.2 step 5）：gaze / body lean + 正常动画长跑
+
+| 项 | 实现 |
+| :--- | :--- |
+| 协议 | 可选嵌套 `gaze: {x,y,weight}`、`lean: {x,y,weight}`；x/y 夹 [-1,1]，weight 夹 [0,1]；对象缺失 weight=0，存在但缺 weight=1 |
+| 解析 | `EmotionBus::Frame` 增加 6 个字段，`jsonObject()` / `readPose()` 从嵌套对象读取 |
+| 骨骼 | `buildOzz()` 记录 `head=5 neck=4 spine=2 chest=3`；gaze 转 head/neck（35% / 65%），lean 倾 spine/chest（各 50%） |
+| 应用 | `applyPoseOffsets()` 在 ozz 采样后、世界矩阵前改局部四元数；`applyPoseOffsetsSelf()` 在自研采样后、`computeGlobals()` 前改节点旋转 |
+| 回正 | 新包不带 gaze/lean 时 weight=0；当前即时切换，无平滑/回正包络 |
+| 验收 | `3d/tools/pose_accept.py` 冻结动画：neutral→gaze **0.948**、gaze→lean **1.330**、neutral→lean **1.600**、neutral→reset **0.641**；self 路径 **0.809 / 1.336 / 0.648** |
+| 长跑 | `3d/tools/emotion_longrun.py` 90 秒、正常 idle + `FACE=auto`：alive，动画帧差 **0.284**，RSS 67.5 MB 稳定，CPU 33.4–36.9%，FPS 25.4–28.9（平均 27.76） |
+| 截图 | `docs/_3d_pose_neutral.png`、`_gaze.png`、`_lean.png`、`_reset.png`；`_3d_pose_self_gaze.png`、`_self_lean.png`；`_3d_longrun_anim_a.png`、`_anim_b.png`、`_final.png` |
+| 体积 | dev exe **1,331,712 B**，SHA256 `A2FE019740E65D182AA2B3E79B9EB364259544AFB7ED02783472E2F28DA43792`；运行时负载 7,068,523 B |
+| 边界 | gaze 只转 head/neck，不是眼骨/BlendShape；pose 无平滑；reset 0.641 残差未完全解释；90 秒不等于 24 小时浸泡；未重打 ZIP/安装包 |
+
+下一步只剩 ASR：独立输入服务，默认关闭，识别结果走文本/情绪事件，不塞进渲染循环。

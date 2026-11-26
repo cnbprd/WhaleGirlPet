@@ -62,6 +62,10 @@ public:
     // attackMs/releaseMs shape the 0..1 intensity envelope in the renderer.
     bool applyEmotion(const std::string& emotion, float intensity,
                       float attackMs = 180.0f, float releaseMs = 420.0f);
+    // Optional v3.2 pose layer. x/y are normalized [-1,1]; weight 0 releases
+    // the offset and restores the sampled animation pose.
+    bool applyGazeLean(float gazeX, float gazeY, float gazeWeight,
+                       float leanX, float leanY, float leanWeight);
     const char* emotionName() const;
     float emotionIntensity() const;
 

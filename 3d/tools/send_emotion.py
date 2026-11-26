@@ -6,6 +6,8 @@ Usage:
     python 3d/tools/send_emotion.py sad 0.6 --source llm
     python 3d/tools/send_emotion.py neutral 0 --port 47832
     python 3d/tools/send_emotion.py happy 0.8 --attack-ms 120 --release-ms 300
+    python 3d/tools/send_emotion.py neutral 0 --gaze-x 0.8 --gaze-weight 1
+    python 3d/tools/send_emotion.py neutral 0 --lean-x 0.8 --lean-weight 0.8
 """
 from __future__ import annotations
 
@@ -22,6 +24,12 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=47832)
     parser.add_argument("--attack-ms", type=int, default=180)
     parser.add_argument("--release-ms", type=int, default=420)
+    parser.add_argument("--gaze-x", type=float, default=0.0)
+    parser.add_argument("--gaze-y", type=float, default=0.0)
+    parser.add_argument("--gaze-weight", type=float, default=0.0)
+    parser.add_argument("--lean-x", type=float, default=0.0)
+    parser.add_argument("--lean-y", type=float, default=0.0)
+    parser.add_argument("--lean-weight", type=float, default=0.0)
     args = parser.parse_args()
 
     payload = {
@@ -31,6 +39,16 @@ def main() -> int:
         "curve": {
             "attack_ms": max(40, min(2000, args.attack_ms)),
             "release_ms": max(40, min(2000, args.release_ms)),
+        },
+        "gaze": {
+            "x": max(-1.0, min(1.0, args.gaze_x)),
+            "y": max(-1.0, min(1.0, args.gaze_y)),
+            "weight": max(0.0, min(1.0, args.gaze_weight)),
+        },
+        "lean": {
+            "x": max(-1.0, min(1.0, args.lean_x)),
+            "y": max(-1.0, min(1.0, args.lean_y)),
+            "weight": max(0.0, min(1.0, args.lean_weight)),
         },
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
