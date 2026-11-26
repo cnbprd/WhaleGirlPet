@@ -69,3 +69,4 @@ Type Mismatch.
 - 真实 18.7 GB `F:\WhaleGirlPetApp` 仍未迁移；本次只在最小伪造目录验证逻辑。真正升级前仍应先备份用户数据。
 - 安装包未签名，SignPath 仍在审核。
 - 2D 安装器未改；它是历史归档，不再作为新发布目标。
+- 生产包 `dist/3d/WhaleGirlPet-Setup-3.1.2.exe` 已在本地重建，但尚未上传 Release；线上 v3.1.2 资产仍是旧包。
