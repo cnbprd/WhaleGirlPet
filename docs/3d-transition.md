@@ -448,7 +448,7 @@
 | P_AUTO | `EmotionState.expression_hint()` + `mood_score()`；TTL 12 s |
 | 集成 | `main.send_chat()` 提交 P_USER；`_finish_reply()` 提交 P_LLM；情绪衰减定时器提交 P_AUTO；`_polish_reply()` 移除隐藏标签 |
 | 验收 | `tools/test_emotion_bridge.py` 6/6 通过；3.1.1 exe 实测 `Emotion: happy intensity=0.90 source=P_USER face=smile`、`Emotion: sad intensity=0.65 source=P_LLM face=open` |
-| 边界 | 模型标签依赖提示遵循；小模型可能不输出；ASR/TTS、gaze/body lean、强度曲线仍未接 |
+| 边界 | 模型标签依赖提示遵循；小模型可能不输出；ASR/TTS、gaze/body lean 仍未接；强度曲线已在 step 4 补齐 |
 
 这一步没有改 3D exe，也没有重打 v3.2 安装包；它只改 Python 侧的信号生产与仲裁。
 
@@ -461,7 +461,21 @@
 | 保持 | 播放开始把最近一条 `P_LLM` 延长到 30 s；播放结束/打断恢复 4 s TTL，随后让位给 `P_AUTO` |
 | 优先级 | 不新增优先级；`P_USER` 仍高于 `P_LLM` |
 | 验收 | `tools/test_emotion_bridge.py` 7/7 通过；覆盖 5 s 过期后重新拉起、20 s 保持、结束后 5 s 释放；0.5 s WAV 的 `speech=True` 实测 `started=1 finished=1`；真实 Edge TTS 11.544 s：`speechStarted/Finished` 各 1 次，播放中段 `P_LLM ttl=30`，结束后 `P_AUTO`；3D 日志两次 `source=P_LLM face=smile` |
-| 边界 | ASR、gaze/body lean、强度曲线仍未接；`P_AUTO` 的具体表情取决于当前心情，未保证回到中性 |
+| 边界 | ASR、gaze/body lean 仍未接；强度曲线已在 step 4 补齐；`P_AUTO` 的具体表情取决于当前心情，未保证回到中性 |
 
 这一步仍然不改 3D exe，只改 Python 侧音频信号和桥的 TTL。
+
+## 第 11e 步（v3.2 step 4）：intensity 包络
+
+| 项 | 实现 |
+| :--- | :--- |
+| 协议 | `curve.attack_ms` / `release_ms` 可选，缺省 180 / 420 ms，夹在 40–2000 ms |
+| 渲染 | `emotionCurrent` 按 `dt / duration` 线性逼近目标；neutral 帧 0 与 smile 帧 2 按强度混合 |
+| 语义 | `intensity` 是混合幅度，不再用 0.35 阈值二值切脸；0.8 就是 80% 的笑 |
+| 验收 | `tools/test_emotion_bridge.py` 8/8；真实窗口 27.2 fps：0→0.8 约 182 ms、0.8→0 约 353 ms；全窗 RGB 差 0.117 / 0.414 / 0.521 |
+| 截图 | `docs/_3d_emotion_neutral.png`、`_crossfade.png`、`_happy.png`、`_release.png`、`_after.png` |
+| 体积 | dev exe **1,324,544 B**，SHA256 `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119` |
+| 边界 | 仍只做脸；gaze/body lean、ASR、negative 表情帧都未接；未重打 ZIP/安装包 |
+
+`WHALE3D_EMOTION_TRACE=1` 只输出 `EmotionTrace` 采样，用于验收，不参与渲染。下一步仍是 gaze/body lean，先做可选表现层、默认关闭；ASR 最后接。
 

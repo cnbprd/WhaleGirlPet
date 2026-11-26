@@ -31,6 +31,10 @@ P_AUTO = 1
 
 DEFAULT_PORT = 47832
 DEFAULT_HOST = "127.0.0.1"
+# v3.2 step 4: renderer-side intensity envelope. Python only sends the
+# parameters; the 3D process owns the actual interpolation.
+ATTACK_MS = 180
+RELEASE_MS = 420
 
 # These are renderer-side names, not the eight EmotionState dimensions.
 RENDER_EMOTIONS = {
@@ -90,6 +94,16 @@ class Arbiter:
         return max(self._signals, key=lambda s: (s.priority, s.expires_at))
 
 
+def payload_for(signal: Signal) -> dict:
+    """Wire payload shared by the real sender and tests."""
+    return {
+        "emotion": signal.emotion,
+        "intensity": round(signal.intensity, 3),
+        "source": signal.source,
+        "curve": {"attack_ms": ATTACK_MS, "release_ms": RELEASE_MS},
+    }
+
+
 class UdpSender:
     """Best-effort localhost sender. A missing 3D process costs one sendto."""
 
@@ -112,11 +126,8 @@ class UdpSender:
     def send(self, signal: Signal) -> bool:
         if not self.enabled or self._sock is None:
             return False
-        payload = json.dumps({
-            "emotion": signal.emotion,
-            "intensity": round(signal.intensity, 3),
-            "source": signal.source,
-        }, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        payload = json.dumps(payload_for(signal), ensure_ascii=False,
+                            separators=(",", ":")).encode("utf-8")
         try:
             self._sock.sendto(payload, (self.host, self.port))
             return True

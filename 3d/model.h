@@ -59,7 +59,9 @@ public:
     // v3.2 step 1: high-level emotion from the localhost bus. The current
     // minimal VRM/GLB atlas only has open/blink/smile, so this maps emotion to
     // the nearest face frame; pose/blend-shape expansion comes later.
-    bool applyEmotion(const std::string& emotion, float intensity);
+    // attackMs/releaseMs shape the 0..1 intensity envelope in the renderer.
+    bool applyEmotion(const std::string& emotion, float intensity,
+                      float attackMs = 180.0f, float releaseMs = 420.0f);
     const char* emotionName() const;
     float emotionIntensity() const;
 

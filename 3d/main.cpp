@@ -311,9 +311,11 @@ int main(int argc, char** argv) {
 
         EmotionBus::Frame emotion;
         if (emotionBus.poll(emotion)) {
-            if (model.applyEmotion(emotion.emotion, emotion.intensity)) {
-                SDL_Log("Emotion: %s intensity=%.2f source=%s face=%s",
+            if (model.applyEmotion(emotion.emotion, emotion.intensity,
+                                   emotion.attackMs, emotion.releaseMs)) {
+                SDL_Log("Emotion: %s intensity=%.2f attack=%.0fms release=%.0fms source=%s face=%s",
                         emotion.emotion.c_str(), emotion.intensity,
+                        emotion.attackMs, emotion.releaseMs,
                         emotion.source.empty() ? "unknown" : emotion.source.c_str(),
                         model.faceName());
             } else {

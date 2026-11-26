@@ -16,6 +16,9 @@ public:
         float intensity = 0.0f;
         std::string source;
         std::string raw;
+        // v3.2 intensity envelope: milliseconds. Missing fields use these defaults.
+        float attackMs = 180.0f;
+        float releaseMs = 420.0f;
     };
 
     EmotionBus();

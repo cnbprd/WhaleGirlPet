@@ -76,6 +76,12 @@ class BridgeTests(unittest.TestCase):
     def test_unknown_render_emotion_rejected(self):
         self.assertIsNone(self.bridge._submit_and_emit("not-an-emotion", 0.5, "P_USER", 3, 8))
 
+    def test_wire_payload_carries_intensity_curve(self):
+        sig = eb.Signal("happy", 0.8, "P_LLM", 2, 4.0, self.clock())
+        payload = eb.payload_for(sig)
+        self.assertEqual(payload["curve"], {"attack_ms": 180, "release_ms": 420})
+        self.assertEqual(payload["intensity"], 0.8)
+
     def test_tts_hold_keeps_llm_face_through_long_speech(self):
         self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
         self.clock.t += 5.0

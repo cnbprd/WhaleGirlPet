@@ -488,6 +488,15 @@ struct Model::Impl {
     float blinkUntil = -1.0f;
     std::string emotion = "neutral";
     float emotionIntensity = 0.0f;
+    // v3.2 step 4: intensity envelope. `emotionIntensity` is the target; the
+    // renderer only consumes `emotionCurrent` and blends neutral <-> smile.
+    float emotionCurrent = 0.0f;
+    float emotionAttack = 0.18f;
+    float emotionRelease = 0.42f;
+    int emotionFrame = 0;
+    bool emotionActive = false;
+    bool emotionTrace = false;
+    float nextEmotionTrace = 0.0f;
 
     ~Impl() { shutdown(false); }
 
@@ -1217,6 +1226,10 @@ static void beginFaceTransition(Model::Impl& m, int target) {
 
 bool Model::setFace(const std::string& name) {
     if (!impl_) return false;
+    impl_->emotionActive = false;
+    impl_->emotionCurrent = 0.0f;
+    impl_->emotionIntensity = 0.0f;
+    impl_->emotionFrame = 0;
     if (name == "auto") {
         impl_->forcedFace = -1;
         impl_->smile = false;
@@ -1248,6 +1261,10 @@ bool Model::setFace(const std::string& name) {
 
 void Model::toggleSmile() {
     if (!impl_) return;
+    impl_->emotionActive = false;
+    impl_->emotionCurrent = 0.0f;
+    impl_->emotionIntensity = 0.0f;
+    impl_->emotionFrame = 0;
     impl_->forcedFace = -1;
     impl_->smile = !impl_->smile;
     beginFaceTransition(*impl_, impl_->smile ? 2 : 0);
@@ -1265,8 +1282,9 @@ void Model::triggerBlink(float timeSeconds) {
 
 const char* Model::faceName() const {
     if (!impl_) return "open";
+    if (impl_->faceFrame == 1 && !impl_->faceTransition) return "blink";
+    if (impl_->emotionActive && impl_->emotionFrame == 2) return "smile";
     int frame = impl_->faceTransition ? impl_->faceFrameB : impl_->faceFrame;
-    if (frame == 1) return "blink";
     if (frame == 2) return "smile";
     return "open";
 }
@@ -1279,7 +1297,8 @@ const char* Model::faceMode() const {
     return "auto";
 }
 
-bool Model::applyEmotion(const std::string& emotion, float intensity) {
+bool Model::applyEmotion(const std::string& emotion, float intensity,
+                         float attackMs, float releaseMs) {
     if (!impl_) return false;
     std::string name;
     name.reserve(emotion.size());
@@ -1288,31 +1307,38 @@ bool Model::applyEmotion(const std::string& emotion, float intensity) {
     }
     if (name.empty()) return false;
 
-    // The current atlas has only open / blink / smile. Keep the mapping
-    // explicit and conservative: high-arousal positive -> smile, neutral ->
-    // auto blink, low-arousal/negative -> open. Later VRM blend shapes can
-    // replace this table without changing the bus protocol.
-    bool known = true;
-    if (name == "happy" || name == "joy" || name == "excited" ||
-        name == "smile" || name == "laugh" || name == "curious" ||
-        name == "thinking" || name == "interested") {
-        if (intensity >= 0.35f) {
-            setFace("smile");
-        } else {
-            setFace("auto");
-        }
-    } else if (name == "neutral" || name == "calm" || name == "idle") {
-        setFace("auto");
-    } else if (name == "sad" || name == "angry" || name == "tired" ||
-               name == "sleepy" || name == "bored") {
-        setFace("open");
-    } else {
-        known = false;
-    }
-    if (!known) return false;
+    // The current atlas has only open / blink / smile. Positive emotions
+    // drive a 0..1 blend from neutral (0) to smile (2); negative/neutral
+    // emotions release that blend back to zero. This is amplitude shaping,
+    // not a full expression system.
+    bool positive = (name == "happy" || name == "joy" || name == "excited" ||
+                     name == "smile" || name == "laugh" || name == "curious" ||
+                     name == "thinking" || name == "interested");
+    bool neutral = (name == "neutral" || name == "calm" || name == "idle");
+    bool negative = (name == "sad" || name == "angry" || name == "tired" ||
+                     name == "sleepy" || name == "bored");
+    if (!positive && !neutral && !negative) return false;
 
+    const float target = std::clamp(intensity, 0.0f, 1.0f);
     impl_->emotion = name;
-    impl_->emotionIntensity = std::clamp(intensity, 0.0f, 1.0f);
+    impl_->emotionIntensity = target;
+    impl_->emotionAttack = std::clamp(attackMs / 1000.0f, 0.04f, 2.0f);
+    impl_->emotionRelease = std::clamp(releaseMs / 1000.0f, 0.04f, 2.0f);
+    impl_->forcedFace = -1;
+    impl_->smile = false;
+
+    // Keep the smile overlay alive while a previously positive emotion is
+    // releasing, even if the new target is negative/neutral.
+    if (positive && (target > 0.001f || impl_->emotionCurrent > 0.001f)) {
+        impl_->emotionFrame = 2;
+        impl_->emotionActive = true;
+    } else if (impl_->emotionCurrent > 0.001f) {
+        impl_->emotionFrame = 2;
+        impl_->emotionActive = true;
+    } else {
+        impl_->emotionFrame = 0;
+        impl_->emotionActive = false;
+    }
     return true;
 }
 
@@ -1321,7 +1347,7 @@ const char* Model::emotionName() const {
 }
 
 float Model::emotionIntensity() const {
-    return impl_ ? impl_->emotionIntensity : 0.0f;
+    return impl_ ? impl_->emotionCurrent : 0.0f;
 }
 
 void Model::shutdown() {
@@ -1375,11 +1401,16 @@ bool Model::loadImpl(const std::string& path) {
     m.lastUpdateTime = -1.0f;
     m.springEnabled = true;
     m.freezeAnimation = false;
+    m.emotionTrace = false;
+    m.nextEmotionTrace = 0.0f;
     if (const char* spring = std::getenv("WHALE3D_SPRING")) {
         m.springEnabled = std::strcmp(spring, "0") != 0;
     }
     if (const char* freeze = std::getenv("WHALE3D_FREEZE")) {
         m.freezeAnimation = std::strcmp(freeze, "0") != 0;
+    }
+    if (const char* trace = std::getenv("WHALE3D_EMOTION_TRACE")) {
+        m.emotionTrace = std::strcmp(trace, "0") != 0;
     }
 #ifdef WHALE3D_USE_OZZ
     m.ozzReady = false;
@@ -1960,6 +1991,24 @@ static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
 }
 #endif
 
+static void updateEmotion(Model::Impl& m, float dt) {
+    if (!m.emotionActive) return;
+    const float target = m.emotionIntensity;
+    const float rate = (target >= m.emotionCurrent) ? m.emotionAttack : m.emotionRelease;
+    const float step = (rate > 0.001f) ? (dt / rate) : 1.0f;
+    const float delta = target - m.emotionCurrent;
+    if (std::fabs(delta) <= step) {
+        m.emotionCurrent = target;
+    } else {
+        m.emotionCurrent += (delta > 0.0f) ? step : -step;
+    }
+    if (m.emotionCurrent <= 0.003f && target <= 0.003f) {
+        m.emotionCurrent = 0.0f;
+        m.emotionFrame = 0;
+        m.emotionActive = false;
+    }
+}
+
 static void updateFace(Model::Impl& m, float timeSeconds, float dt) {
     if (m.faceTransition) {
         // 0.16 s cross-fade between the two blend frames. It is deliberately
@@ -1991,6 +2040,13 @@ void Model::update(float timeSeconds) {
         dt = std::clamp(timeSeconds - m.lastUpdateTime, 0.001f, 0.05f);
     }
     m.lastUpdateTime = timeSeconds;
+    updateEmotion(m, dt);
+    if (m.emotionTrace && timeSeconds >= m.nextEmotionTrace) {
+        SDL_Log("EmotionTrace t=%.3f current=%.4f target=%.4f active=%d",
+                timeSeconds, m.emotionCurrent, m.emotionIntensity,
+                m.emotionActive ? 1 : 0);
+        m.nextEmotionTrace = timeSeconds + 0.01f;
+    }
     updateFace(m, timeSeconds, dt);
 #ifdef WHALE3D_USE_OZZ
     if (m.useOzz && m.ozzReady && updateOzz(m, timeSeconds, dt)) return;
@@ -2020,9 +2076,20 @@ void Model::draw(const float viewProjection[16]) {
     m.gl.useProgram(m.program);
     m.gl.uniform3f(m.uLightDir, -0.45f, 0.75f, 0.65f);
     m.gl.uniform1i(m.uTex, 0);
-    m.gl.uniform1i(m.uFaceFrame, m.faceFrame);
-    m.gl.uniform1i(m.uFaceFrameB, m.faceTransition ? m.faceFrameB : m.faceFrame);
-    m.gl.uniform1f(m.uFaceMix, m.faceTransition ? m.faceMix : 1.0f);
+    int faceA = m.faceFrame;
+    int faceB = m.faceTransition ? m.faceFrameB : m.faceFrame;
+    float faceBlend = m.faceTransition ? m.faceMix : 1.0f;
+    if (m.emotionActive && m.emotionFrame == 2 &&
+        faceA != 1 && faceB != 1) {
+        // Amplitude: neutral atlas frame 0 -> smile atlas frame 2. If a blink
+        // is in progress, leave the blink frame alone.
+        faceA = 0;
+        faceB = 2;
+        faceBlend = m.emotionCurrent;
+    }
+    m.gl.uniform1i(m.uFaceFrame, faceA);
+    m.gl.uniform1i(m.uFaceFrameB, faceB);
+    m.gl.uniform1f(m.uFaceMix, faceBlend);
 
     for (const auto& node : m.nodes) {
         if (node.mesh < 0 || node.mesh >= (int)m.meshes.size()) continue;

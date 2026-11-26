@@ -2,7 +2,7 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
-## v3.2.0-dev（2026-11-26，未发布）
+## v3.2.0-dev（2026-11-26 / 11-27，未发布）
 
 3D 路线进入 v3.2.x 的第一小步：本机情绪参数总线打通 `emotion → face`，认知层仍未进入渲染进程。
 
@@ -19,8 +19,9 @@
 | 9 安全资料落地（P0） | `security_posture()` 扩到 UAC / RDP / SMBv1 / RemoteRegistry / Guest / 自动播放 / Office 宏 / Office 受保护视图 / WSH / 事件日志；`build_report()` 把 Guest 启用、自动播放未关、Office“启用所有宏”、Office 受保护视图关闭、WSH 未禁用、Security 日志过小/循环覆盖并入 issues；Security 无权限只出 info，不伪造大小；安全页展示 WSH、Office 受保护视图、System/Application 日志；`guard_core` 新增 H016/H017/H018 | `tools/test_guard_core.py` 21 条规则：`fw_off.cmd→H017`、`log_clear.ps1→H016`、`uac_off.cmd→H018`，`clean.ps1` 0 条；真机 `UAC=开/consent=5`、`SMBv1=未安装`、`RemoteRegistry=4`、`Guest=已禁用`、`自动播放=未显式关闭`、`WSH=可用/未显式禁用`、`Office=未安装`、`System/Application=20MB Circular`；`Security` 日志非管理员读不到，界面提示权限；综合评分 `62/100` |
 | 10 防守知识并入安全管家（P2，P3 取消） | `app/security_cards.py` 保留 14 张防守知识卡（UAC/RDP/SMBv1/Guest/自动播放/Office 宏+受保护视图/WSH/日志/木马/Rootkit/注入/Kali/DDoS/钓鱼）；安全页删除“安全知识卡”“学习路线”两个独立入口，体检结果末尾直接带出 2 张命中卡；`security_learning.py`、学习路线索引和独立弹窗已移除；卡里只有信号+防护+依据，无工具命令/payload | `tools/test_security_cards.py` 14 张字段完整、无 `sqlmap/msfconsole/meterpreter/mimikatz/nc -e/bash -i/hping3/loic`；安全页测试断言出现“安全管家·相关防守知识”，不再出现旧入口；原 `tools/test_security_learning.py` 已随模块删除 |
 | 11 Agentic 薄层（v3.3.x 骨架，未接聊天） | `app/agentic_runtime.py` 新增懒加载注册表/权限门/有限步循环；`app/agentic_tools.py` 把安全体检、防守知识注册成只读工具；不引入 LangChain/AutoGen，不预加载全部工具 | `tools/test_agentic_runtime.py` 通过：`describe` 不加载、read/write/dangerous 三态、`max_steps` 停止；`tools/test_agentic_tools.py` 通过：注册后 `security_cards`/`secscan` 不在 `sys.modules`，调用后才加载；本轮未接聊天主流程 |
+| 12 intensity 包络（3D） | 协议新增 `curve.attack_ms/release_ms`（缺省 180/420 ms）；`emotionCurrent` 按 `dt/duration` 线性逼近；脸由 neutral 帧 0 与 smile 帧 2 按强度混合；`send_emotion.py` 支持曲线参数；新增 `WHALE3D_EMOTION_TRACE` 验收采样 | `tools/test_emotion_bridge.py` 8/8 通过；真实窗口 27.2 fps：0→0.8 约 182 ms、0.8→0 约 353 ms；全窗 RGB 差 neutral→60 ms **0.117**、60 ms→happy **0.414**、neutral→happy **0.521**；dev exe **1,324,544 B**，SHA256 `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119`；截图 `_3d_emotion_release.png` / `_after.png` |
 
-边界：三帧图集已能平滑交叉淡化，TTS 播放期间也能保持回复情绪，并用真实 11.544 s Edge TTS 跑通了声画同步；但 `intensity` 还没有幅度/时间曲线，gaze/body lean、ASR 仍未接，**本轮没有为了“继续”硬开新的 3D 功能**，只把验收计划写到 `docs/v3.2-next.md`。Agentic 薄层只是骨架，未接聊天主流程，权限弹窗/持久化 trace 都没有。细节见 `docs/3d-emotion-bus.md`、`docs/agentic-v3.3.md`。
+边界：三帧图集已能平滑交叉淡化，`intensity` 已有幅度和 attack/release 时间曲线，并用真实窗口 trace 验证；gaze/body lean、ASR 仍未接，**本轮没有为了“继续”硬开新的 3D 功能**。安全侧 P3 独立“学习路线”已取消，防守知识只在安全管家体检结果里带出。Agentic 薄层只是骨架，未接聊天主流程，权限弹窗/持久化 trace 都没有。细节见 `docs/3d-emotion-bus.md`、`docs/v3.2-next.md`、`docs/agentic-v3.3.md`。
 
 ## v3.1.2（2026-11-27）
 

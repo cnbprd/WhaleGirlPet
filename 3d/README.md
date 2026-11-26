@@ -9,6 +9,7 @@ This is the ninth 3D footing. It keeps the deliberately small SDL3/OpenGL shell 
 - VRM `VRMC_springBone` is parsed at load time and solved every frame as a damped angular spring. Window drag displacement feeds the solver as inertial input; the visual result is independent of the base idle clip. `WHALE3D_SPRING=0` disables the layer for A/B measurement.
 - The face is a 3-frame atlas (open / blink / smile) sampled by a shader UV offset. Auto blink is driven by the shell; `E` toggles smile and `B` triggers a blink.
 - **v3.2 step 1:** a localhost UDP emotion bus (`127.0.0.1:47832`) accepts `{"emotion":"happy","intensity":0.8,"source":"llm"}` and maps it to the same three face frames. It is data-only; ASR/LLM/TTS stay outside the render process. See `docs/3d-emotion-bus.md`.
+- **v3.2 step 1b/4:** emotion changes cross-fade over 0.16 s, and `intensity` is the actual neutral↔smile blend amplitude. `curve.attack_ms` / `release_ms` default to 180 / 420 ms; 0.8 means 80% smile, not a binary face swap.
 - The shell has a **native Win32 tray icon, native popup menu and native modal settings page**. No Qt, no PySide6, no UI toolkit.
 - Model switching is a same-process, same-GL-context **model cache**: the first load of a path builds an `Impl`, and switching to a cached path only changes the active pointer. No window hide, no helper, no blank frame.
 - The window is borderless, always on top, non-focus-stealing, and draggable with the left mouse button. Right-click opens the tray menu instead of quitting immediately. Only pixels whose alpha is above 16 belong to the Win32 window region, so transparent corners and gaps pass clicks through to the window below.
@@ -41,25 +42,26 @@ $env:WHALE3D_ANIMATOR = 'ozz'   # default; 'self' uses the in-house sampler
 $env:WHALE3D_CLIP = 'idle'      # default; 'walk' plays the 2-second technical clip
 $env:WHALE3D_FACE = 'auto'      # auto blink; or open / blink / smile for a fixed frame
 $env:WHALE3D_SPRING = '0'       # disable VRM spring bones for A/B; default on
+$env:WHALE3D_EMOTION_TRACE = '1' # log current/target intensity every ~10 ms (acceptance only)
 ```
 
 While the window has focus, `W` cycles `idle → walk`, `O` toggles `ozz ↔ self`, `E` toggles the smile frame and `B` triggers a blink. The log line reports `fps`, `triangles`, `update_us`, `animator`, `clip` and `face` once per second.
 
-## Emotion bus (v3.2 step 1 + 1b)
+## Emotion bus (v3.2 step 1 + 1b + 4)
 
 The 3D process listens on `udp://127.0.0.1:47832` (override with `WHALE3D_EMOTION_PORT`) for a small JSON frame:
 
 ```json
-{"emotion":"happy","intensity":0.8,"source":"llm"}
+{"emotion":"happy","intensity":0.8,"source":"llm","curve":{"attack_ms":180,"release_ms":420}}
 ```
 
 Inject one manually while the pet is running:
 
 ```powershell
-.venv\Scripts\python.exe 3d\tools\send_emotion.py happy 0.8
+.venv\Scripts\python.exe 3d\tools\send_emotion.py happy 0.8 --attack-ms 180 --release-ms 420
 ```
 
-The log then shows `Emotion: happy intensity=0.80 source=manual face=smile`. The current atlas maps positive/high-intensity emotions to `smile`, neutral to auto blink, and negative/low-arousal emotions to `open`; unknown labels are ignored. v3.2 step 1b cross-fades between the two atlas frames over 0.16 s in the shader instead of hard-swapping. This is a transport + face-mapping slice only: intensity shaping, gaze/body lean, prioritization, and the Python ASR/LLM/TTS producer are later v3.2 work. See `docs/3d-emotion-bus.md`.
+The log then shows `Emotion: happy intensity=0.80 attack=180ms release=420ms source=manual face=smile`. Positive emotions blend neutral→smile by `intensity`; neutral/negative emotions release back to zero. The shader cross-fades the two atlas frames over 0.16 s, while `curve` controls the amplitude envelope. `WHALE3D_EMOTION_TRACE=1` logs `EmotionTrace` samples for timing checks. This is still a face-only slice: gaze/body lean and ASR remain later v3.2 work. See `docs/3d-emotion-bus.md`.
 
 ## Tray, menu and settings
 
@@ -132,18 +134,20 @@ The target is driven by the window's per-frame displacement (`setMotionInput(dx,
 
 `3d/spring_accept.py` runs two otherwise identical processes with the base clip frozen (`WHALE3D_FREEZE=1`), one with `WHALE3D_SPRING=0` and one with it enabled. The three captured pairs are saved as `docs/_3d_spring_off_*.png` and `docs/_3d_spring_on_*.png`; the per-frame mean RGB deltas were `0.797`, `0.765`, `1.523`, and the frame-2 region sums were `14.3` over the hair/head crop and `96.7` over the tail crop. The tail visibly lifts in the on frame; the hair/head region also differs. This is screen-level evidence, not a formal spring-physics benchmark.
 
-## Measured on this machine (2026-11-26)
+## Measured on this machine (2026-11-26/27)
 
 Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
+| `whale3d.exe` (v3.2 step 4 dev) | 1,324,544 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place cache + alpha region + emotion bus + face cross-fade + intensity envelope + version resource |
+| exe SHA256 (v3.2 step 4) | `5D909D8B2F82BB65AF8966F623C0BFEFA18E86DF07D5F300D8E828DE24345119` |
 | `whale3d.exe` (v3.1.2 GUI) | 1,323,520 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + face cross-fade + version resource; PE subsystem 2 |
 | exe SHA256 (v3.1.2) | `F67F2E00EB1C12CF63A44CEB8A1ADBBD7C61166A6BD4E0D8102A315123E00E84` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
-| Runtime payload (dev exe + DLL + VRM) | 7,058,283 bytes (6.73 MiB) |
+| Runtime payload (v3.2 step 4 dev exe + DLL + VRM) | 7,061,355 bytes (6.73 MiB) |
 | Spring chains | 4 (`hair_side.L/R`, `hair_back`, `tail`); 19 VRM humanoid bones |
 | Spring solver | 7.63–10.80 µs/frame idle; 4 spring chains on 28 joints |
 | Tray promotion | `HKCU\Control Panel\NotifyIconSettings\674768749172540869\IsPromoted=1`; exact-rect crop shows the blue-haired icon |
@@ -174,7 +178,7 @@ Windows installers are built from the release ZIPs by `installer/whale3d.iss` (c
 ## Known limitations
 
 1. The model is deliberately stylized/chibi: a curved face decal on a low-poly head, approximated side/back hair, a single-piece fluke and no contact shadow. It is v1, not final art.
-2. Facial expression is only open / blink / smile on a UV-offset atlas; there is no eye tracking, lip sync, morph target or facial rig.
+2. Facial expression is only open / blink / smile on a UV-offset atlas; `intensity` now scales the neutral↔smile blend, but there is still no eye tracking, lip sync, morph target or facial rig.
 3. The GLB itself has only one animation. `walk` is generated procedurally at startup; there is no animation blending, IK, root motion or animation event track yet.
 4. Click-through now passed an OS-level cursor test: `SetCursorPos` + `mouse_event` at the transparent corner produced `BN_CLICKED id=1 count=1` on the underlay button; a center drag moved the pet and left the underlay click count unchanged. The earlier synthetic failure was the ctypes WndProc harness truncating LPARAM, not the window-region routing. A physical-hand click is still a user sanity check, not an automated one.
 5. The default model switch is now a true in-place **model cache** in the same process and GL context: switch by active `Impl*`, no window hide, no helper, no blank frame. First placeholder load measured 8 ms and cache hits 0 ms; private bytes were 97,837,056 at the first sample and 98,078,720 after four switches, same PID 15860 and no child process. The optional `--relaunch` helper remains for A/B/fallback (`WHALE3D_SWITCH=relaunch`): 2,064,384 B helper, old+helper peak 97.3–97.5 MB, new pet ready 1.55–1.61 s.

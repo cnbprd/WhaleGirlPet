@@ -142,8 +142,19 @@ bool EmotionBus::poll(Frame& out) {
         if (intensity < 0.0f) intensity = 0.0f;
         if (intensity > 1.0f) intensity = 1.0f;
 
+        float attackMs = 180.0f;
+        float releaseMs = 420.0f;
+        jsonNumber(raw, "attack_ms", attackMs);
+        jsonNumber(raw, "release_ms", releaseMs);
+        if (!std::isfinite(attackMs) || attackMs < 40.0f) attackMs = 40.0f;
+        if (attackMs > 2000.0f) attackMs = 2000.0f;
+        if (!std::isfinite(releaseMs) || releaseMs < 40.0f) releaseMs = 40.0f;
+        if (releaseMs > 2000.0f) releaseMs = 2000.0f;
+
         out.emotion = emotion;
         out.intensity = intensity;
+        out.attackMs = attackMs;
+        out.releaseMs = releaseMs;
         out.raw = raw;
         out.source.clear();
         jsonString(raw, "source", out.source);

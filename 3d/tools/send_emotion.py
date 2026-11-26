@@ -5,6 +5,7 @@ Usage:
     python 3d/tools/send_emotion.py happy 0.8
     python 3d/tools/send_emotion.py sad 0.6 --source llm
     python 3d/tools/send_emotion.py neutral 0 --port 47832
+    python 3d/tools/send_emotion.py happy 0.8 --attack-ms 120 --release-ms 300
 """
 from __future__ import annotations
 
@@ -19,12 +20,18 @@ def main() -> int:
     parser.add_argument("intensity", nargs="?", type=float, default=1.0)
     parser.add_argument("--source", default="manual")
     parser.add_argument("--port", type=int, default=47832)
+    parser.add_argument("--attack-ms", type=int, default=180)
+    parser.add_argument("--release-ms", type=int, default=420)
     args = parser.parse_args()
 
     payload = {
         "emotion": args.emotion,
         "intensity": max(0.0, min(1.0, args.intensity)),
         "source": args.source,
+        "curve": {
+            "attack_ms": max(40, min(2000, args.attack_ms)),
+            "release_ms": max(40, min(2000, args.release_ms)),
+        },
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:

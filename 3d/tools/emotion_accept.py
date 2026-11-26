@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Visual acceptance for v3.2 step 1 (emotion bus -> face).
+"""Visual acceptance for v3.2 step 1/1b/4 (emotion bus -> face -> envelope).
 
 Run with the repo venv:
     python 3d/tools/emotion_accept.py
 
 It launches the 3D shell with a forced open face, captures neutral, sends
-{"emotion":"happy","intensity":0.8} to 127.0.0.1:47832, captures the resulting
-smile frame, and writes the two screenshots under docs/.
+{"emotion":"happy","intensity":0.8,"curve":{"attack_ms":180,"release_ms":420}}
+to 127.0.0.1:47832, captures the 60 ms cross-fade, full smile, release and
+return-to-neutral frames, and writes them under docs/.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ WM_CLOSE = 0x0010
 def find_window(timeout: float = 12.0) -> int:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        hwnd = user32.FindWindowW(None, "WhaleGirl 3D Placeholder")
+        hwnd = user32.FindWindowW(None, "鲸鱼娘")
         if hwnd:
             return hwnd
         time.sleep(0.15)
@@ -47,11 +48,13 @@ def capture(hwnd: int, path: Path) -> Image.Image:
     return image
 
 
-def send(emotion: str, intensity: float, source: str = "acceptance") -> None:
+def send(emotion: str, intensity: float, source: str = "acceptance",
+         attack_ms: int = 180, release_ms: int = 420) -> None:
     payload = {
         "emotion": emotion,
         "intensity": intensity,
         "source": source,
+        "curve": {"attack_ms": attack_ms, "release_ms": release_ms},
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -76,6 +79,8 @@ def main() -> int:
     env["WHALE3D_FACE"] = "open"
     env["WHALE3D_CLIP"] = "idle"
     env["WHALE3D_FREEZE"] = "1"
+    env["WHALE3D_EMOTION_TRACE"] = "1"
+    env["WHALE3D_LOG"] = str(ROOT / "emotion_accept_trace.log")
     log_path = ROOT / "emotion_accept.err.log"
     log = open(log_path, "w", encoding="utf-8", buffering=1)
     proc = subprocess.Popen(
@@ -101,10 +106,25 @@ def main() -> int:
         print("mean neutral->mid delta:", round(mean_delta(neutral, mid), 3))
         print("mean mid->happy delta:", round(mean_delta(mid, happy), 3))
         print("mean RGB delta:", round(mean_delta(neutral, happy), 3))
+        # v3.2 step 4: release envelope. Send neutral and sample during/after
+        # the 420 ms release; the final image should return to neutral.
+        send("neutral", 0.0)
+        time.sleep(0.12)
+        release = capture(hwnd, DOCS / "_3d_emotion_release.png")
+        time.sleep(0.6)
+        after = capture(hwnd, DOCS / "_3d_emotion_after.png")
+        print("mean happy->release delta:", round(mean_delta(happy, release), 3))
+        print("mean happy->after delta:", round(mean_delta(happy, after), 3))
         print("saved:", DOCS / "_3d_emotion_neutral.png")
         print("saved:", DOCS / "_3d_emotion_happy.png")
+        print("saved:", DOCS / "_3d_emotion_release.png")
+        print("saved:", DOCS / "_3d_emotion_after.png")
         user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-        proc.wait(timeout=6)
+        try:
+            proc.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            proc.wait(timeout=3)
     finally:
         if proc.poll() is None:
             proc.terminate()

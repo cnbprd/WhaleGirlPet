@@ -49,7 +49,7 @@
 | 角色格式 | 最小 VRM 1.0 `3d/assets/models/whale_girl.vrm`，19 humanoid bones + 4 条两骨 SpringBone |
 | 基础动画 | ozz 采样 idle/walk；自研采样保留 A/B |
 | 头发/尾巴二次动力学 | 已通；窗口位移惯性输入，`WHALE3D_SPRING=0` 可关闭 |
-| 情绪参数总线 | v3.2 step 1 已通；本机 UDP `127.0.0.1:47832`，`happy 0.8 → smile`，见 `docs/3d-emotion-bus.md` |
+| 情绪参数总线 | v3.2 step 1/1b/4 已通；本机 UDP `127.0.0.1:47832`；`happy 0.8` 是 80% 的笑，`curve.attack_ms/release_ms` 控制进出包络，见 `docs/3d-emotion-bus.md` |
 | 认知层 | Python 侧已接情绪桥：`P_USER / P_LLM / P_AUTO` 仲裁后发本机 UDP；ASR/TTS 仍未进 3D 渲染进程 |
 | 情绪桥 | v3.2 step 3 已通；聊天发送/回复/情绪衰减三路接入，TTS 实际播放期间延长 P_LLM，3D 端日志可看到 `source=P_USER/P_LLM`，见 `docs/3d-emotion-bus.md` |
 
