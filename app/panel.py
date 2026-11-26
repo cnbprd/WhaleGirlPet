@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""控制面板：养成数值、投喂、换装、大小、番茄钟、提醒、聊天、打工任务、AI 后端、音频与自主行动。"""
+"""控制面板：养成数值、投喂、换装、大小、定时任务、提醒、聊天、打工任务、AI 后端、音频与自主行动。"""
 import datetime
 import os
 
@@ -87,7 +87,7 @@ class ControlPanel(QWidget):
             (self._scrollable(self._tab_status()), "养成"),   # 打工已并入本页（第 5 条）
             (self._tab_chat(), "聊天"),
             (self._tab_pet_behavior(), "桌宠行为"),
-            # v2.9.8：番茄钟/提醒与定时任务合并，统一叫「定时任务」
+            # v2.9.8：专注计时/提醒与定时任务合并，统一叫「定时任务」
             (self._tab_remind(), "定时任务"),
             (self._tab_wake(), "语音唤醒"),
             (panel_v2.tab_voice(self), "音频库"),
@@ -448,7 +448,7 @@ class ControlPanel(QWidget):
 
     # ---------- 提醒页 ----------
     def _tab_remind(self):
-        """v3.0.0：番茄钟并进「日常提醒」，下面整块「定时任务」吃掉剩余高度。"""
+        """v3.0.0：专注计时并进「日常提醒」，下面整块「定时任务」吃掉剩余高度。"""
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setSpacing(8)
@@ -456,7 +456,7 @@ class ControlPanel(QWidget):
         box2 = QGroupBox("日常提醒")
         r2 = QVBoxLayout(box2)
         r2.setSpacing(6)
-        # ---- 专注计时（原番茄钟，已合并进来） ----
+        # ---- 专注计时（已合并进来） ----
         self.lbl_tomato = QLabel("专注计时：未开始")
         self.lbl_tomato.setStyleSheet("font-size:15px;font-weight:bold;")
         r2.addWidget(self.lbl_tomato)

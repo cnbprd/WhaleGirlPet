@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 鲸鱼娘桌宠（DeepSeek 鲸鱼娘 · 大肥鱼）
-PySide6 透明无边框置顶桌宠：养成 / 投喂 / 换装 / 表情 / 番茄钟 / 提醒 / 联网对话 /
+PySide6 透明无边框置顶桌宠：养成 / 投喂 / 换装 / 表情 / 定时任务 / 提醒 / 联网对话 /
 改名 / 多后端管理 / 打工任务 / 自主行动 / 满屏跑 / 本地音频。
 """
 import json
@@ -287,7 +287,7 @@ class Controller:
         self.voice_worker = None
         self._last_voice = {}
 
-        # 番茄钟
+        # 定时任务（专注计时）
         self.tomato_left = 0
         self.tomato_timer = QTimer()
         self.tomato_timer.setInterval(1000)
@@ -2210,8 +2210,8 @@ class Controller:
             (("成熟", "大形态"), "换成成熟形态", lambda: self.set_form("mature")),
             (("静音", "别出声", "闭嘴"), "静音了", lambda: self.toggle_sound(False)),
             (("开声音", "出声", "取消静音"), "声音打开了", lambda: self.toggle_sound(True)),
-            (("番茄钟", "计时二十五分钟"), "番茄钟开始", lambda: self.start_tomato(25)),
-            (("停止计时", "关掉计时器", "结束番茄钟"), "计时停了", self.stop_tomato),
+            (("定时任务", "番茄钟", "计时二十五分钟"), "定时任务开始", lambda: self.start_tomato(25)),
+            (("停止计时", "关掉计时器", "结束定时任务", "结束番茄钟"), "计时停了", self.stop_tomato),
             (("喝水提醒", "提醒我喝水"), "喝水提醒开着", lambda: self.toggle_water(True)),
             (("不用喝水提醒", "关掉喝水提醒"), "喝水提醒关了", lambda: self.toggle_water(False)),
             (("久坐提醒", "提醒我站起来"), "久坐提醒开着", lambda: self.toggle_sedentary(True)),
@@ -3082,7 +3082,7 @@ class Controller:
                         QTimer.singleShot(1500, self._warm_local_llm)
                     self.pet.bubble.show_text("接上电了，大模型叫醒了。", 3000)
 
-    # ================= 番茄钟 =================
+    # ================= 定时任务（专注计时） =================
     def start_tomato(self, minutes: int):
         self.tomato_left = minutes * 60
         self.tomato_timer.start()
