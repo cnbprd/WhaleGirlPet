@@ -382,6 +382,66 @@ def _office_macro_state() -> dict:
     }
 
 
+def _wsh_state() -> dict:
+    """Windows Script Host：wscript.exe 是否存在 + 策略是否显式禁用。
+
+    WSH 默认是启用的；没有策略键时按“可用”处理，避免把“读不到”误报成安全。
+    """
+    hklm = _read_dword(r"SOFTWARE\Microsoft\Windows Script Host\Settings", "Enabled")
+    hkcu = _read_dword_current(r"Software\Microsoft\Windows Script Host\Settings", "Enabled")
+    wscript = os.path.exists(os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"), "System32", "wscript.exe"))
+    disabled = (hklm == 0) or (hkcu == 0)
+    return {
+        "ok": wscript,
+        "available": wscript,
+        "disabled": disabled,
+        "enabled": bool(wscript and not disabled),
+        "hklm": hklm,
+        "hkcu": hkcu,
+    }
+
+
+OFFICE_PROTECTED_VIEW_PATHS = []
+for _ver in ("16.0", "15.0", "14.0", "12.0"):
+    for _app in ("Word", "Excel"):
+        OFFICE_PROTECTED_VIEW_PATHS.append(
+            (rf"Software\Microsoft\Office\{_ver}\{_app}\Security\ProtectedView", _app, _ver))
+        OFFICE_PROTECTED_VIEW_PATHS.append(
+            (rf"Software\Policies\Microsoft\Office\{_ver}\{_app}\Security\ProtectedView",
+             _app, _ver))
+
+_PROTECTED_VIEW_VALUES = [
+    ("DisableInternetFilesInPV", "Internet 文件"),
+    ("DisableAttachmentsInPV", "邮件附件"),
+    ("DisableUnsafeLocationsInPV", "不安全位置"),
+]
+
+
+def _office_protected_view_state() -> dict:
+    """Office 受保护视图：值为 1 表示关闭该类文件的受保护视图。"""
+    apps = []
+    unsafe = []
+    for path, app, ver in OFFICE_PROTECTED_VIEW_PATHS:
+        vals = {}
+        for name, _label in _PROTECTED_VIEW_VALUES:
+            vals[name] = _read_dword_current(path, name)
+        if all(v is None for v in vals.values()):
+            continue
+        disabled = [(label, name) for name, label in _PROTECTED_VIEW_VALUES
+                    if vals.get(name) == 1]
+        row = {"app": app, "version": ver, "values": vals, "disabled": disabled}
+        apps.append(row)
+        if disabled:
+            unsafe.append(row)
+    return {
+        "ok": bool(apps),
+        "installed": bool(apps),
+        "apps": apps,
+        "unsafe": unsafe,
+    }
+
+
 def security_posture() -> dict:
     """只读检查 UAC / 远程面 / Guest / 自动播放 / Office 宏 / 事件日志。
 
@@ -398,6 +458,8 @@ def security_posture() -> dict:
     ident = _identity_and_logs()
     autoplay = _autoplay_state()
     office = _office_macro_state()
+    wsh = _wsh_state()
+    office_pv = _office_protected_view_state()
     logs = list(ident.get("logs") or [])
     # Get-WinEvent -ListLog Security 在非管理员下可能直接不返回；用注册表
     # MaxSize/Retention 兜底，只读，不再加权限。
@@ -443,9 +505,14 @@ def security_posture() -> dict:
         },
         "autoplay": autoplay,
         "office_macros": office,
+        "office_protected_view": office_pv,
+        "wsh": wsh,
         "event_logs": {
             "ok": bool(ident.get("ok")),
             "items": logs,
+            "security_readable": any(x.get("name") == "Security" for x in logs),
+            "security_reason": "" if any(x.get("name") == "Security" for x in logs)
+            else "需要管理员权限才能读取 Security 日志",
         },
     }
 
@@ -502,14 +569,24 @@ def build_report() -> dict:
     if office["ok"] and office["unsafe"]:
         names = "、".join(f"{a['app']} {a['version']}" for a in office["unsafe"])
         issues.append({"level": "high", "text": f"Office 宏设为“启用所有宏”：{names}；宏可被文档直接执行"})
+    pv = posture["office_protected_view"]
+    if pv["ok"] and pv["unsafe"]:
+        names = "、".join(
+            f"{a['app']} {a['version']}（" + "/".join(x[0] for x in a["disabled"]) + "）"
+            for a in pv["unsafe"])
+        issues.append({"level": "high", "text": f"Office 受保护视图被关闭：{names}；外部文档会更早进入可编辑状态"})
+    wsh = posture["wsh"]
+    if wsh["ok"] and wsh["enabled"]:
+        issues.append({"level": "warn", "text": "Windows Script Host 未显式禁用；.vbs/.js 脚本仍可被执行"})
     for it in posture["event_logs"]["items"]:
         if it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 10:
             issues.append({"level": "high", "text": f"Security 事件日志上限仅 {it['max_mb']} MB；很快被覆盖，入侵痕迹留不住"})
         elif it["name"] == "Security" and it["max_mb"] and it["max_mb"] < 20:
             issues.append({"level": "warn", "text": f"Security 事件日志上限 {it['max_mb']} MB，偏小；建议至少 20 MB 并保留关键事件"})
-    if posture["event_logs"]["ok"] and not any(
-            x["name"] == "Security" for x in posture["event_logs"]["items"]):
-        issues.append({"level": "info", "text": "Security 事件日志需要管理员权限才能读取；当前未做大小判断"})
+        elif it["name"] == "Security" and "circular" in str(it.get("mode", "")).lower():
+            issues.append({"level": "warn", "text": "Security 事件日志为循环覆盖；日志满了会覆盖旧记录，建议保留或集中收集"})
+    if posture["event_logs"]["ok"] and not posture["event_logs"]["security_readable"]:
+        issues.append({"level": "info", "text": posture["event_logs"]["security_reason"] + "；当前未做大小判断"})
 
     n_th = len(th.get("items") or [])
     if n_th:

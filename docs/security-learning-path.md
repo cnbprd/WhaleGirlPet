@@ -27,7 +27,7 @@
 
 ## 配套防守卡
 
-`app/security_cards.py` 有 13 张卡，其中“反扒经验”覆盖：
+`app/security_cards.py` 有 14 张卡，其中“反扒经验”覆盖：
 
 - 木马：持久化 + 外联信号
 - Rootkit：驱动、服务、启动链异常

@@ -36,8 +36,8 @@
 - Defender 实时防护/杀毒/病毒库（已有）
 - 防火墙三档（已有）
 - RDP / RemoteRegistry / SMBv1 / Guest 账户是否暴露
-- 自动播放、脚本宿主、Office 宏等高风险开关
-- 事件日志大小/覆盖策略是否过小
+- 自动播放、脚本宿主、Office 宏/受保护视图等高风险开关
+- 事件日志大小/覆盖策略是否过小；Security 日志权限不足时只提示，不伪造大小
 
 产出：一个 0–100 分“主机防御姿态”评分，点开能看到每项证据和修复建议；修复动作只给入口，不自动改注册表。
 
@@ -77,7 +77,7 @@
 
 ## 当前落地状态（2026-11-27 实测）
 
-P0 的 UAC/远程面/Guest/自动播放/Office 宏/事件日志均已接成只读检查，P1 三条规则、P2 知识卡、P3 路线索引也已落到代码；仍坚持“只报不改”。
+P0 的 UAC/远程面/Guest/自动播放/Office 宏/受保护视图/WSH/事件日志均已接成只读检查，P1 三条规则、P2 知识卡、P3 路线索引也已落到代码；仍坚持“只报不改”。
 
 ### P0 安全体检
 
@@ -90,17 +90,21 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/事件日志均已接成只�
 - Guest：`Get-LocalUser -Name Guest`，读 `Enabled`
 - 自动播放：`HKCU\...\AutoplayHandlers\DisableAutoplay` + `NoDriveTypeAutoRun` 的 `0x4` 可移动盘位
 - Office 宏：Word/Excel 12.0/14.0/15.0/16.0 的 `VBAWarnings / AccessVBOM`
+- Office 受保护视图：Word/Excel 12.0–16.0 的 `DisableInternetFilesInPV / DisableAttachmentsInPV / DisableUnsafeLocationsInPV`；任一为 1 视为关闭
+- WSH：`HKLM/HKCU\Software\Microsoft\Windows Script Host\Settings\Enabled` 加 `wscript.exe` 是否存在；值 0 为显式禁用
 - 事件日志：`Get-WinEvent -ListLog Security/System/Application` 读 `MaximumSizeInBytes / LogMode / RecordCount`；Security 被权限挡住时再尝试注册表 `MaxSize/Retention` 兜底
 
-`build_report()` 已把 Guest 启用、自动播放未关、Office“启用所有宏”、Security 日志过小并入 issues；`panel.refresh_scan()` 新增对应展示。
+`build_report()` 已把 Guest 启用、自动播放未关、Office“启用所有宏”、Office 受保护视图被关、WSH 未禁用、Security 日志过小/循环覆盖并入 issues；Security 无权限时只出一条 info，文案明确“当前未做大小判断”；`panel.refresh_scan()` 新增对应展示和 System/Application 日志展示。
 
 实测：
 
 - 真机 `UAC=开 consent=5`、`SMBv1=未安装`、`RemoteRegistry=Start 4`、`Guest=已禁用`
-- 真机 `自动播放=未显式关闭`（会出一张 warn 卡，分数从 80 降到 70：RDP + 自动播放 + 日志权限提示 + 端口告警都是实际状态，不是代码误报）
-- 本机未安装 Office，`office_macros.ok=False`，不硬报风险
-- `Security` 日志在当前非管理员权限下读不到，界面明确显示“需要管理员权限才能读取”，不伪造数值
-- `render_check` / `smoke_test` / 安全页 UI 测试均 exit 0；真实 Windows QPA 截图见 `docs/_security_posture_ui_win.png`
+- 真机 `自动播放=未显式关闭`、`WSH=可用/未显式禁用`；RDP + 自动播放 + WSH + Security 权限提示 + 3389 告警都是实际状态，不是代码误报
+- 真机综合评分 `62/100`；安全项每 high 扣 30、warn 扣 8、info 扣 2
+- 本机未安装 Office，`office_macros.ok=False`、`office_protected_view.ok=False`，不硬报风险
+- `Security` 日志在当前非管理员权限下读不到；`Get-WinEvent` 和注册表兜底都被拒绝，界面只显示“需要管理员权限才能读取”，不伪造数值
+- `System/Application` 日志各 `20 MB / Circular`，可在安全页看到；Security 实际大小仍待管理员权限验证
+- `py_compile`、`tools/test_security_posture.py`、`tools/test_security_cards.py`、`build/test_security_ui.py` 均 exit 0；真实 Windows QPA 截图见 `docs/_security_posture_ui_win.png`
 
 ### P1 防御规则
 
@@ -114,13 +118,13 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/事件日志均已接成只�
 
 ### P2 安全知识卡
 
-`app/security_cards.py` 已有 13 张防守侧卡片：
+`app/security_cards.py` 已有 14 张防守侧卡片：
 
-- 基础面：UAC、RDP/3389、SMBv1、Guest、自动播放、Office 宏、事件日志
+- 基础面：UAC、RDP/3389、SMBv1、Guest、自动播放、Office 宏/受保护视图、WSH 脚本宿主、事件日志
 - 反扒经验：木马落地信号、Rootkit 驱动/服务异常、注入的输入边界、Kali 扫描痕迹、DDoS 流量洪峰、钓鱼/弱口令
 - 每张卡只有“看什么信号 / 怎么防 / 依据”，没有工具命令、payload、利用步骤
 - `panel` 安全页新增“安全知识卡”按钮；体检结果也会自动带 2 张相关卡
-- `tools/test_security_cards.py` 13 张卡字段完整，并断言不含 `sqlmap/msfconsole/meterpreter/mimikatz/nc -e/bash -i/hping3/loic`
+- `tools/test_security_cards.py` 14 张卡字段完整，并断言不含 `sqlmap/msfconsole/meterpreter/mimikatz/nc -e/bash -i/hping3/loic`
 
 ### P3 学习路线索引
 
@@ -133,8 +137,9 @@ P0 的 UAC/远程面/Guest/自动播放/Office 宏/事件日志均已接成只�
 
 ### 仍未落地 / 已知边界
 
-- 事件日志的 `Security` 档在非管理员权限下只能提示“需要管理员权限”，无法读取真实大小；要完整检查需以管理员运行。
-- 脚本宿主（WSH）、事件日志覆盖策略、Office 受保护视图等更多 P0 项还没逐一接。
+- 事件日志的 `Security` 档在非管理员权限下只能提示“需要管理员权限”，无法读取真实大小；要完整检查需以管理员运行。不能因为“读不到”就推断日志没问题。
+- WSH、Office 受保护视图、Security 日志循环覆盖策略已接成只读检查；System/Application 日志大小/模式可读，Security 仍受权限限制。
+- v3.2 的 intensity 曲线、gaze/body lean、ASR 仍是路线项，本轮没有为了“继续”硬开新的 3D 功能；验收见 `docs/v3.2-next.md`。
 - 所有修复仍只给系统设置入口，不做一键改注册表。
 - 课程视频/PDF 都没打包进安装包，也没进 `knowledge.db`；P3 只是本地索引。
 - “Kali/注入/木马/Rootkit/DDoS”只作为**防守识别卡**存在，不存攻击步骤，也不提供可执行工具链。

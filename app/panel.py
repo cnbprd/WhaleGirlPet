@@ -3222,6 +3222,11 @@ class ControlPanel(QWidget):
                              if auto.get("policy") is not None else ""))
         else:
             lines_.append("  自动播放：读不到")
+        wsh = po.get("wsh") or {}
+        if wsh.get("ok"):
+            lines_.append("  WSH 脚本宿主：" + ("已禁用" if wsh.get("disabled") else "可用 ⚠"))
+        else:
+            lines_.append("  WSH 脚本宿主：读不到")
         om = po.get("office_macros") or {}
         if om.get("ok"):
             bad = om.get("unsafe") or []
@@ -3232,6 +3237,18 @@ class ControlPanel(QWidget):
                 lines_.append(f"  Office 宏：已读取 {len(om.get('apps') or [])} 个应用，未发现“启用所有宏”")
         else:
             lines_.append("  Office 宏：未安装/读不到")
+        pv = po.get("office_protected_view") or {}
+        if pv.get("ok"):
+            bad = pv.get("unsafe") or []
+            if bad:
+                names = "、".join(
+                    f"{a['app']} {a['version']}（" + "/".join(x[0] for x in a["disabled"]) + "）"
+                    for a in bad)
+                lines_.append("  Office 受保护视图：关闭 " + names + " ⚠")
+            else:
+                lines_.append(f"  Office 受保护视图：已读取 {len(pv.get('apps') or [])} 个应用，未发现关闭")
+        else:
+            lines_.append("  Office 受保护视图：未安装/读不到")
         el = po.get("event_logs") or {}
         if el.get("ok"):
             sec = next((x for x in (el.get("items") or []) if x.get("name") == "Security"), None)
@@ -3239,9 +3256,16 @@ class ControlPanel(QWidget):
                 lines_.append(f"  Security 日志：{sec.get('max_mb')} MB / {sec.get('mode')}"
                               f" / {sec.get('records')} 条")
             else:
-                lines_.append("  Security 日志：需要管理员权限才能读取")
+                lines_.append("  Security 日志：" + (el.get("security_reason") or "需要管理员权限才能读取"))
         else:
             lines_.append("  Security 日志：读不到")
+        if el.get("ok"):
+            for log_name in ("System", "Application"):
+                item = next((x for x in (el.get("items") or [])
+                             if x.get("name") == log_name), None)
+                if item:
+                    lines_.append(f"  {log_name} 日志：{item.get('max_mb')} MB / {item.get('mode')}"
+                                  f" / {item.get('records')} 条")
         lines_ += ["", f"综合评分：{report.get('score', '-')}/100"]
         for issue in report.get("issues", []):
             text = issue.get("text", "") if isinstance(issue, dict) else str(issue)
