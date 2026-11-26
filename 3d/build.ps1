@@ -21,6 +21,14 @@ $sdlLib = Join-Path $sdlRoot.FullName 'x86_64-w64-mingw32\lib'
 $sdlBin = Join-Path $sdlRoot.FullName 'x86_64-w64-mingw32\bin'
 
 $out = Join-Path $PSScriptRoot 'whale3d.exe'
+$windres = Get-ChildItem -LiteralPath $devkitRoot -Filter 'windres.exe' -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if (-not $windres) {
+    throw "windres.exe not found under $devkitRoot."
+}
+$resourceObj = Join-Path $PSScriptRoot 'whale3d.res.o'
+& $windres.FullName -O coff -o $resourceObj (Join-Path $PSScriptRoot 'whale3d.rc')
+if ($LASTEXITCODE -ne 0) { throw "windres failed with exit code $LASTEXITCODE" }
 $ozzSrc = Join-Path $PSScriptRoot 'third_party\ozz-animation-master'
 $ozzBuild = Join-Path $PSScriptRoot 'third_party\ozz-build'
 $ozzInclude = Join-Path $ozzSrc 'include'
@@ -36,7 +44,8 @@ $sources = @(
     (Join-Path $PSScriptRoot 'main.cpp'),
     (Join-Path $PSScriptRoot 'model.cpp'),
     (Join-Path $PSScriptRoot 'shell_ui.cpp'),
-    (Join-Path $PSScriptRoot 'emotion_bus.cpp')
+    (Join-Path $PSScriptRoot 'emotion_bus.cpp'),
+    $resourceObj
 )
 & $gxx.FullName -std=c++17 -Os -s -Wall -Wextra `
     -DWHALE3D_USE_OZZ `

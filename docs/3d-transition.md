@@ -412,8 +412,8 @@
 | 协议 | `{"emotion":"happy","intensity":0.8,"source":"llm"}`；`emotion` 必填，其余可选 |
 | 映射 | 正向/高唤醒 → `smile`；中性 → `auto`；负向/低唤醒 → `open`；未知忽略 |
 | 注入 | `3d/tools/send_emotion.py happy 0.8` |
-| 验收 | `3d/tools/emotion_accept.py`：日志 `Emotion: happy intensity=0.80 source=acceptance face=smile`，`docs/_3d_emotion_compare.png`，全窗 RGB 平均差 0.674 |
-| 体积 | `whale3d.exe` 1,315,840 → **1,320,448 B**（+4,608 B）；仅新增系统 `ws2_32.dll` 依赖 |
+| 验收 | `3d/tools/emotion_accept.py`：日志 `Emotion: happy intensity=0.80 source=acceptance face=smile`，`docs/_3d_emotion_compare.png`，多次运行全窗 RGB 平均差 0.626–0.674 |
+| 体积 | `whale3d.exe` 1,315,840 → **1,321,472 B**（+5,632 B；含 1,024 B 版本资源）；仅新增系统 `ws2_32.dll` 依赖 |
 | 边界 | 三帧图集硬切，尚无 cross-fade、gaze/body lean、优先级仲裁；未重打 3.1.0 ZIP/安装包 |
 
 细节与协议见 `docs/3d-emotion-bus.md`。下一步是在 shader 里做两帧交叉淡化，并让 Python 侧把 LLM 情绪标签发到这条总线。

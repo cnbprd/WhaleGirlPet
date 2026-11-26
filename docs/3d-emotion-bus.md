@@ -61,7 +61,7 @@ Emotion: happy intensity=0.80 source=manual face=smile
 - 进程日志：`Emotion: happy intensity=0.80 source=acceptance face=smile`
 - 帧率：约 27.8–28.8 fps，`update_us` 约 10 µs；和 v3.1.0 同量级。
 - 截图：`docs/_3d_emotion_neutral.png`、`docs/_3d_emotion_happy.png`、`docs/_3d_emotion_compare.png`
-- `open` 与 `happy` 全窗口 RGB 平均差 **0.674**（0–255 尺度）；差异集中在眼部/嘴部，属于图集帧切换，不是窗口位移。
+- `open` 与 `happy` 全窗口 RGB 平均差多次运行在 **0.626–0.674**（0–255 尺度）；差异集中在眼部/嘴部，属于图集帧切换，不是窗口位移。
 
 ## 还没做的
 
@@ -74,7 +74,7 @@ Emotion: happy intensity=0.80 source=manual face=smile
 
 ## 体积与安全
 
-- 新增 `emotion_bus.cpp` 后，`whale3d.exe` 从 1,315,840 B 增至 **1,320,448 B**（+4,608 B）。
+- 新增 `emotion_bus.cpp` 后，`whale3d.exe` 从 1,315,840 B 增至 **1,321,472 B**（+5,632 B；其中 1,024 B 是版本资源）。
 - 仅链接系统 `ws2_32.dll`，没有引入新运行时 DLL。
 - 只绑 `127.0.0.1`，不监听 `0.0.0.0`；没有认证，本机任意进程都能注入，这也是当前开发阶段的预期边界。
 - 当前改动是开发态，**没有重新打 v3.1.0 的 ZIP / 安装包**；Release 里的 3.1.0 仍是旧 exe。

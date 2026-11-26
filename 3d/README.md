@@ -24,7 +24,7 @@ Toolchain is portable and lives outside PATH:
 - `F:\WhaleGirlPet\.toolchains\w64devkit` — g++ / make / binutils / CMake
 - `F:\WhaleGirlPet\.toolchains\SDL3\SDL3-3.4.20\x86_64-w64-mingw32` — SDL3 headers, import lib, DLL
 
-The release build uses `-Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections` to keep the shell small. `build.ps1` compiles `main.cpp`, `model.cpp`, `shell_ui.cpp` and `emotion_bus.cpp`, links `-lSDL3`, the three static ozz libraries, `-lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32`, and deploys `SDL3.dll` next to the exe. If `third_party/ozz-build` is missing, build ozz once with the same w64devkit toolchain (`BUILD_SHARED_LIBS=OFF`, `ozz_build_tools/fbx/gltf/data/samples/howtos/tests` all `OFF`), then rerun the script. Putting the devkit `bin` directory on `PATH` is required because CMake's generated Makefiles call a bare `make`.
+The release build uses `-Os -s -ffunction-sections -fdata-sections -Wl,--gc-sections` to keep the shell small. `build.ps1` compiles `main.cpp`, `model.cpp`, `shell_ui.cpp`, `emotion_bus.cpp` and `whale3d.rc` (via `windres`), links `-lSDL3`, the three static ozz libraries, `-lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32`, and deploys `SDL3.dll` next to the exe. If `third_party/ozz-build` is missing, build ozz once with the same w64devkit toolchain (`BUILD_SHARED_LIBS=OFF`, `ozz_build_tools/fbx/gltf/data/samples/howtos/tests` all `OFF`), then rerun the script. Putting the devkit `bin` directory on `PATH` is required because CMake's generated Makefiles call a bare `make`.
 
 ## Run
 
@@ -138,12 +138,12 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 
 | Item | Measurement |
 | :--- | :--- |
-| `whale3d.exe` (v3.2 step 1 dev) | 1,320,448 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus |
-| exe SHA256 (dev) | `1DF79D4B35061CE2AFFBB6F82F65561EED4C2A0226E2E9C73FB0255CE0432345` |
+| `whale3d.exe` (v3.2 step 1 dev) | 1,321,472 bytes (1.26 MiB), with VRM + spring bones + tray + settings + in-place model cache + alpha region + emotion bus + version resource |
+| exe SHA256 (dev) | `AA03A29167D18468887E4B1BDCB76B637B2FEDF09452698A9A24C5E4C7D6B42E` |
 | `SDL3.dll` | 5,385,103 bytes |
 | `whale_girl.vrm` | 351,708 bytes; SHA256 `BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87` |
 | `whale_girl.glb` fallback | 350,332 bytes |
-| Runtime payload (dev exe + DLL + VRM) | 7,057,259 bytes (6.73 MiB) |
+| Runtime payload (dev exe + DLL + VRM) | 7,058,283 bytes (6.73 MiB) |
 | Spring chains | 4 (`hair_side.L/R`, `hair_back`, `tail`); 19 VRM humanoid bones |
 | Spring solver | 7.63–10.80 µs/frame idle; 4 spring chains on 28 joints |
 | Tray promotion | `HKCU\Control Panel\NotifyIconSettings\674768749172540869\IsPromoted=1`; exact-rect crop shows the blue-haired icon |
@@ -159,7 +159,7 @@ Hardware: NVIDIA GTX 1060 6GB, driver 582.78, OpenGL 3.3.0.
 | RSS | about 70.1 MB |
 | Exit code | 0 for direct exit, tray-menu exit and settings-close-then-exit |
 
-The v3.2 dev exe grew by 17,920 bytes over the v3.0.28 shell (1,302,528 → 1,320,448): 13,312 B for the VRM/GLB extension parser, per-frame spring solver and motion input; another 4,608 B for the emotion bus. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
+The v3.2 dev exe grew by 18,944 bytes over the v3.0.28 shell (1,302,528 → 1,321,472): 13,312 B for the VRM/GLB extension parser, per-frame spring solver and motion input; 4,608 B for the emotion bus; and 1,024 B for the `whale3d.rc` product/version metadata used by SignPath. The 100 MB limit holds: private bytes stay at 97.8–98.1 MB across the initial load and four in-place switches, with no growth after the second sample.
 
 ## Runnable package
 

@@ -9,9 +9,9 @@
 | 项 | 改动 | 实测 |
 |---|---|---|
 | 1 情绪总线 | 新增 `3d/emotion_bus.h/.cpp`，UDP 仅绑 `127.0.0.1:47832`；`WHALE3D_EMOTION_PORT` 可改端口 | `Emotion bus: udp://127.0.0.1:47832`；`{"emotion":"happy","intensity":0.8}` → `face=smile` |
-| 2 注入与验收 | 新增 `3d/tools/send_emotion.py` 和 `3d/tools/emotion_accept.py`；后者启动、注入、截图 | 日志 `Emotion: happy intensity=0.80 source=acceptance face=smile`；`docs/_3d_emotion_neutral.png` 与 `_happy.png` 全窗 RGB 平均差 0.674 |
+| 2 注入与验收 | 新增 `3d/tools/send_emotion.py` 和 `3d/tools/emotion_accept.py`；后者启动、注入、截图 | 日志 `Emotion: happy intensity=0.80 source=acceptance face=smile`；`docs/_3d_emotion_neutral.png` 与 `_happy.png` 多次运行全窗 RGB 平均差 0.626–0.674 |
 | 3 文案 | README / docs / 2D 可见字符串把“番茄钟”统一为“定时任务”；旧语音别名暂时保留 | README 中“番茄钟”计数 0；`app` 仅剩两条兼容别名；`py_compile` exit 0 |
-| 4 体积 | 只新增系统 `ws2_32.dll` 依赖，不新增运行时 DLL | `whale3d.exe` 1,315,840 → 1,320,448 B（+4,608 B）；未重打 3.1.0 ZIP/安装器 |
+| 4 体积与元数据 | 只新增系统 `ws2_32.dll` 依赖，不新增运行时 DLL；新增 `3d/whale3d.rc` 版本资源，产品名/版本与安装器一致 | `whale3d.exe` 1,315,840 → 1,321,472 B（+5,632 B，其中 1,024 B 为版本资源）；`ProductName=WhaleGirlPet`、`ProductVersion=3.1.0.0`；未重打 3.1.0 ZIP/安装器 |
 
 边界：三帧图集仍是硬切，没有 cross-fade、gaze/body lean、`P_USER/P_LLM/P_AUTO` 仲裁，也没有 Python 侧 LLM 情绪标签生产；这一步不能称为“情绪闭环完成”。细节见 `docs/3d-emotion-bus.md`。
 
