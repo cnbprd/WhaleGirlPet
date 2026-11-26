@@ -1,0 +1,317 @@
+{
+  "version": 1,
+  "sheet": "assets/2d_bridge/atlas.png",
+  "sheet_size": [
+    1024,
+    512
+  ],
+  "slot_size": 160,
+  "cards": [
+    {
+      "id": "expression/angry",
+      "group": "expression",
+      "name": "angry",
+      "source": "assets/expressions/angry.png",
+      "rect": [
+        35,
+        4,
+        90,
+        152
+      ],
+      "slot": [
+        0,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/curious",
+      "group": "expression",
+      "name": "curious",
+      "source": "assets/expressions/curious.png",
+      "rect": [
+        194,
+        4,
+        91,
+        152
+      ],
+      "slot": [
+        160,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/eat",
+      "group": "expression",
+      "name": "eat",
+      "source": "assets/expressions/eat.png",
+      "rect": [
+        358,
+        4,
+        84,
+        152
+      ],
+      "slot": [
+        320,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/happy",
+      "group": "expression",
+      "name": "happy",
+      "source": "assets/expressions/happy.png",
+      "rect": [
+        516,
+        4,
+        88,
+        152
+      ],
+      "slot": [
+        480,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/idle",
+      "group": "expression",
+      "name": "idle",
+      "source": "assets/expressions/idle.png",
+      "rect": [
+        677,
+        4,
+        86,
+        152
+      ],
+      "slot": [
+        640,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/pat",
+      "group": "expression",
+      "name": "pat",
+      "source": "assets/expressions/pat.png",
+      "rect": [
+        838,
+        4,
+        83,
+        152
+      ],
+      "slot": [
+        800,
+        0,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/shy",
+      "group": "expression",
+      "name": "shy",
+      "source": "assets/expressions/shy.png",
+      "rect": [
+        37,
+        164,
+        86,
+        152
+      ],
+      "slot": [
+        0,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/sleep",
+      "group": "expression",
+      "name": "sleep",
+      "source": "assets/expressions/sleep.png",
+      "rect": [
+        167,
+        164,
+        145,
+        152
+      ],
+      "slot": [
+        160,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/sleepy",
+      "group": "expression",
+      "name": "sleepy",
+      "source": "assets/expressions/sleepy.png",
+      "rect": [
+        356,
+        164,
+        87,
+        152
+      ],
+      "slot": [
+        320,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "expression/walk",
+      "group": "expression",
+      "name": "walk",
+      "source": "assets/expressions/walk.png",
+      "rect": [
+        516,
+        164,
+        88,
+        152
+      ],
+      "slot": [
+        480,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/balloon",
+      "group": "action",
+      "name": "balloon",
+      "source": "assets/actions/balloon.png",
+      "rect": [
+        679,
+        164,
+        81,
+        152
+      ],
+      "slot": [
+        640,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/change",
+      "group": "action",
+      "name": "change",
+      "source": "assets/actions/change.png",
+      "rect": [
+        833,
+        164,
+        94,
+        152
+      ],
+      "slot": [
+        800,
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/dance",
+      "group": "action",
+      "name": "dance",
+      "source": "assets/actions/dance.png",
+      "rect": [
+        35,
+        324,
+        89,
+        152
+      ],
+      "slot": [
+        0,
+        320,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/fireworks",
+      "group": "action",
+      "name": "fireworks",
+      "source": "assets/actions/fireworks.png",
+      "rect": [
+        188,
+        324,
+        103,
+        152
+      ],
+      "slot": [
+        160,
+        320,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/lion",
+      "group": "action",
+      "name": "lion",
+      "source": "assets/actions/lion.png",
+      "rect": [
+        347,
+        324,
+        105,
+        152
+      ],
+      "slot": [
+        320,
+        320,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/type",
+      "group": "action",
+      "name": "type",
+      "source": "assets/actions/type.png",
+      "rect": [
+        503,
+        324,
+        114,
+        152
+      ],
+      "slot": [
+        480,
+        320,
+        160,
+        160
+      ]
+    },
+    {
+      "id": "action/wave",
+      "group": "action",
+      "name": "wave",
+      "source": "assets/actions/wave.png",
+      "rect": [
+        677,
+        324,
+        86,
+        152
+      ],
+      "slot": [
+        640,
+        320,
+        160,
+        160
+      ]
+    }
+  ]
+}
