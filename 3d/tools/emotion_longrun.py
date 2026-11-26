@@ -63,6 +63,7 @@ def write_summary(status: str, **fields) -> None:
         "tag": TAG,
         "duration_s": DURATION,
         "sample_interval_s": SAMPLE_INTERVAL,
+        "checkpoint_interval_s": SAMPLE_INTERVAL * 10,
         "mode": "offscreen" if OFFSCREEN else "visible",
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "pid": fields.pop("pid", None),
