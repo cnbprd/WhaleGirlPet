@@ -54,6 +54,13 @@
 - 启动日志：`Sprite layer: ready (F:\WhaleGirlPet\3d\../assets/2d_bridge)`、`Hit mask ready: 420x620 center_alpha=255`、FPS 约 29
 - 状态：`running`；这只是中段证据，结束前不能当 24 小时通过。
 
+## 终止原因线索（2026-11-27 补充）
+
+- 时间线不支持“sprite GPU 测试截断”：旧轮最后日志 `12:44:05`，第一轮 sprite 可见测试日志 `13:11:54`，相差约 27 分钟。
+- 旧 3D PID 15080 与 Python 启动器 PID 10492 同时消失；`longrun_24h.err.log` 为空，Windows Application 日志没有 `whale3d.exe` 崩溃事件，也没有 `status=done`。这更像外部终止（窗口关闭、进程树清理或宿主重启），不是 3D 自己崩溃。
+- Windows `stability` 事件在 `12:41:11` 和 `12:51:11` 有 `Doubao.exe` 的 restart/restore 记录；当前 Doubao 进程命令行也带 `--restart --restart-for-update`。宿主重启/任务进程树清理是高度可疑的外部因素，但现有日志不能证明是哪一次操作直接杀了 PID 15080。
+- 新一轮 `soak_24h_sprite` 的进程树是 `pwsh -> python 27352 -> python 10312 -> whale3d 31812`，仍挂在当前 agent 会话下；如果宿主再次重启或任务被切走，仍可能被同样方式终止。要得到可信的 24 小时结论，应该从 Windows 任务计划程序或独立于 agent 的进程启动。
+
 ## 判定规则
 
 - 只有 `status=done` 且 `alive_after_soak=true`、RSS/CPU/FPS 样本完整，才算跑完。
