@@ -70,7 +70,22 @@ foreach ($card in $cards) {
 
 ## 2. 卡面点击穿透
 
-在一个干净桌面上：
+自动化探测（推荐，必须在浸泡结束后运行）：
+
+```powershell
+Set-Location 'F:\WhaleGirlPet'
+& '.\.venv\Scripts\python.exe' '3d\tools\check_click_through.py' --click
+```
+
+脚本会启动一个临时 3D、显示 `expression/happy`，在卡面中心放一个测试目标窗口，执行一次真实左键点击，并把结果写到 `docs/click-through-result.json`。判定：
+
+- `card_hit_test` 必须是 `-1`（`HTTRANSPARENT`）；
+- `target.received` 必须是 `true`；
+- 两项都满足脚本才 `exit 0`。
+
+不要拿当前 24h 浸泡窗口做这个测试；脚本默认只操作自己启动的临时进程，`--pid` 模式也不会结束目标进程。
+
+手动交叉验证（脚本失败或需要看现场时）：
 
 1. 启动 3D，设 `WHALE3D_CARD=expression/happy`、`WHALE3D_CARD_TTL=10000`、`WHALE3D_SPRITE_TRACE=1`。
 2. 从日志读取 `Sprite rect: (x,y w,h)`；卡面在客户区右下角。
