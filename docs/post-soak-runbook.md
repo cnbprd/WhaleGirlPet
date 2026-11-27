@@ -20,6 +20,22 @@ Set-Location 'F:\WhaleGirlPet'
 - 先归档 `3d/longrun_soak_24h_sprite_task.json`、`.log`、`.err.log` 和 `docs/soak-midrun-2026-11-27.md`，再开新进程。
 - 如果 gate 不是 `exit 0`，先运行 `& '.\3d\tools\collect_soak_evidence.ps1' -OutDir 'docs\soak-evidence'` 保存现场，再判断是进程消失、checkpoint stale 还是字段无效；不要用新进程覆盖现场。
 
+## 0.5 P1 坏 manifest 回归（分支验证）
+
+P1 纯解析代码在 `build\worktrees\fix-sprite-parser` 分支，未合入 `main`。浸泡结束后先编只含纯解析的测试，不产出生产 exe：
+
+```powershell
+Set-Location 'F:\WhaleGirlPet\build\worktrees\fix-sprite-parser'
+$gxx = (Get-ChildItem 'F:\WhaleGirlPet\.toolchains\w64devkit' -Recurse -Filter 'g++.exe' | Select-Object -First 1).FullName
+& $gxx -std=c++17 -O2 -I '3d' `
+  '3d\tests\test_sprite_manifest.cpp' `
+  '3d\sprite_manifest.cpp' `
+  -o 'build\test_sprite_manifest.exe'
+& '.\build\test_sprite_manifest.exe'
+```
+
+预期：`17/17 passed`。夹具在 `3d\tests\fixtures\sprite_manifest\cases.json`；不覆盖生产 `3d\whale3d.exe`，不启动 `whale3d.exe`。
+
 ## 1. 17 张卡可见验收
 
 单实例批处理（推荐）：
