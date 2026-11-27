@@ -66,14 +66,18 @@
 - 启动日志：`Sprite layer: ready (F:\WhaleGirlPet\3d\../assets/2d_bridge)`、`Hit mask ready: 420x620 center_alpha=255`、FPS 约 29
 - 13:52:40 的一次性触发到达后仍只有 1 个 `whale3d.exe`，`MultipleInstances=IgnoreNew` 阻止了重复实例；该次触发记录为 `0x800710E0`（操作员或系统管理员拒绝了请求），当前 13:51:01 启动的实例继续运行
 - 13:55:35 首个 10 样本检查点：`elapsed_s=270.1`，RSS `72,736,768 B`（约 69.4 MB），3D PID 7816 存活
+- 14:10:35 检查：40 样本，`elapsed_s=1170.1`，RSS `29,642,752 B`（约 28.3 MB），CPU 5.8%，FPS 均值 28.6；`stale=False`，`healthy=True`。RSS 从启动段高位回落，不能据此判断泄漏趋势，继续观察
 - 任务状态：`Running`；这只是中段证据，结束前不能当 24 小时通过
 
 检查命令：
 
 ```powershell
-Get-ScheduledTaskInfo -TaskName 'WhaleGirlSoak24hSprite'
+& 'F:\WhaleGirlPet\3d\tools\check_soak_status.ps1'
+& 'F:\WhaleGirlPet\3d\tools\check_soak_status.ps1' -Json
 Get-Content 'F:\WhaleGirlPet\3d\longrun_soak_24h_sprite_task.log' -Tail 20
 ```
+
+`check_soak_status.ps1` 只读任务状态、JSON 和进程树，不启动或关闭 3D；`healthy=True` 需要同时满足任务 Running、PID 存活、只有一个 `whale3d.exe`、状态 running、样本未超时。
 
 任务计划程序的限制：机器休眠/关机、用户注销或任务计划程序服务被停，仍会中断；这种方式只消除了 agent 会话进程树清理这一条风险，不等于绝对不中断。
 

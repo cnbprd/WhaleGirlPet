@@ -1,7 +1,7 @@
 # 2D 卡面 sprite 层：接线与验收
 
 日期：2026-11-27
-状态：**已接入 3D 主循环，并通过可见帧验收**。`3d/whale3d.exe` 已重建为带 sprite 的 1,377,792 B 版本；临时 exe 只用于调试时保留。24 小时离屏浸泡在 12:44 提前结束，未形成 24h 结论，见 `docs/soak-24h.md`。
+状态：**已接入 3D 主循环，并通过可见帧验收**。`3d/whale3d.exe` 已重建为带 sprite 的 1,377,792 B 版本；临时 exe 只用于调试时保留。旧 24 小时轮在 12:44 提前结束，当前有效轮由 Windows 任务计划程序 `WhaleGirlSoak24hSprite` 运行，见 `docs/soak-24h.md`。
 
 ## 目标
 
@@ -61,6 +61,8 @@ sprite.draw(pixelW, pixelH);    // 命中区 glReadPixels 之后
 
 ## 下一步
 
-- 24 小时真浸泡仍未完成；当前约 8h26m 的旧 session 已结束，重启前需要决定是否用新 exe。
-- 2D PyInstaller 包需要把 `assets/2d_bridge` 加进 `WhaleGirlPet.spec`，否则冻结后的 2D 端可能拿不到 manifest。
-- 多卡快速切换、TTL 过期后的 region 收缩、卡面与模型遮挡关系仍需再做一轮可见目检。
+- 24 小时真浸泡：由 Windows 任务计划程序 `WhaleGirlSoak24hSprite` 运行，标签 `soak_24h_sprite_task`；预计 2026-11-28 13:51:03 结束，结束前不能当 24h 通过。
+- 2D PyInstaller 冻结包：`WhaleGirlPet.spec` 已补 `assets/2d_bridge`，源码层 `AssetBridge` 已验证；冻结后的 2D exe 仍需一次打包/启动回归，安排在浸泡结束后。
+- 卡面可见验收：`expression/happy`、`action/wave` 已确认；其余 15 张只完成图集级 QA（`docs/2d-atlas-card-qa.md`），仍需可见窗口逐张确认 UV、方向、裁切。
+- 卡面点击穿透：代码上卡面不进入 `hitTest`，但还没有用卡面坐标做一次真实点击采样；安排在浸泡结束后。
+- 多卡快速切换、TTL 过期后的 region 收缩、卡面与模型遮挡关系：仍需一轮可见目检。
