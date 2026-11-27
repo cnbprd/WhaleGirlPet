@@ -164,11 +164,39 @@ $dir = 'F:\WhaleGirlPet\build\install-sprite-final'
 
 ## 5. Release 前最后一道门
 
-- 运行 `& '.\.venv\Scripts\python.exe' '3d\tools\verify_release_assets.py'`，要求 exit 0，并核对 `docs/release-asset-verify.md` 的 38 项全 PASS；
-- 重算 exe、ZIP、安装器 SHA256，与 `docs/release-3.2.0-sprite.md` 对照；
-- 确认 17 卡可见验收、点击穿透、2D 冻结包、安装器四项都有证据；
-- 再决定 tag（建议 `v3.2.0-sprite`）和是否发布；不要复用 `v3.2.0-dev`；
-- 发布前不要把 `v3.2.0-sprite` 写成“24h 长稳通过”，除非 `check_soak_final.py` 已通过。
+### 5.1 Release notes
+
+- 正式说明用 `docs\releases\v3.2.0-sprite.md`，不要另写一份短文案；
+- 上传前把最终文件大小、SHA256、tag 写回该文件和 `docs\release-assets-3.2.0-sprite.json`；
+- 如果资产没有重建，先核对两份文件里的哈希与实际文件一致，不要只改说明。
+
+### 5.2 资产重算与 verifier
+
+```powershell
+Set-Location 'F:\WhaleGirlPet'
+Get-FileHash -Algorithm SHA256 -LiteralPath `
+  '3d\whale3d.exe', `
+  '3d\whale3d-whale-girl-v3.2-sprite.zip', `
+  'dist\3d\WhaleGirlPet-Setup-3.2.0-sprite.exe'
+& '.\.venv\Scripts\python.exe' '3d\tools\verify_release_assets.py'
+```
+
+- 要求 verifier `exit 0`，`docs\release-asset-verify.md` 的 38 项全 PASS；
+- 安装器 `.sha256` sidecar 必须与安装器同目录、同哈希；
+- 安装器内部 payload 仍未解包核对，不能把 verifier PASS 当成“安装器内容逐字节确认”。
+
+### 5.3 上传顺序
+
+只有 24h gate、17 卡、点击穿透、2D 冻结包、安装器五项都有证据后才上传：
+
+1. 确认 tag `v3.2.0-sprite` 指向最终发布提交，不复用 `v3.2.0-dev`；
+2. 创建 Release，说明文件用 `docs\releases\v3.2.0-sprite.md`；
+3. 先上传安装器 `WhaleGirlPet-Setup-3.2.0-sprite.exe` 和 `.sha256` sidecar；
+4. 再上传便携 ZIP `whale3d-whale-girl-v3.2-sprite.zip`；
+5. 最后上传 `3d\whale3d.exe` 作为单独 exe 资产；
+6. 上传后重新下载至少安装器和 ZIP，核对远端 SHA256 与本地一致。
+
+不要运行 `release-assets.yml`；不要用 `--clobber` 覆盖已有 Release；不要在发布说明里写“24h 长稳通过”，除非 `check_soak_final.py` 已 `exit 0`。
 
 ## 失败回滚
 
