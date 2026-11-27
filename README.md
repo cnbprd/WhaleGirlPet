@@ -53,7 +53,7 @@
 | 姿态层 | v3.2 step 5 已通；可选 `gaze` / `lean` 小角度骨旋转，180/420 ms 平滑/回正；只是“转头”不是眼骨/BlendShape，见 `docs/3d-emotion-bus.md` |
 | 认知层 | Python 侧已接情绪桥：`P_USER / P_LLM / P_AUTO` 仲裁后发本机 UDP；ASR 单句输入已接 Python 输入层，不直接进 3D 渲染；TTS 仍只延长 `P_LLM` |
 | 情绪桥 | v3.2 step 3 已通；聊天发送/回复/情绪衰减三路接入，TTS 实际播放期间延长 P_LLM，3D 端日志可看到 `source=P_USER/P_LLM`，见 `docs/3d-emotion-bus.md` |
-| 2D 卡面层 | v3.2 sprite 已接 3D 主循环；17 张 `expression/*` / `action/*` 卡通过 UDP `card` + `card_ttl_ms` 触发，TTL 淡入淡出，右下角绘制；只扩窗口 region，不抢点击；见 `docs/sprite-layer.md` |
+| 2D 卡面层 | v3.2 sprite 已接 3D 主循环；17 张 `expression/*` / `action/*` 卡通过 UDP `card` + `card_ttl_ms` 触发，TTL 淡入淡出，右下角绘制；设计上只扩窗口 region、不进入 `hitTest`，真实点击穿透仍待采样；见 `docs/sprite-layer.md` |
 
 细节：[`3d/README.md`](3d/README.md)、[`docs/3d-transition.md`](docs/3d-transition.md)。下面的“功能概览”是 2D 历史归档能力，不代表当前 3D 核心包已全部迁移。
 
@@ -220,7 +220,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。当前版本 **v3.1.2**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。线上稳定版本 **v3.1.2**；本地候选 **v3.2.0-sprite 未上传**。
 
 ---
 

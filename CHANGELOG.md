@@ -13,7 +13,7 @@
 | 3 图集与协议 | `assets/2d_bridge/atlas.png` 1024×512、17 张 1x 卡；`manifest.json`；`check_2d_atlas.py`、`check_2d_manifest.py`、`emotion_bus_probe.cpp`、`test_protocol_fuzz.py` | 图集 QA 17/17：`max_alpha_mae=0.0`、`max_rgb_mae=0.005`、`max_coverage_delta=0.0`；manifest 17 卡、0 error、0 warning；协议 fuzz 通过 |
 | 4 包与安装器 | `WhaleGirlPet.spec` datas 补 `assets/2d_bridge`；CI 的 ZIP 打包补复制；版本断言 `3.2.0.0`；生成 sprite 便携包与安装器 | exe 1,377,792 B，SHA256 `3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C`；ZIP 3,187,948 B，SHA256 `BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE`；安装器 4,791,434 B，SHA256 `510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96`；静默安装/启动/卸载 exit 0 |
 | 5 CI | 代码提交 `5f49dcb` 接 sprite；GitHub Actions 3D 构建 | run `45946695091` success；docs run `45947183087` success；CI ZIP 3,188,249 B，内部 exe 1,378,304 B，含 `assets/2d_bridge` |
-| 6 24 小时浸泡 | 旧 agent-session 轮 8h26m 被外部终止；改用 Windows 任务计划程序 `WhaleGirlSoak24hSprite`，标签 `soak_24h_sprite_task` | 2026-11-27 13:51:03 启动，预计 2026-11-28 13:51:03 结束；当前 `status=running`，10/40/50 样本检查通过，`healthy=True`；**不是 24h 结论** |
+| 6 24 小时浸泡 | 旧 agent-session 轮 8h26m 被外部终止；改用 Windows 任务计划程序 `WhaleGirlSoak24hSprite`，标签 `soak_24h_sprite_task` | 2026-11-27 13:51:03 启动，预计 2026-11-28 13:51:03 结束；当前 `status=running`，截至 15:40:35 共 **220 样本**、`healthy=true`；这是中段证据，**不是 24h 结论** |
 
 边界：17 张卡只对 `expression/happy`、`action/wave` 做了 3D 可见验收，其余完成图集级/清单级离线 QA；卡面点击穿透尚未用真实坐标采样；2D PyInstaller 冻结包尚未打包后启动回归；安装器未上传 Release。sprite 是屏幕空间装饰，不替换 3D 骨骼/材质，也不进入点击命中区。发布前 gate 见 `docs/release-3.2.0-sprite.md`。
 

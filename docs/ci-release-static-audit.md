@@ -63,7 +63,7 @@
 ## P2：`release-notes.yml` 会遍历并改写所有已有 Release
 
 `release-notes.yml` 在 `docs/releases/*.md` push 时遍历所有 notes 文件，对每个已存在的 tag 执行 `gh release edit`（第 29–33 行）。  
-它不改资产，但如果某个历史 notes 文件被修改，会连带改写对应旧 Release 的说明。当前没有 3.2.0-sprite 的 notes 文件，因此不会影响新发布；新增 `docs/releases/v3.2.0-sprite.md` 前要确认只改目标 tag。
+它不改资产，但如果某个历史 notes 文件被修改，会连带改写对应旧 Release 的说明。现在已有 `docs/releases/v3.2.0-sprite.md`；如果把它 push 到 `main`，`release-notes.yml` 可能在 tag 尚不存在时运行并遍历旧 notes，发布前要先确认触发条件和 tag filter，不要直接推这个文件上线。
 
 ## P3：版本硬编码的维护点
 
@@ -82,7 +82,7 @@
 | `3d-build.yml` | 只作为 CI 构建证据，不作为 Release 资产 |
 | 3.2.0-sprite 资产 | 本地构建、`verify_release_assets.py` 38 项 PASS 后手动上传 |
 | tag | `v3.2.0-sprite`，不要复用 `v3.2.0-dev` |
-| Release notes | 新增前确认文件名与 tag 一致 |
+| Release notes | 已新增 `docs/releases/v3.2.0-sprite.md`；push 前确认 `release-notes.yml` 不会连带改写旧 Release |
 | 远程状态 | 本地 `main` 领先 `origin/main` 17 个提交；推送前 remote 仍是旧 workflow 结论，审计只对本地文件负责 |
 
 ## 证据文件

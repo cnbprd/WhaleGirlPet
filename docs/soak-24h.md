@@ -67,6 +67,7 @@
 - 13:52:40 的一次性触发到达后仍只有 1 个 `whale3d.exe`，`MultipleInstances=IgnoreNew` 阻止了重复实例；该次触发记录为 `0x800710E0`（操作员或系统管理员拒绝了请求），当前 13:51:01 启动的实例继续运行
 - 13:55:35 首个 10 样本检查点：`elapsed_s=270.1`，RSS `72,736,768 B`（约 69.4 MB），3D PID 7816 存活
 - 14:19:08 中段检查：50 样本，`elapsed_s=1470.0`，RSS `24.55 MB`，CPU 平均 5.84%，FPS 平均 28.40；`stale=False`，`healthy=True`。RSS 从启动段约 69.5 MB 回落，但 `PrivateMemorySize` 约 99.4 MB，不能据此判断泄漏趋势，继续观察
+- 15:40:35 中段检查：220 样本，`elapsed_s=6570.1`，RSS 23.6 MB，CPU 6.4%，FPS 平均 27.47；日志出现单帧 `fps=3.7` / `update_us=237118.46`，随后回到 27.8 FPS，记录为观察项，详见 `docs/soak-prefinal-2026-11-27.md`
 - 任务状态：`Running`；这只是中段证据，结束前不能当 24 小时通过
 
 检查命令：

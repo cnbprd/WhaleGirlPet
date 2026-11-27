@@ -127,7 +127,7 @@ Set-Location 'F:\WhaleGirlPet'
 4. 预期：点击落到测试窗口，不触发 3D 拖拽/托盘/设置。
 5. 同时记录 `WindowFromPoint`、`WM_NCHITTEST` 返回值和测试窗口是否收到点击。
 
-判定：点击穿透失败时，不能把 `docs/sprite-layer.md` 的“卡面不抢点击”写成已通过。
+判定：点击穿透失败时，不能把 `docs/sprite-layer.md` 的“卡面不进入 `hitTest`”写成已通过。
 
 ## 3. 2D PyInstaller 冻结包
 
