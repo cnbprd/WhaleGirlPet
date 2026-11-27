@@ -147,6 +147,7 @@ $dir = 'F:\WhaleGirlPet\build\install-sprite-final'
 
 ## 5. Release 前最后一道门
 
+- 运行 `& '.\.venv\Scripts\python.exe' '3d\tools\verify_release_assets.py'`，要求 exit 0，并核对 `docs/release-asset-verify.md` 的 38 项全 PASS；
 - 重算 exe、ZIP、安装器 SHA256，与 `docs/release-3.2.0-sprite.md` 对照；
 - 确认 17 卡可见验收、点击穿透、2D 冻结包、安装器四项都有证据；
 - 再决定 tag（建议 `v3.2.0-sprite`）和是否发布；不要复用 `v3.2.0-dev`；

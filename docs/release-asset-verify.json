@@ -1,0 +1,244 @@
+{
+  "generated_at": "2026-11-27T15:00:08+08:00",
+  "release": {
+    "version": "3.2.0-sprite",
+    "tag": "v3.2.0-sprite"
+  },
+  "root": "F:\\WhaleGirlPet",
+  "expected_manifest": "F:\\WhaleGirlPet\\docs\\release-assets-3.2.0-sprite.json",
+  "ok": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "checks": [
+    {
+      "name": "期望清单 JSON",
+      "ok": true,
+      "detail": "F:\\WhaleGirlPet\\docs\\release-assets-3.2.0-sprite.json",
+      "warning": false
+    },
+    {
+      "name": "3D exe 大小",
+      "ok": true,
+      "detail": "1377792",
+      "warning": false
+    },
+    {
+      "name": "3D exe SHA256",
+      "ok": true,
+      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "warning": false
+    },
+    {
+      "name": "便携 ZIP 大小",
+      "ok": true,
+      "detail": "3187948",
+      "warning": false
+    },
+    {
+      "name": "便携 ZIP SHA256",
+      "ok": true,
+      "detail": "BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE",
+      "warning": false
+    },
+    {
+      "name": "安装器 大小",
+      "ok": true,
+      "detail": "4791434",
+      "warning": false
+    },
+    {
+      "name": "安装器 SHA256",
+      "ok": true,
+      "detail": "510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96",
+      "warning": false
+    },
+    {
+      "name": "安装器 .sha256",
+      "ok": true,
+      "detail": "hash=510D182B7358E6A1..., file=WhaleGirlPet-Setup-3.2.0-sprite.exe",
+      "warning": false
+    },
+    {
+      "name": "安装器 文件名含 3.2.0-sprite",
+      "ok": true,
+      "detail": "WhaleGirlPet-Setup-3.2.0-sprite.exe",
+      "warning": false
+    },
+    {
+      "name": "安装器 文件名不含 -dev",
+      "ok": true,
+      "detail": "WhaleGirlPet-Setup-3.2.0-sprite.exe",
+      "warning": false
+    },
+    {
+      "name": "ZIP 可读",
+      "ok": true,
+      "detail": "11 entries",
+      "warning": false
+    },
+    {
+      "name": "ZIP 路径安全",
+      "ok": true,
+      "detail": "ok",
+      "warning": false
+    },
+    {
+      "name": "ZIP whale3d.exe 大小",
+      "ok": true,
+      "detail": "1377792",
+      "warning": false
+    },
+    {
+      "name": "ZIP whale3d.exe SHA256",
+      "ok": true,
+      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/ui/pet.ico 大小",
+      "ok": true,
+      "detail": "9001",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/ui/pet.ico SHA256",
+      "ok": true,
+      "detail": "9F701BF34847EB00F0D51DAC01B61520EA58E3227A83D9E7A762AFE31303EE80",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/2d_bridge/atlas.png 大小",
+      "ok": true,
+      "detail": "357857",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/2d_bridge/atlas.png SHA256",
+      "ok": true,
+      "detail": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/2d_bridge/manifest.json 大小",
+      "ok": true,
+      "detail": "5354",
+      "warning": false
+    },
+    {
+      "name": "ZIP assets/2d_bridge/manifest.json SHA256",
+      "ok": true,
+      "detail": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D",
+      "warning": false
+    },
+    {
+      "name": "图集尺寸",
+      "ok": true,
+      "detail": "1024x512",
+      "warning": false
+    },
+    {
+      "name": "卡面 manifest JSON",
+      "ok": true,
+      "detail": "parsed",
+      "warning": false
+    },
+    {
+      "name": "卡面 sheet_size",
+      "ok": true,
+      "detail": "[1024, 512]",
+      "warning": false
+    },
+    {
+      "name": "卡面 slot_size",
+      "ok": true,
+      "detail": "160",
+      "warning": false
+    },
+    {
+      "name": "卡面数量",
+      "ok": true,
+      "detail": "17",
+      "warning": false
+    },
+    {
+      "name": "卡面 id 完整",
+      "ok": true,
+      "detail": "missing=[], extra=[]",
+      "warning": false
+    },
+    {
+      "name": "卡面 id 无重复",
+      "ok": true,
+      "detail": "17 ids",
+      "warning": false
+    },
+    {
+      "name": "卡面 rect 越界",
+      "ok": true,
+      "detail": "ok",
+      "warning": false
+    },
+    {
+      "name": "卡面 slot 越界",
+      "ok": true,
+      "detail": "ok",
+      "warning": false
+    },
+    {
+      "name": "staging 存在",
+      "ok": true,
+      "detail": "build/3d-installer-payload/3.2.0-sprite",
+      "warning": false
+    },
+    {
+      "name": "staging whale3d.exe 大小",
+      "ok": true,
+      "detail": "1377792",
+      "warning": false
+    },
+    {
+      "name": "staging whale3d.exe SHA256",
+      "ok": true,
+      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "warning": false
+    },
+    {
+      "name": "staging assets/ui/pet.ico 大小",
+      "ok": true,
+      "detail": "9001",
+      "warning": false
+    },
+    {
+      "name": "staging assets/ui/pet.ico SHA256",
+      "ok": true,
+      "detail": "9F701BF34847EB00F0D51DAC01B61520EA58E3227A83D9E7A762AFE31303EE80",
+      "warning": false
+    },
+    {
+      "name": "staging assets/2d_bridge/atlas.png 大小",
+      "ok": true,
+      "detail": "357857",
+      "warning": false
+    },
+    {
+      "name": "staging assets/2d_bridge/atlas.png SHA256",
+      "ok": true,
+      "detail": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958",
+      "warning": false
+    },
+    {
+      "name": "staging assets/2d_bridge/manifest.json 大小",
+      "ok": true,
+      "detail": "5354",
+      "warning": false
+    },
+    {
+      "name": "staging assets/2d_bridge/manifest.json SHA256",
+      "ok": true,
+      "detail": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D",
+      "warning": false
+    }
+  ]
+}

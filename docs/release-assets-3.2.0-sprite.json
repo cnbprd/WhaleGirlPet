@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "release": {
+    "version": "3.2.0-sprite",
+    "tag": "v3.2.0-sprite"
+  },
+  "assets": [
+    {
+      "name": "3D exe",
+      "path": "3d/whale3d.exe",
+      "size": 1377792,
+      "sha256": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C"
+    },
+    {
+      "name": "便携 ZIP",
+      "path": "3d/whale3d-whale-girl-v3.2-sprite.zip",
+      "size": 3187948,
+      "sha256": "BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE"
+    },
+    {
+      "name": "安装器",
+      "path": "dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe",
+      "size": 4791434,
+      "sha256": "510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96",
+      "sidecar": "dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe.sha256",
+      "must_contain": [
+        "3.2.0-sprite"
+      ],
+      "must_not_contain": [
+        "-dev"
+      ]
+    }
+  ],
+  "zip": {
+    "path": "3d/whale3d-whale-girl-v3.2-sprite.zip",
+    "required_entries": [
+      {
+        "path": "whale3d.exe",
+        "size": 1377792,
+        "sha256": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C"
+      },
+      {
+        "path": "assets/ui/pet.ico",
+        "size": 9001,
+        "sha256": "9F701BF34847EB00F0D51DAC01B61520EA58E3227A83D9E7A762AFE31303EE80"
+      },
+      {
+        "path": "assets/2d_bridge/atlas.png",
+        "size": 357857,
+        "sha256": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958"
+      },
+      {
+        "path": "assets/2d_bridge/manifest.json",
+        "size": 5354,
+        "sha256": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D"
+      }
+    ]
+  },
+  "atlas": {
+    "path": "assets/2d_bridge/atlas.png",
+    "width": 1024,
+    "height": 512
+  },
+  "card_manifest": {
+    "path": "assets/2d_bridge/manifest.json",
+    "sheet_size": [
+      1024,
+      512
+    ],
+    "slot_size": 160,
+    "card_count": 17,
+    "required_ids": [
+      "expression/idle",
+      "expression/happy",
+      "expression/eat",
+      "expression/walk",
+      "expression/sleep",
+      "expression/sleepy",
+      "expression/shy",
+      "expression/angry",
+      "expression/curious",
+      "expression/pat",
+      "action/wave",
+      "action/dance",
+      "action/type",
+      "action/balloon",
+      "action/fireworks",
+      "action/lion",
+      "action/change"
+    ]
+  },
+  "staging": {
+    "path": "build/3d-installer-payload/3.2.0-sprite",
+    "required_entries": [
+      {
+        "path": "whale3d.exe",
+        "size": 1377792,
+        "sha256": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C"
+      },
+      {
+        "path": "assets/ui/pet.ico",
+        "size": 9001,
+        "sha256": "9F701BF34847EB00F0D51DAC01B61520EA58E3227A83D9E7A762AFE31303EE80"
+      },
+      {
+        "path": "assets/2d_bridge/atlas.png",
+        "size": 357857,
+        "sha256": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958"
+      },
+      {
+        "path": "assets/2d_bridge/manifest.json",
+        "size": 5354,
+        "sha256": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D"
+      }
+    ]
+  }
+}

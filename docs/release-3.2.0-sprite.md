@@ -25,6 +25,7 @@
 - 3D 可见验收：`expression/happy`、`action/wave` 均可见；真实 `AssetBridge.action('wave', 2600)` 返回 True，3D 日志有 `source=P_2D card=action/wave`。
 - 便携 ZIP：解压到干净目录后可启动，日志 `Sprite layer: ready (...\assets\2d_bridge)`，FPS 约 27.9–29.7。
 - 安装器：静默安装到临时目录 exit 0，安装后包含 `assets\2d_bridge`，启动/卸载 exit 0。
+- 资产校验：`3d\tools\verify_release_assets.py` 38 项全 PASS（0 error / 0 warning），核对 exe、ZIP、安装器、`.sha256` sidecar、ZIP 内 2D 素材、17 卡 manifest、staging payload；报告见 `docs/release-asset-verify.md`、`docs/release-asset-verify.json`。安装器内部 payload 未解包核对。
 - CI：代码提交 `5f49dcb` 对应 run `45946695091` success；后续 docs 提交对应 run `45947183087` success。
 - 本次新增的文档/QA 提交尚未 push；远程 `main` 的 CI 结论对应 `7db57f5`，不是本地这份新增文档。
 
