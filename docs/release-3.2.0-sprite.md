@@ -26,6 +26,7 @@
 - 便携 ZIP：解压到干净目录后可启动，日志 `Sprite layer: ready (...\assets\2d_bridge)`，FPS 约 27.9–29.7。
 - 安装器：静默安装到临时目录 exit 0，安装后包含 `assets\2d_bridge`，启动/卸载 exit 0。
 - 资产校验：`3d\tools\verify_release_assets.py` 38 项全 PASS（0 error / 0 warning），核对 exe、ZIP、安装器、`.sha256` sidecar、ZIP 内 2D 素材、17 卡 manifest、staging payload；报告见 `docs/release-asset-verify.md`、`docs/release-asset-verify.json`。安装器内部 payload 未解包核对。
+- CI / Release 静态审计：3D CI 只构建 exe/ZIP，不自动发 Release；2D `release-assets.yml` 仍可手动触发且有覆盖 Release 资产风险，3.2 sprite 发布不运行它；详见 `docs/ci-release-static-audit.md`。
 - CI：代码提交 `5f49dcb` 对应 run `45946695091` success；后续 docs 提交对应 run `45947183087` success。
 - 本次新增的文档/QA 提交尚未 push；远程 `main` 的 CI 结论对应 `7db57f5`，不是本地这份新增文档。
 
