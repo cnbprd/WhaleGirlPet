@@ -38,7 +38,7 @@
 
 仓库只放源码与文档；可执行安装包走 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases)。
 
-## 当前 3D 主线（v3.2.0-dev 测试包，v3.1.2 稳定）
+## 当前 3D 主线（v3.2.0-sprite 本地候选，未上传；v3.2.0-dev 预发布，v3.1.2 稳定）
 
 这一版把“身体”先接上了，认知层还没有搬进来：
 
@@ -53,6 +53,7 @@
 | 姿态层 | v3.2 step 5 已通；可选 `gaze` / `lean` 小角度骨旋转，180/420 ms 平滑/回正；只是“转头”不是眼骨/BlendShape，见 `docs/3d-emotion-bus.md` |
 | 认知层 | Python 侧已接情绪桥：`P_USER / P_LLM / P_AUTO` 仲裁后发本机 UDP；ASR 单句输入已接 Python 输入层，不直接进 3D 渲染；TTS 仍只延长 `P_LLM` |
 | 情绪桥 | v3.2 step 3 已通；聊天发送/回复/情绪衰减三路接入，TTS 实际播放期间延长 P_LLM，3D 端日志可看到 `source=P_USER/P_LLM`，见 `docs/3d-emotion-bus.md` |
+| 2D 卡面层 | v3.2 sprite 已接 3D 主循环；17 张 `expression/*` / `action/*` 卡通过 UDP `card` + `card_ttl_ms` 触发，TTL 淡入淡出，右下角绘制；只扩窗口 region，不抢点击；见 `docs/sprite-layer.md` |
 
 细节：[`3d/README.md`](3d/README.md)、[`docs/3d-transition.md`](docs/3d-transition.md)。下面的“功能概览”是 2D 历史归档能力，不代表当前 3D 核心包已全部迁移。
 
@@ -81,7 +82,7 @@
 
 ### 方式一：3D 核心包（当前主线）
 
-前往 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases) 下载。`v3.2.0-dev` 是当前测试预发布，`v3.1.2` 仍是最新稳定版：
+前往 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases) 下载。`v3.2.0-sprite` 是本地测试候选，**尚未上传 Release**；当前预发布仍是 `v3.2.0-dev`，`v3.1.2` 仍是最新稳定版：
 
 | 文件 | 说明 |
 |---|---|
@@ -89,6 +90,11 @@
 | `WhaleGirlPet-Setup-3.2.0-dev.exe` | 当前 3.2 测试安装包；无需管理员权限，目录页可改安装位置；已做临时目录全新安装/启动/卸载和 3.1.2→3.2.0 临时升级回归，未动现有 3.1.2 安装 |
 | `whale3d-whale-girl-v3.zip` | 稳定版 3.1.2 核心包；exe 1,323,520 B，不含 3.2 的姿态平滑 |
 | `WhaleGirlPet-Setup-3.1.2.exe` | 稳定版安装包；无需管理员权限，目录页可改安装位置。默认目录按顺序：已有 3D 安装的 `InstallLocation` → 旧版 2D 3.0.27 目录 → `F:\WhaleGirlPetApp` → `%LOCALAPPDATA%\WhaleGirlPet3D`。检测到旧版 2D 时由安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.0.28 / v3.1.0 / v3.1.1 / v3.1.2 共用同一安装位置，后装覆盖升级 |
+
+本地 `v3.2.0-sprite` 候选（未上传 Release，仅本机验收）：
+
+- 便携包：`3d\whale3d-whale-girl-v3.2-sprite.zip`，3,187,948 B，含 `assets/2d_bridge`。
+- 安装器：`dist\3d\WhaleGirlPet-Setup-3.2.0-sprite.exe`，4,791,434 B；完整校验值和发布前 gate 见 `docs/release-3.2.0-sprite.md`。
 
 安装包当前未签名；SmartScreen 若提示“未知发布者”，请先对照同名 `.sha256` 校验，再选择“更多信息 → 仍要运行”。受信任代码签名方案和接入条件见 [`docs/code-signing.md`](docs/code-signing.md)。
 
@@ -118,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File 3d\build.ps1
 .\3d\whale3d.exe
 ```
 
-工具链、SDL3、ozz 静态库和模型说明见 [`3d/README.md`](3d/README.md)。`3d\build.ps1` 只编译 `main.cpp` / `model.cpp` / `shell_ui.cpp`，不依赖 Qt 或 Python。
+工具链、SDL3、ozz 静态库和模型说明见 [`3d/README.md`](3d/README.md)。`3d\build.ps1` 编译 `main.cpp` / `model.cpp` / `shell_ui.cpp` / `sprite.cpp`，不依赖 Qt 或 Python。
 
 ### 方式三：2D 源码运行（历史归档）
 

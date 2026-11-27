@@ -2,7 +2,8 @@
 
 日期：2026-11-27  
 输入：`assets/2d_bridge/atlas.png` + `assets/2d_bridge/manifest.json`  
-工具：`3d/tools/check_2d_atlas.py`（CPU-only，不启动 3D）
+工具：`3d/tools/check_2d_atlas.py`（CPU-only，不启动 3D）  
+配套结构检查：`docs/2d-manifest-qa.md`
 
 - 图集尺寸：1024x512
 - 卡面数：17；失败：0

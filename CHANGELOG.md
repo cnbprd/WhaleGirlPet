@@ -2,6 +2,21 @@
 
 只记录「用户能感知的变化」与对应的实测结果；内部重构不单独列。
 
+## v3.2.0-sprite（2026-11-27，本地候选，未发布）
+
+把 2D 表情/动作卡面真正接进 3D 渲染循环；24 小时浸泡由任务计划程序独立运行，结束前不把这一版标为长稳通过。
+
+| 项 | 改动 | 实测 |
+|---|---|---|
+| 1 卡面接线 | `3d/sprite.h/.cpp` 新增屏幕空间卡面层；`3d/main.cpp` 初始化、UDP `card`/`card_ttl_ms` 接线、每帧 `update/draw`、窗口 region 扩展 | 日志 `Sprite layer: ready (...\assets\2d_bridge)`；真实 `AssetBridge.action('wave', 2600)` → `source=P_2D card=action/wave`；`expression/happy` 与 `action/wave` 可见 |
+| 2 三个渲染问题 | 修 UV 子矩形缺失（`uUvRect`）、模型遗留 culling（绘制前后保存/恢复）、`stb_image` 与 GL 纹理原点导致的上下颠倒 | 强制 alpha 帧从整张图集小卡网格变为单卡；纯红 quad 证明位置正确；卡面正向、右下角约 127×220 |
+| 3 图集与协议 | `assets/2d_bridge/atlas.png` 1024×512、17 张 1x 卡；`manifest.json`；`check_2d_atlas.py`、`check_2d_manifest.py`、`emotion_bus_probe.cpp`、`test_protocol_fuzz.py` | 图集 QA 17/17：`max_alpha_mae=0.0`、`max_rgb_mae=0.005`、`max_coverage_delta=0.0`；manifest 17 卡、0 error、0 warning；协议 fuzz 通过 |
+| 4 包与安装器 | `WhaleGirlPet.spec` datas 补 `assets/2d_bridge`；CI 的 ZIP 打包补复制；版本断言 `3.2.0.0`；生成 sprite 便携包与安装器 | exe 1,377,792 B，SHA256 `3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C`；ZIP 3,187,948 B，SHA256 `BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE`；安装器 4,791,434 B，SHA256 `510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96`；静默安装/启动/卸载 exit 0 |
+| 5 CI | 代码提交 `5f49dcb` 接 sprite；GitHub Actions 3D 构建 | run `45946695091` success；docs run `45947183087` success；CI ZIP 3,188,249 B，内部 exe 1,378,304 B，含 `assets/2d_bridge` |
+| 6 24 小时浸泡 | 旧 agent-session 轮 8h26m 被外部终止；改用 Windows 任务计划程序 `WhaleGirlSoak24hSprite`，标签 `soak_24h_sprite_task` | 2026-11-27 13:51:03 启动，预计 2026-11-28 13:51:03 结束；当前 `status=running`，10/40/50 样本检查通过，`healthy=True`；**不是 24h 结论** |
+
+边界：17 张卡只对 `expression/happy`、`action/wave` 做了 3D 可见验收，其余完成图集级/清单级离线 QA；卡面点击穿透尚未用真实坐标采样；2D PyInstaller 冻结包尚未打包后启动回归；安装器未上传 Release。sprite 是屏幕空间装饰，不替换 3D 骨骼/材质，也不进入点击命中区。发布前 gate 见 `docs/release-3.2.0-sprite.md`。
+
 ## v3.2.0-dev（2026-11-26 / 11-27，未发布）
 
 3D 路线进入 v3.2.x 的第一小步：本机情绪参数总线打通 `emotion → face`，认知层仍未进入渲染进程。

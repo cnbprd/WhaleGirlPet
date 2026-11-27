@@ -21,7 +21,7 @@
 
 ## 已验证
 
-- 图集 QA：17/17 卡通过，`max_alpha_mae=0.0`、`max_rgb_mae=0.005`、`max_coverage_delta=0.0`；见 `docs/2d-atlas-card-qa.md`。
+- 图集 QA：17/17 卡通过，`max_alpha_mae=0.0`、`max_rgb_mae=0.005`、`max_coverage_delta=0.0`；manifest 结构检查 17 卡、0 error、0 warning；见 `docs/2d-atlas-card-qa.md`、`docs/2d-manifest-qa.md`。
 - 3D 可见验收：`expression/happy`、`action/wave` 均可见；真实 `AssetBridge.action('wave', 2600)` 返回 True，3D 日志有 `source=P_2D card=action/wave`。
 - 便携 ZIP：解压到干净目录后可启动，日志 `Sprite layer: ready (...\assets\2d_bridge)`，FPS 约 27.9–29.7。
 - 安装器：静默安装到临时目录 exit 0，安装后包含 `assets\2d_bridge`，启动/卸载 exit 0。
