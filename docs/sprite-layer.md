@@ -47,6 +47,7 @@ sprite.draw(pixelW, pixelH);    // 命中区 glReadPixels 之后
 - 真实 2D 端 `app.asset_bridge.AssetBridge`：读取 17 张卡，`bridge.action('wave', 2600)` 返回 True，3D 日志 `source=P_2D card=action/wave`、`Sprite card: action/wave ttl=2600ms`；截图 `docs/_3d_asset_bridge_action.png` 可见 wave 卡面。
 - 独立打包目录：`build/package-sprite` 内带 `assets/2d_bridge`，启动日志 `Sprite layer: ready (...\assets/2d_bridge)`，FPS 27.9–29.7，截图 `docs/_3d_longrun_sprite_package_mid.png`。
 - 从新 ZIP 解压到干净目录后再次启动：`Sprite layer: ready (...\assets/2d_bridge)`，强制 `expression/happy` 与 UDP `action/wave` 都可见；`action/wave` 的 TTL 2.6 s 到期后最终帧恢复无卡面，说明 TTL 和 window region 收缩正常。
+- 安装器 `WhaleGirlPet-Setup-3.2.0-sprite.exe`：静默安装到临时目录 exit 0，`assets\2d_bridge` 被正确写入；安装后的 `whale3d.exe` 日志 `Sprite layer: ready`，强制 happy 卡面可见，27.8–29.5 FPS；卸载 exit 0。
 - 未开卡面时窗口 region 仍只覆盖模型；开卡面时只额外扩出卡面矩形，点击 mask 不变。
 - 调试开关 `WHALE3D_SPRITE_SOLID`、`WHALE3D_SPRITE_OPAQUE`、`WHALE3D_SPRITE_NO_REGION` 已从产品代码移除；只保留 `WHALE3D_SPRITE_TRACE` 做首帧 rect 日志，以及 `WHALE3D_CARD` / `WHALE3D_CARD_TTL` 作为开发期强制卡面。
 
