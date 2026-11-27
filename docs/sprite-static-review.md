@@ -64,6 +64,16 @@
 - `showCard` 的 TTL clamp 是 `0.2–10 s`，但 `main.cpp` 的环境变量只接受 `200–10000 ms`；两个入口范围一致，没问题。
 - `draw` 的 `lastRect` 用 `pixelHeight - py - cardH` 计算 top-left，和 `ShellUi` 的 top-left 坐标一致；静态看没有上下翻转错误。
 
+## P1 补丁草稿
+
+2026-11-27 已在独立 worktree 准备 P1 补丁，未合入 `main`、未编译：
+
+- worktree：`F:\WhaleGirlPet\build\worktrees\fix-sprite-parser`
+- 分支：`fix/sprite-parser`
+- commit：`ee747c1`（`fix(sprite): validate manifest fields and restore GL state`）
+- 内容：`loadAtlas` 全段 `try/catch`、字段/长度/重复 id 校验、纹理尺寸检查前移；`draw` 保存并恢复 depth/cull/blend/program/VAO/active texture/2D texture binding。
+- 等 24h 结束再编译验证，不覆盖当前 `3d\whale3d.exe`。
+
 ## 未覆盖的实测项
 
 - 17 张卡里只有 `expression/happy`、`action/wave` 做过 3D 可见验收。

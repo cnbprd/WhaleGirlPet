@@ -171,8 +171,12 @@ bool ShellUi::init(SDL_Window* window, Model* model, const std::string& iconPath
     }
 
     if (!addTrayIcon()) {
-        SDL_Log("ShellUi: Shell_NotifyIcon(NIM_ADD) failed");
-        return false;
+        // The window subclass and hit-test are already active. Treat a
+        // missing tray (for example Explorer not ready yet) as a degraded
+        // shell instead of returning false and leaving main with a half-
+        // initialized UI. TaskbarCreated will retry the icon later.
+        SDL_Log("ShellUi: tray unavailable; continuing with window hit-test");
+        return true;
     }
     promoteTrayIcon();
 
@@ -259,7 +263,16 @@ void ShellUi::updateWindowRegion(const unsigned char* rgba, int width, int heigh
             runs.push_back(extra);
         }
     }
-    if (runs.empty()) return;
+    if (runs.empty()) {
+        // Do not leave the previous region installed when the frame has no
+        // opaque pixels at all. Otherwise a fully transparent frame keeps the
+        // old window shape and can still receive clicks.
+        HRGN empty = CreateRectRgn(0, 0, 0, 0);
+        if (empty) {
+            if (!SetWindowRgn(hwnd_, empty, TRUE)) DeleteObject(empty);
+        }
+        return;
+    }
 
     const size_t regionSize = sizeof(RGNDATAHEADER) + runs.size() * sizeof(RECT);
     std::vector<unsigned char> buffer(regionSize);

@@ -53,7 +53,7 @@ sprite.draw(pixelW, pixelH);    // 命中区 glReadPixels 之后
 
 ## 边界
 
-- 没有做卡面点击/拖拽；它画在命中区采样之后，天然不抢点击。
+- 没有做卡面点击/拖拽；设计上它画在命中区采样之后、不进入 `hitTest`；真实点击穿透仍待坐标采样。
 - 没有做多卡队列/动画；最新卡覆盖旧卡，过期隐藏，和 `CardArbiter` 的语义一致。
 - 没有把卡面接到 3D 骨骼/材质；这是屏幕空间浮层，不是“2D 皮肤变 3D 服装”。
 - 只支持 Windows + OpenGL 3.3 core；GL 入口点全部用 `SDL_GL_GetProcAddress` 加载，缺一个就 `init` 失败并返回错误。

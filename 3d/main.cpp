@@ -114,6 +114,19 @@ int main(int argc, char** argv) {
         return runRelaunchHelper(argc, argv);
     }
 
+    // One desktop pet per user session.  Without this guard a second direct
+    // launch can create another window/tray icon and race the UDP emotion
+    // socket (which intentionally enables address reuse).
+    SetLastError(0);
+    HANDLE instanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\WhaleGirlPet3D");
+    if (!instanceMutex) {
+        return 1;
+    }
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(instanceMutex);
+        return 0;
+    }
+
     initLog();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -256,21 +269,24 @@ int main(int argc, char** argv) {
             if (parentManifest.good()) spriteBase = parentBase;
         }
     }
-    if (sprite.init(spriteBase)) {
+    const bool spriteReady = sprite.init(spriteBase);
+    if (spriteReady) {
         SDL_Log("Sprite layer: ready (%sassets/2d_bridge)", spriteBase.c_str());
     } else {
         SDL_Log("Sprite layer unavailable: %s", sprite.error().c_str());
     }
-    if (const char* card = std::getenv("WHALE3D_CARD")) {
-        float ttlMs = 5000.0f;
-        if (const char* rawTtl = std::getenv("WHALE3D_CARD_TTL")) {
-            const float parsed = static_cast<float>(std::atof(rawTtl));
-            if (parsed >= 200.0f && parsed <= 10000.0f) ttlMs = parsed;
-        }
-        if (sprite.showCard(card, ttlMs)) {
-            SDL_Log("Sprite forced: %s ttl=%.0fms", card, ttlMs);
-        } else {
-            SDL_Log("Sprite card rejected: %s", card);
+    if (spriteReady) {
+        if (const char* card = std::getenv("WHALE3D_CARD")) {
+            float ttlMs = 5000.0f;
+            if (const char* rawTtl = std::getenv("WHALE3D_CARD_TTL")) {
+                const float parsed = static_cast<float>(std::atof(rawTtl));
+                if (parsed >= 200.0f && parsed <= 10000.0f) ttlMs = parsed;
+            }
+            if (sprite.showCard(card, ttlMs)) {
+                SDL_Log("Sprite forced: %s ttl=%.0fms", card, ttlMs);
+            } else {
+                SDL_Log("Sprite card rejected: %s", card);
+            }
         }
     }
 
@@ -363,7 +379,7 @@ int main(int argc, char** argv) {
                 SDL_Log("Emotion ignored: %s (raw %.80s)", emotion.emotion.c_str(),
                         emotion.raw.c_str());
             }
-            if (!emotion.card.empty() && emotion.cardTtlMs > 0.0f) {
+            if (spriteReady && !emotion.card.empty() && emotion.cardTtlMs > 0.0f) {
                 if (sprite.showCard(emotion.card, emotion.cardTtlMs)) {
                     SDL_Log("Sprite card: %s ttl=%.0fms", emotion.card.c_str(),
                             emotion.cardTtlMs);

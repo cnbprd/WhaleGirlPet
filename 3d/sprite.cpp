@@ -220,8 +220,9 @@ struct SpriteLayer::Impl {
     float ttl = 0.0f;
     float age = 0.0f;
     PixelRect lastRect;
+    bool ready = false;
 
-    bool active() const { return !current.empty() && age < ttl; }
+    bool active() const { return ready && !current.empty() && age < ttl; }
 
     void clearGl() {
         if (vbo && gl.deleteBuffers) gl.deleteBuffers(1, &vbo);
@@ -229,6 +230,7 @@ struct SpriteLayer::Impl {
         if (program && gl.deleteProgram) gl.deleteProgram(program);
         if (texture) glDeleteTextures(1, &texture);
         vbo = vao = program = texture = 0;
+        ready = false;
     }
 
     GLuint compile(GLenum type, const char* src, std::string& err) {
@@ -359,6 +361,7 @@ SpriteLayer::~SpriteLayer() {
 
 bool SpriteLayer::init(const std::string& assetBase) {
     if (!impl_) return false;
+    impl_->ready = false;
     impl_->error.clear();
     if (!impl_->gl.load()) {
         impl_->error = "missing GL entry point";
@@ -371,8 +374,14 @@ bool SpriteLayer::init(const std::string& assetBase) {
     }
     if (!impl_->loadAtlas(assetBase, impl_->error)) {
         impl_->clearGl();
+        impl_->cards.clear();
+        impl_->current.clear();
+        impl_->ttl = 0.0f;
+        impl_->age = 0.0f;
+        impl_->lastRect = PixelRect{};
         return false;
     }
+    impl_->ready = true;
     return true;
 }
 
@@ -383,10 +392,11 @@ void SpriteLayer::shutdown() {
     impl_->current.clear();
     impl_->ttl = 0.0f;
     impl_->age = 0.0f;
+    impl_->lastRect = PixelRect{};
 }
 
 bool SpriteLayer::showCard(const std::string& cardId, float ttlMs) {
-    if (!impl_ || cardId.empty()) return false;
+    if (!impl_ || !impl_->ready || cardId.empty()) return false;
     auto it = impl_->cards.find(cardId);
     if (it == impl_->cards.end()) return false;
     impl_->current = cardId;
@@ -401,7 +411,7 @@ void SpriteLayer::update(float dtSeconds) {
 }
 
 void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
-    if (!impl_ || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
+    if (!impl_ || !impl_->ready || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
     const auto& rect = impl_->cards[impl_->current];
     const float cardH = std::min(220.0f, pixelHeight * 0.36f);
     const float cardW = cardH * static_cast<float>(rect.w) / static_cast<float>(rect.h);
@@ -488,7 +498,7 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
 }
 
 bool SpriteLayer::visible() const {
-    return impl_ && impl_->active();
+    return impl_ && impl_->ready && impl_->active();
 }
 
 const SpriteLayer::PixelRect& SpriteLayer::lastRect() const {

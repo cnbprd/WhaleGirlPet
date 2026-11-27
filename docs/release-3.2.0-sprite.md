@@ -25,6 +25,8 @@
 - 3D 可见验收：`expression/happy`、`action/wave` 均可见；真实 `AssetBridge.action('wave', 2600)` 返回 True，3D 日志有 `source=P_2D card=action/wave`。
 - 便携 ZIP：解压到干净目录后可启动，日志 `Sprite layer: ready (...\assets\2d_bridge)`，FPS 约 27.9–29.7。
 - 安装器：静默安装到临时目录 exit 0，安装后包含 `assets\2d_bridge`，启动/卸载 exit 0。
+- 资产校验：`3d\tools\verify_release_assets.py` 38 项全 PASS（0 error / 0 warning），核对 exe、ZIP、安装器、`.sha256` sidecar、ZIP 内 2D 素材、17 卡 manifest、staging payload；报告见 `docs/release-asset-verify.md`、`docs/release-asset-verify.json`。安装器内部 payload 未解包核对。
+- CI / Release 静态审计：3D CI 只构建 exe/ZIP，不自动发 Release；2D `release-assets.yml` 仍可手动触发且有覆盖 Release 资产风险，3.2 sprite 发布不运行它；详见 `docs/ci-release-static-audit.md`。
 - CI：代码提交 `5f49dcb` 对应 run `45946695091` success；后续 docs 提交对应 run `45947183087` success。
 - 本次新增的文档/QA 提交尚未 push；远程 `main` 的 CI 结论对应 `7db57f5`，不是本地这份新增文档。
 
@@ -46,12 +48,14 @@
 
 ## 发布文案草稿
 
+正式 Release notes 草稿已放到 `docs/releases/v3.2.0-sprite.md`；下面保留短版文案。
+
 ```
 鲸鱼娘桌宠 3.2.0-sprite
 
 这一版把 2D 表情/动作卡面真正接进 3D 渲染循环：
 - 17 张卡面通过 UDP card / card_ttl_ms 触发，支持 TTL 淡入淡出
-- 卡面只扩展窗口 region，不抢点击，不改变 3D 命中区
+- 卡面只扩展窗口 region，不进入 `hitTest`，不改变 3D 命中区；真实点击穿透仍待采样
 - 便携包与安装器均内置 assets/2d_bridge，安装后即可显示卡面
 - 修复 UV 子矩形、culling、纹理方向三个接线问题
 
