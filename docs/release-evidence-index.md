@@ -15,6 +15,7 @@
 | 运行中预检 | `docs/soak-prefinal-2026-11-27.md` | 已验证 `exit 3` |
 | 浸泡记录 | `docs/soak-24h.md` | 已更新到 230 样本 |
 | 失败取证 | `3d/tools/collect_soak_evidence.ps1`、`docs/soak-evidence.md` | 工具已 smoke test |
+| 工具链预检 | `docs/toolchain-preflight-2026-11-27.md` | 路径/版本/磁盘 PASS；未构建 |
 
 当前低 FPS 观察项：日志只有 1 行 `fps=3.7` / `update_us=237118.46`，随后回到 27.8；不是连续降速。
 
