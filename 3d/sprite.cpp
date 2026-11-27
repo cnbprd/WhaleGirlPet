@@ -47,6 +47,30 @@
 #ifndef GL_TRIANGLE_STRIP
 #define GL_TRIANGLE_STRIP 0x0005
 #endif
+#ifndef GL_BLEND_SRC_RGB
+#define GL_BLEND_SRC_RGB 0x80C9
+#endif
+#ifndef GL_BLEND_DST_RGB
+#define GL_BLEND_DST_RGB 0x80C8
+#endif
+#ifndef GL_BLEND_SRC_ALPHA
+#define GL_BLEND_SRC_ALPHA 0x80CB
+#endif
+#ifndef GL_BLEND_DST_ALPHA
+#define GL_BLEND_DST_ALPHA 0x80CA
+#endif
+#ifndef GL_ACTIVE_TEXTURE
+#define GL_ACTIVE_TEXTURE 0x84E0
+#endif
+#ifndef GL_TEXTURE_BINDING_2D
+#define GL_TEXTURE_BINDING_2D 0x8069
+#endif
+#ifndef GL_CURRENT_PROGRAM
+#define GL_CURRENT_PROGRAM 0x8B8D
+#endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#endif
 
 typedef ptrdiff_t GLsizeiptr;
 typedef char GLchar;
@@ -78,6 +102,7 @@ typedef void (APIENTRY* PFNGLUNIFORM1F)(GLint, GLfloat);
 typedef void (APIENTRY* PFNGLUNIFORM4F)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (APIENTRY* PFNGLACTIVETEXTURE)(GLenum);
 typedef void (APIENTRY* PFNGLGENERATEMIPMAP)(GLenum);
+typedef void (APIENTRY* PFNGLBLENDFUNCSEPARATE)(GLenum, GLenum, GLenum, GLenum);
 
 namespace {
 struct Gl {
@@ -109,6 +134,7 @@ struct Gl {
     PFNGLUNIFORM4F uniform4f = nullptr;
     PFNGLACTIVETEXTURE activeTexture = nullptr;
     PFNGLGENERATEMIPMAP generateMipmap = nullptr;
+    PFNGLBLENDFUNCSEPARATE blendFuncSeparate = nullptr;
 
     template <typename T>
     bool loadOne(T& fn, const char* name) {
@@ -144,7 +170,8 @@ struct Gl {
             && loadOne(uniform1f, "glUniform1f")
             && loadOne(uniform4f, "glUniform4f")
             && loadOne(activeTexture, "glActiveTexture")
-            && loadOne(generateMipmap, "glGenerateMipmap");
+            && loadOne(generateMipmap, "glGenerateMipmap")
+            && loadOne(blendFuncSeparate, "glBlendFuncSeparate");
     }
 };
 
@@ -289,61 +316,96 @@ struct SpriteLayer::Impl {
             err = "manifest missing: " + manifestPath;
             return false;
         }
-        nlohmann::json j;
+        cards.clear();
         try {
+            nlohmann::json j;
             file >> j;
-        } catch (const std::exception& e) {
-            err = std::string("manifest JSON: ") + e.what();
-            return false;
-        }
-        const int sheetW = j.at("sheet_size")[0].get<int>();
-        const int sheetH = j.at("sheet_size")[1].get<int>();
-        for (const auto& entry : j.at("cards")) {
-            const std::string id = entry.at("id").get<std::string>();
-            const auto& r = entry.at("rect");
-            const int x = r[0].get<int>();
-            const int y = r[1].get<int>();
-            const int w = r[2].get<int>();
-            const int h = r[3].get<int>();
-            if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > sheetW || y + h > sheetH) {
-                err = "card outside atlas: " + id;
+            const auto& size = j.at("sheet_size");
+            if (!size.is_array() || size.size() != 2) {
+                err = "sheet_size must be two integers";
                 return false;
             }
-            Rect rect;
-            rect.u0 = static_cast<float>(x) / sheetW;
-            rect.u1 = static_cast<float>(x + w) / sheetW;
-            // stb rows are top-down and the first uploaded row lands at GL
-            // texture v=0; keep v0 as the image top and v1 as the image bottom.
-            rect.v0 = static_cast<float>(y) / sheetH;
-            rect.v1 = static_cast<float>(y + h) / sheetH;
-            rect.w = w;
-            rect.h = h;
-            cards[id] = rect;
-        }
+            const int sheetW = size[0].get<int>();
+            const int sheetH = size[1].get<int>();
+            if (sheetW <= 0 || sheetH <= 0) {
+                err = "sheet_size must be positive";
+                return false;
+            }
+            const auto& cardEntries = j.at("cards");
+            if (!cardEntries.is_array() || cardEntries.empty()) {
+                err = "cards must be a non-empty array";
+                return false;
+            }
+            for (const auto& entry : cardEntries) {
+                const std::string id = entry.at("id").get<std::string>();
+                if (id.empty()) {
+                    err = "empty card id";
+                    return false;
+                }
+                if (cards.find(id) != cards.end()) {
+                    err = "duplicate card id: " + id;
+                    return false;
+                }
+                const auto& r = entry.at("rect");
+                if (!r.is_array() || r.size() != 4) {
+                    err = "card rect must be four integers: " + id;
+                    return false;
+                }
+                const int x = r[0].get<int>();
+                const int y = r[1].get<int>();
+                const int w = r[2].get<int>();
+                const int h = r[3].get<int>();
+                if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > sheetW || y + h > sheetH) {
+                    err = "card outside atlas: " + id;
+                    return false;
+                }
+                Rect rect;
+                rect.u0 = static_cast<float>(x) / sheetW;
+                rect.u1 = static_cast<float>(x + w) / sheetW;
+                // stb rows are top-down and the first uploaded row lands at GL
+                // texture v=0; keep v0 as the image top and v1 as the image bottom.
+                rect.v0 = static_cast<float>(y) / sheetH;
+                rect.v1 = static_cast<float>(y + h) / sheetH;
+                rect.w = w;
+                rect.h = h;
+                cards[id] = rect;
+            }
 
-        const std::string atlasPath = assetBase + j.at("sheet").get<std::string>();
-        int w = 0, h = 0, n = 0;
-        stbi_set_flip_vertically_on_load(0);
-        unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
-        if (!pixels) {
-            err = "atlas decode failed: " + atlasPath;
+            const std::string sheetRel = j.at("sheet").get<std::string>();
+            if (sheetRel.empty()) {
+                err = "sheet path missing";
+                return false;
+            }
+            const std::string atlasPath = assetBase + sheetRel;
+            int w = 0, h = 0, n = 0;
+            stbi_set_flip_vertically_on_load(0);
+            unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
+            if (!pixels) {
+                err = "atlas decode failed: " + atlasPath;
+                return false;
+            }
+            if (w != sheetW || h != sheetH) {
+                stbi_image_free(pixels);
+                err = "atlas size mismatch: actual " + std::to_string(w) + "x"
+                    + std::to_string(h) + ", manifest " + std::to_string(sheetW)
+                    + "x" + std::to_string(sheetH);
+                return false;
+            }
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
+                         GL_UNSIGNED_BYTE, pixels);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            stbi_image_free(pixels);
+            return true;
+        } catch (const std::exception& e) {
+            err = std::string("manifest parse: ") + e.what();
             return false;
         }
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
-                     GL_UNSIGNED_BYTE, pixels);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        stbi_image_free(pixels);
-        if (w != sheetW || h != sheetH) {
-            err = "atlas size mismatch";
-            return false;
-        }
-        return true;
     }
 };
 
@@ -418,6 +480,29 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
     const float alpha = std::min({1.0f, impl_->age / fadeIn,
                                   (impl_->ttl - impl_->age) / fadeOut});
 
+    // Save the states this overlay changes. The caller may have depth testing
+    // off or use a different blend function; restore instead of assuming the
+    // model's state.
+    const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean blendEnabled = glIsEnabled(GL_BLEND);
+    GLint prevProgram = 0;
+    GLint prevVao = 0;
+    GLint prevTexture = 0;
+    GLint prevActive = GL_TEXTURE0;
+    GLint srcRgb = GL_SRC_ALPHA;
+    GLint dstRgb = GL_ONE_MINUS_SRC_ALPHA;
+    GLint srcAlpha = GL_SRC_ALPHA;
+    GLint dstAlpha = GL_ONE_MINUS_SRC_ALPHA;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActive);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &srcRgb);
+    glGetIntegerv(GL_BLEND_DST_RGB, &dstRgb);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &srcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &dstAlpha);
+
     impl_->gl.useProgram(impl_->program);
     impl_->gl.uniform4f(impl_->uRect, ndcX, ndcY, ndcW, ndcH);
     impl_->gl.uniform4f(impl_->uUvRect, rect.u0, rect.v1,
@@ -439,17 +524,22 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
         traced = true;
     }
     glDisable(GL_DEPTH_TEST);
-    const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     impl_->gl.bindVertexArray(impl_->vao);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    impl_->gl.bindVertexArray(0);
-    if (cullFace) glEnable(GL_CULL_FACE);
+    impl_->gl.bindVertexArray(prevVao);
+    impl_->gl.useProgram(prevProgram);
+    impl_->gl.activeTexture(prevActive);
+    glBindTexture(GL_TEXTURE_2D, prevTexture);
+    if (blendEnabled) glEnable(GL_BLEND);
+    else glDisable(GL_BLEND);
+    impl_->gl.blendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+    if (cullEnabled) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
-    impl_->gl.useProgram(0);
+    if (depthEnabled) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
     if (std::getenv("WHALE3D_SPRITE_TRACE")) {
         const GLenum err = glGetError();
         if (err != GL_NO_ERROR) SDL_Log("Sprite draw GL error: 0x%x", err);
