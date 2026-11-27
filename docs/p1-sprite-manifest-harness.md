@@ -136,3 +136,4 @@ $gxx = (Get-ChildItem 'F:\WhaleGirlPet\.toolchains\w64devkit' -Recurse -Filter '
 - 夹具：`310259f`，17 条，lint PASS；
 - P1 补丁：`ee747c1`，未编译；
 - 本次实现：`sprite_manifest.*`、`test_sprite_manifest.cpp`、`build.ps1` source 列表已写入分支；未编译、未产出 exe。
+- 静态自审：`docs/p1-static-self-review.md`，未发现阻断项；编译/17 条真实回归仍未发生。
