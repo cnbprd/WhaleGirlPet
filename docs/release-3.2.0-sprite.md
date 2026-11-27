@@ -48,6 +48,8 @@
 
 ## 发布文案草稿
 
+正式 Release notes 草稿已放到 `docs/releases/v3.2.0-sprite.md`；下面保留短版文案。
+
 ```
 鲸鱼娘桌宠 3.2.0-sprite
 
