@@ -21,7 +21,22 @@ Set-Location 'F:\WhaleGirlPet'
 
 ## 1. 17 张卡可见验收
 
-浸泡结束后可以正常启动一个 3D 实例。建议用 `emotion_longrun.py` 逐卡跑 8 秒，强制显示单卡并保存可见帧：
+单实例批处理（推荐）：
+
+```powershell
+Set-Location 'F:\WhaleGirlPet'
+& '.\.venv\Scripts\python.exe' '3d\tools\check_cards_visible.py'
+```
+
+脚本会先拒绝在已有 `whale3d.exe` 时启动，确保只开一个临时实例；然后按顺序发送 17 张卡，保存整窗截图和卡面裁图，生成：
+
+- `docs/_3d_visible_17_cards.png`（contact sheet）
+- `docs/2d-card-visible-qa.json`（逐卡文件与坐标）
+- `docs/_3d_visible_card_<id>.png` / `..._crop.png`
+
+预检状态（2026-11-27）：已通过 `py_compile`、`--help`；用当前 PID 7816 验证时脚本正确拒绝启动，没有生成第二个 3D。
+
+备选：用 `emotion_longrun.py` 逐卡跑 8 秒，强制显示单卡并保存可见帧：
 
 ```powershell
 $env:WHALE3D_LONGRUN_SECONDS='8'
