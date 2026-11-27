@@ -1,6 +1,6 @@
 # 24 小时 3D 浸泡
 
-状态：**提前结束；不是 24 小时结论。** 2026-11-27 12:44:05 左右 3D 进程 PID 15080 退出，实际约 8 小时 26 分；最后一个检查点仍是 `status=running`，没有 `done` / 最终报告。
+状态：**旧轮提前结束；当前有效轮是任务计划程序轮，仍在进行中。** 2026-11-27 12:44:05 左右旧 3D 进程 PID 15080 退出，实际约 8 小时 26 分；最后一个检查点仍是 `status=running`，没有 `done` / 最终报告。当前有效轮见“任务计划程序轮”。
 
 - 启动：2026-11-27 04:18:14 +0800（Asia/Shanghai）
 - 预计结束：2026-11-28 04:18:14 +0800
@@ -44,15 +44,38 @@
 - Windows Application 日志在 12:44 前后没有 `whale3d.exe` 的崩溃事件；原因无法仅凭现有日志确定，可能是窗口被关闭/进程被终止/环境清理，不能归因于某一条代码路径。
 - 因此这轮**不能**当 24 小时通过；8 小时 26 分的数据可保留作中段趋势证据，但 24 小时结论要重新跑一轮。
 
-## 新一轮：带 sprite 的生产 exe（进行中）
+## 新一轮：带 sprite 的生产 exe（已被任务计划程序轮取代）
 
-旧轮在 12:44 提前结束后没有重启。2026-11-27 13:41:47 +0800 用重建的 `3d/whale3d.exe`（1,377,792 B，含 sprite 接线）启动新一轮 24 小时离屏浸泡：
+2026-11-27 13:41:47 +0800 用重建的 `3d/whale3d.exe`（1,377,792 B，含 sprite 接线）启动过一轮 24 小时离屏浸泡：
 
-- 启动：2026-11-27 13:41:47 +0800；预计结束：2026-11-28 13:41:47 +0800
-- 3D 进程 PID：31812；Python 启动器 PID：27352
+- 启动：2026-11-27 13:41:47 +0800；3D PID 31812；Python 启动器 PID 27352
 - 标签：`soak_24h_sprite`；检查点 `3d/longrun_soak_24h_sprite.json`；日志 `3d/longrun_soak_24h_sprite.log`
 - 启动日志：`Sprite layer: ready (F:\WhaleGirlPet\3d\../assets/2d_bridge)`、`Hit mask ready: 420x620 center_alpha=255`、FPS 约 29
-- 状态：`running`；这只是中段证据，结束前不能当 24 小时通过。
+- 该轮仍挂在 agent 会话进程树 `pwsh -> python 27352 -> python 10312 -> whale3d 31812` 下，存在被宿主/任务切换截断的风险。2026-11-27 13:51 左右已主动结束，检查点状态标记为 `aborted_by_agent_session_restart`，不计入 24 小时结论。
+
+## 任务计划程序轮（当前有效）
+
+为避免再次被 agent 会话清理截断，改用 Windows 任务计划程序启动，进程树不再以当前 `pwsh` 为祖先：
+
+- 计划任务：`WhaleGirlSoak24hSprite`
+- 启动包装脚本：`3d/tools/soak_24h_sprite_task.cmd`（`build/soak_24h_sprite_task.cmd` 是同一份临时副本）
+- 启动：2026-11-27 13:51:03 +0800；3D PID 7816；Python 启动器 PID 22720
+- 标签：`soak_24h_sprite_task`；检查点 `3d/longrun_soak_24h_sprite_task.json`；日志 `3d/longrun_soak_24h_sprite_task.log`
+- 预计结束：2026-11-28 13:51:03 +0800；时长 86,400 s；采样间隔 30 s；离屏模式
+- 进程树：`svchost.exe (2784) -> cmd.exe (32232) -> python.exe (22720) -> python.exe (11864) -> whale3d.exe (7816)`；任务服务不是 agent 子进程
+- 启动日志：`Sprite layer: ready (F:\WhaleGirlPet\3d\../assets/2d_bridge)`、`Hit mask ready: 420x620 center_alpha=255`、FPS 约 29
+- 13:52:40 的一次性触发到达后仍只有 1 个 `whale3d.exe`，`MultipleInstances=IgnoreNew` 阻止了重复实例；该次触发记录为 `0x800710E0`（操作员或系统管理员拒绝了请求），当前 13:51:01 启动的实例继续运行
+- 13:55:35 首个 10 样本检查点：`elapsed_s=270.1`，RSS `72,736,768 B`（约 69.4 MB），3D PID 7816 存活
+- 任务状态：`Running`；这只是中段证据，结束前不能当 24 小时通过
+
+检查命令：
+
+```powershell
+Get-ScheduledTaskInfo -TaskName 'WhaleGirlSoak24hSprite'
+Get-Content 'F:\WhaleGirlPet\3d\longrun_soak_24h_sprite_task.log' -Tail 20
+```
+
+任务计划程序的限制：机器休眠/关机、用户注销或任务计划程序服务被停，仍会中断；这种方式只消除了 agent 会话进程树清理这一条风险，不等于绝对不中断。
 
 ## 终止原因线索（2026-11-27 补充）
 
