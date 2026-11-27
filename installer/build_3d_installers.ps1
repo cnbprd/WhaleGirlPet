@@ -13,7 +13,8 @@ if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup compiler not found:
 if (-not (Test-Path -LiteralPath $iss)) { throw "Installer script not found: $iss" }
 
 $packages = @(
-    @{ Version = '3.2.0'; Zip = '3d\whale3d-whale-girl-v3.2-dev.zip'; Suffix = '-dev' },
+    @{ Version = '3.2.0'; Zip = '3d\whale3d-whale-girl-v3.2-sprite.zip'; Suffix = '-sprite'; PayloadKey = '3.2.0-sprite' },
+    @{ Version = '3.2.0'; Zip = '3d\whale3d-whale-girl-v3.2-dev.zip'; Suffix = '-dev'; PayloadKey = '3.2.0-dev' },
     @{ Version = '3.1.2'; Zip = '3d\whale3d-whale-girl-v3.zip' },
     @{ Version = '3.1.0'; Zip = '3d\whale3d-whale-girl-v2.zip' },
     @{ Version = '3.0.28'; Zip = '3d\whale3d-whale-girl-v1.zip' }
@@ -28,12 +29,13 @@ foreach ($pkg in $packages) {
     $zip = Join-Path $repo $pkg.Zip
     if (-not (Test-Path -LiteralPath $zip)) { throw "Package not found: $zip" }
 
-    $payload = Join-Path $payloadRoot $pkg.Version
+    $payloadKey = if ($pkg.PayloadKey) { $pkg.PayloadKey } else { $pkg.Version }
+    $payload = Join-Path $payloadRoot $payloadKey
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
     Expand-Archive -LiteralPath $zip -DestinationPath $payload -Force
 
     & $iscc "/DAppVersion=$($pkg.Version)" "/DBuildSuffix=$($pkg.Suffix)" "/DPayloadDir=$payload" $iss
-    if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $($pkg.Version) (exit $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $($pkg.Version)$($pkg.Suffix) (exit $LASTEXITCODE)" }
 
     $setup = Join-Path $outDir "WhaleGirlPet-Setup-$($pkg.Version)$($pkg.Suffix).exe"
     if (-not (Test-Path -LiteralPath $setup)) { throw "Setup output missing: $setup" }
