@@ -18,6 +18,7 @@ Set-Location 'F:\WhaleGirlPet'
 - 样本数应接近 `2881`；少于 `2879` 需要说明原因。
 - 只有 `status=done` 且上述都满足，才把这一轮写成“24h 通过”；否则只能写“未完成/无效”。
 - 先归档 `3d/longrun_soak_24h_sprite_task.json`、`.log`、`.err.log` 和 `docs/soak-midrun-2026-11-27.md`，再开新进程。
+- 如果 gate 不是 `exit 0`，先运行 `& '.\3d\tools\collect_soak_evidence.ps1' -OutDir 'docs\soak-evidence'` 保存现场，再判断是进程消失、checkpoint stale 还是字段无效；不要用新进程覆盖现场。
 
 ## 1. 17 张卡可见验收
 

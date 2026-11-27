@@ -76,6 +76,8 @@
 & 'F:\WhaleGirlPet\3d\tools\check_soak_status.ps1' -Json
 & 'F:\WhaleGirlPet\.venv\Scripts\python.exe' 'F:\WhaleGirlPet\3d\tools\check_soak_final.py'
 Get-Content 'F:\WhaleGirlPet\3d\longrun_soak_24h_sprite_task.log' -Tail 20
+& 'F:\WhaleGirlPet\3d\tools\collect_soak_evidence.ps1' -DryRun
+& 'F:\WhaleGirlPet\3d\tools\collect_soak_evidence.ps1' -OutDir 'docs\soak-evidence'
 ```
 
 `check_soak_status.ps1` 只读任务状态、JSON 和进程树，不启动或关闭 3D；`healthy=True` 需要同时满足任务 Running、PID 存活、只有一个 `whale3d.exe`、状态 running、样本未超时。`check_soak_final.py` 只用于结束后核验 `status=done`、`alive_after_soak=true`、样本数和 `finished_at`；当前 running 会返回 exit 3。
