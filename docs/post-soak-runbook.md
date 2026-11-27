@@ -167,6 +167,7 @@ $dir = 'F:\WhaleGirlPet\build\install-sprite-final'
 ### 5.1 Release notes
 
 - 正式说明用 `docs\releases\v3.2.0-sprite.md`，不要另写一份短文案；
+- 证据路径先查 `docs\release-evidence-index.md`，不要从聊天记录里翻；
 - 上传前把最终文件大小、SHA256、tag 写回该文件和 `docs\release-assets-3.2.0-sprite.json`；
 - 如果资产没有重建，先核对两份文件里的哈希与实际文件一致，不要只改说明。
 
