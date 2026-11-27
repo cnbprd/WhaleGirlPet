@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifndef GL_ARRAY_BUFFER
@@ -198,8 +199,9 @@ struct SpriteLayer::Impl {
     float ttl = 0.0f;
     float age = 0.0f;
     PixelRect lastRect;
+    bool ready = false;
 
-    bool active() const { return !current.empty() && age < ttl; }
+    bool active() const { return ready && !current.empty() && age < ttl; }
 
     void clearGl() {
         if (vbo && gl.deleteBuffers) gl.deleteBuffers(1, &vbo);
@@ -207,6 +209,7 @@ struct SpriteLayer::Impl {
         if (program && gl.deleteProgram) gl.deleteProgram(program);
         if (texture) glDeleteTextures(1, &texture);
         vbo = vao = program = texture = 0;
+        ready = false;
     }
 
     GLuint compile(GLenum type, const char* src, std::string& err) {
@@ -296,32 +299,80 @@ struct SpriteLayer::Impl {
             err = std::string("manifest JSON: ") + e.what();
             return false;
         }
-        const int sheetW = j.at("sheet_size")[0].get<int>();
-        const int sheetH = j.at("sheet_size")[1].get<int>();
-        for (const auto& entry : j.at("cards")) {
-            const std::string id = entry.at("id").get<std::string>();
-            const auto& r = entry.at("rect");
-            const int x = r[0].get<int>();
-            const int y = r[1].get<int>();
-            const int w = r[2].get<int>();
-            const int h = r[3].get<int>();
-            if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > sheetW || y + h > sheetH) {
-                err = "card outside atlas: " + id;
+
+        int sheetW = 0;
+        int sheetH = 0;
+        std::string sheetPath;
+        std::unordered_map<std::string, Rect> parsedCards;
+        try {
+            const auto& sheetSize = j.at("sheet_size");
+            if (!sheetSize.is_array() || sheetSize.size() != 2) {
+                err = "sheet_size must be two integers";
                 return false;
             }
-            Rect rect;
-            rect.u0 = static_cast<float>(x) / sheetW;
-            rect.u1 = static_cast<float>(x + w) / sheetW;
-            // stb rows are top-down and the first uploaded row lands at GL
-            // texture v=0; keep v0 as the image top and v1 as the image bottom.
-            rect.v0 = static_cast<float>(y) / sheetH;
-            rect.v1 = static_cast<float>(y + h) / sheetH;
-            rect.w = w;
-            rect.h = h;
-            cards[id] = rect;
+            sheetW = sheetSize[0].get<int>();
+            sheetH = sheetSize[1].get<int>();
+            if (sheetW <= 0 || sheetH <= 0) {
+                err = "sheet_size must be positive";
+                return false;
+            }
+
+            const auto& cardsJson = j.at("cards");
+            if (!cardsJson.is_array() || cardsJson.empty()) {
+                err = "cards must be a non-empty array";
+                return false;
+            }
+            for (const auto& entry : cardsJson) {
+                if (!entry.is_object()) {
+                    err = "card entry must be an object";
+                    return false;
+                }
+                const std::string id = entry.at("id").get<std::string>();
+                if (id.empty()) {
+                    err = "empty card id";
+                    return false;
+                }
+                if (parsedCards.find(id) != parsedCards.end()) {
+                    err = "duplicate card id: " + id;
+                    return false;
+                }
+                const auto& r = entry.at("rect");
+                if (!r.is_array() || r.size() != 4) {
+                    err = "card rect must be four integers: " + id;
+                    return false;
+                }
+                const int x = r[0].get<int>();
+                const int y = r[1].get<int>();
+                const int w = r[2].get<int>();
+                const int h = r[3].get<int>();
+                if (w <= 0 || h <= 0 || x < 0 || y < 0 ||
+                    x > sheetW - w || y > sheetH - h) {
+                    err = "card outside atlas: " + id;
+                    return false;
+                }
+                Rect rect;
+                rect.u0 = static_cast<float>(x) / sheetW;
+                rect.u1 = static_cast<float>(x + w) / sheetW;
+                // stb rows are top-down and the first uploaded row lands at GL
+                // texture v=0; keep v0 as the image top and v1 as the image bottom.
+                rect.v0 = static_cast<float>(y) / sheetH;
+                rect.v1 = static_cast<float>(y + h) / sheetH;
+                rect.w = w;
+                rect.h = h;
+                parsedCards.emplace(id, rect);
+            }
+
+            sheetPath = j.at("sheet").get<std::string>();
+            if (sheetPath.empty()) {
+                err = "sheet path missing";
+                return false;
+            }
+        } catch (const std::exception& e) {
+            err = std::string("manifest parse: ") + e.what();
+            return false;
         }
 
-        const std::string atlasPath = assetBase + j.at("sheet").get<std::string>();
+        const std::string atlasPath = assetBase + sheetPath;
         int w = 0, h = 0, n = 0;
         stbi_set_flip_vertically_on_load(0);
         unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
@@ -343,6 +394,7 @@ struct SpriteLayer::Impl {
             err = "atlas size mismatch";
             return false;
         }
+        cards = std::move(parsedCards);
         return true;
     }
 };
@@ -356,6 +408,7 @@ SpriteLayer::~SpriteLayer() {
 
 bool SpriteLayer::init(const std::string& assetBase) {
     if (!impl_) return false;
+    impl_->ready = false;
     impl_->error.clear();
     if (!impl_->gl.load()) {
         impl_->error = "missing GL entry point";
@@ -368,8 +421,14 @@ bool SpriteLayer::init(const std::string& assetBase) {
     }
     if (!impl_->loadAtlas(assetBase, impl_->error)) {
         impl_->clearGl();
+        impl_->cards.clear();
+        impl_->current.clear();
+        impl_->ttl = 0.0f;
+        impl_->age = 0.0f;
+        impl_->lastRect = PixelRect{};
         return false;
     }
+    impl_->ready = true;
     return true;
 }
 
@@ -380,10 +439,11 @@ void SpriteLayer::shutdown() {
     impl_->current.clear();
     impl_->ttl = 0.0f;
     impl_->age = 0.0f;
+    impl_->lastRect = PixelRect{};
 }
 
 bool SpriteLayer::showCard(const std::string& cardId, float ttlMs) {
-    if (!impl_ || cardId.empty()) return false;
+    if (!impl_ || !impl_->ready || cardId.empty()) return false;
     auto it = impl_->cards.find(cardId);
     if (it == impl_->cards.end()) return false;
     impl_->current = cardId;
@@ -398,7 +458,7 @@ void SpriteLayer::update(float dtSeconds) {
 }
 
 void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
-    if (!impl_ || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
+    if (!impl_ || !impl_->ready || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
     const auto& rect = impl_->cards[impl_->current];
     const float cardH = std::min(220.0f, pixelHeight * 0.36f);
     const float cardW = cardH * static_cast<float>(rect.w) / static_cast<float>(rect.h);
@@ -457,7 +517,7 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
 }
 
 bool SpriteLayer::visible() const {
-    return impl_ && impl_->active();
+    return impl_ && impl_->ready && impl_->active();
 }
 
 const SpriteLayer::PixelRect& SpriteLayer::lastRect() const {
