@@ -1,6 +1,6 @@
 # P1 sprite manifest test harness 设计
 
-状态：**设计稿，未编译、未改生产代码。**  
+状态：**代码已落在分支，未编译。**  
 目标：让 `fix/sprite-parser` 的 17 条坏 manifest 夹具可以在浸泡结束后、不启动 3D、不建 GL 上下文的情况下跑真实 C++ 解析回归。
 
 ## 问题
@@ -77,6 +77,13 @@ atlas size mismatch: actual <w>x<h>, manifest <w>x<h>
 
 ## 测试 harness
 
+实现文件：
+
+- `3d/sprite_manifest.h`
+- `3d/sprite_manifest.cpp`
+- `3d/tests/test_sprite_manifest.cpp`
+- `3d/build.ps1` 的 sources 已加入 `sprite_manifest.cpp`
+
 新增 `3d/tests/test_sprite_manifest.cpp`：
 
 - 读 `3d/tests/fixtures/sprite_manifest/cases.json`；
@@ -128,4 +135,4 @@ $gxx = (Get-ChildItem 'F:\WhaleGirlPet\.toolchains\w64devkit' -Recurse -Filter '
 
 - 夹具：`310259f`，17 条，lint PASS；
 - P1 补丁：`ee747c1`，未编译；
-- 本设计：只落文档，未改代码、未编译。
+- 本次实现：`sprite_manifest.*`、`test_sprite_manifest.cpp`、`build.ps1` source 列表已写入分支；未编译、未产出 exe。

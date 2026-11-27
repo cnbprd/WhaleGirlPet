@@ -1,7 +1,8 @@
 # P1 sprite manifest fixture cases
 
 用途：给 `fix/sprite-parser` 的 `loadAtlas` 坏 manifest 校验准备回归输入。  
-当前只准备输入，不编译、不启动 3D、不替换生产 `manifest.json`。
+当前只准备输入，不编译、不启动 3D、不替换生产 `manifest.json`。  
+实现代码已落在分支：`3d/sprite_manifest.*`、`3d/tests/test_sprite_manifest.cpp`，尚未编译。
 
 ## 文件
 

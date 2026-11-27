@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <GL/gl.h>
 
-#include "third_party/json.hpp"
+#include "sprite_manifest.h"
 #include "third_party/stb_image.h"
 
 #include <algorithm>
@@ -13,8 +13,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifndef GL_ARRAY_BUFFER
@@ -203,14 +205,7 @@ void main() {
 
 struct SpriteLayer::Impl {
     Gl gl;
-    struct Rect {
-        float u0 = 0.0f;
-        float v0 = 0.0f;
-        float u1 = 0.0f;
-        float v1 = 0.0f;
-        int w = 0;
-        int h = 0;
-    };
+    using Rect = sprite_manifest::CardRect;
     std::unordered_map<std::string, Rect> cards;
     GLuint program = 0;
     GLuint vao = 0;
@@ -317,95 +312,41 @@ struct SpriteLayer::Impl {
             return false;
         }
         cards.clear();
-        try {
-            nlohmann::json j;
-            file >> j;
-            const auto& size = j.at("sheet_size");
-            if (!size.is_array() || size.size() != 2) {
-                err = "sheet_size must be two integers";
-                return false;
-            }
-            const int sheetW = size[0].get<int>();
-            const int sheetH = size[1].get<int>();
-            if (sheetW <= 0 || sheetH <= 0) {
-                err = "sheet_size must be positive";
-                return false;
-            }
-            const auto& cardEntries = j.at("cards");
-            if (!cardEntries.is_array() || cardEntries.empty()) {
-                err = "cards must be a non-empty array";
-                return false;
-            }
-            for (const auto& entry : cardEntries) {
-                const std::string id = entry.at("id").get<std::string>();
-                if (id.empty()) {
-                    err = "empty card id";
-                    return false;
-                }
-                if (cards.find(id) != cards.end()) {
-                    err = "duplicate card id: " + id;
-                    return false;
-                }
-                const auto& r = entry.at("rect");
-                if (!r.is_array() || r.size() != 4) {
-                    err = "card rect must be four integers: " + id;
-                    return false;
-                }
-                const int x = r[0].get<int>();
-                const int y = r[1].get<int>();
-                const int w = r[2].get<int>();
-                const int h = r[3].get<int>();
-                if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > sheetW || y + h > sheetH) {
-                    err = "card outside atlas: " + id;
-                    return false;
-                }
-                Rect rect;
-                rect.u0 = static_cast<float>(x) / sheetW;
-                rect.u1 = static_cast<float>(x + w) / sheetW;
-                // stb rows are top-down and the first uploaded row lands at GL
-                // texture v=0; keep v0 as the image top and v1 as the image bottom.
-                rect.v0 = static_cast<float>(y) / sheetH;
-                rect.v1 = static_cast<float>(y + h) / sheetH;
-                rect.w = w;
-                rect.h = h;
-                cards[id] = rect;
-            }
 
-            const std::string sheetRel = j.at("sheet").get<std::string>();
-            if (sheetRel.empty()) {
-                err = "sheet path missing";
-                return false;
-            }
-            const std::string atlasPath = assetBase + sheetRel;
-            int w = 0, h = 0, n = 0;
-            stbi_set_flip_vertically_on_load(0);
-            unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
-            if (!pixels) {
-                err = "atlas decode failed: " + atlasPath;
-                return false;
-            }
-            if (w != sheetW || h != sheetH) {
-                stbi_image_free(pixels);
-                err = "atlas size mismatch: actual " + std::to_string(w) + "x"
-                    + std::to_string(h) + ", manifest " + std::to_string(sheetW)
-                    + "x" + std::to_string(sheetH);
-                return false;
-            }
-            glGenTextures(1, &texture);
-            glBindTexture(GL_TEXTURE_2D, texture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
-                         GL_UNSIGNED_BYTE, pixels);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            stbi_image_free(pixels);
-            return true;
-        } catch (const std::exception& e) {
-            err = std::string("manifest parse: ") + e.what();
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        const std::string manifestText = buffer.str();
+
+        sprite_manifest::Data data;
+        if (!sprite_manifest::parseJson(manifestText, data, err)) {
             return false;
         }
+
+        const std::string atlasPath = assetBase + data.sheet_rel;
+        int w = 0, h = 0, n = 0;
+        stbi_set_flip_vertically_on_load(0);
+        unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
+        if (!pixels) {
+            err = "atlas decode failed: " + atlasPath;
+            return false;
+        }
+        if (!sprite_manifest::validateAtlasSize(data, w, h, err)) {
+            stbi_image_free(pixels);
+            return false;
+        }
+
+        cards = std::move(data.cards);
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, pixels);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        stbi_image_free(pixels);
+        return true;
     }
 };
 
