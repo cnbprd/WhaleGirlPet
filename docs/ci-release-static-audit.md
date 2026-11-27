@@ -46,7 +46,9 @@
 - 但打包 ZIP 名是 `whale3d-whale-girl-v3-ci.zip`（第 100 行），上传 artifact 名是 `whale3d-v3.1.2-ci`（第 109 行）。
 - 这不会自动发 Release，但会让人工下载 CI artifact 时误以为是 3.1.2 或非 sprite 包。
 
-**建议**：统一改成 `whale3d-v3.2.0-ci` / `whale3d-whale-girl-v3.2.0-ci.zip`，或从 `whale3d.rc` 读取版本后生成名字。当前不改，避免在浸泡期间动 workflow。
+**建议**：统一改成 `whale3d-v3.2.0-ci` / `whale3d-whale-girl-v3.2.0-ci.zip`，或从 `whale3d.rc` 读取版本后生成名字。
+
+**修复状态**：分支 `fix/ci-artifact-name` 已改为从构建出的 `whale3d.exe` 读取 `ProductVersion`，生成 `whale3d-v3.2.0-ci` artifact 和 `whale3d-whale-girl-v3.2.0-ci.zip`；未合入 `main`、未触发 CI。
 
 ## P2：3D CI 不构建安装器，Release 必须本地做
 

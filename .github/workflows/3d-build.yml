@@ -70,6 +70,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "3D build failed ($LASTEXITCODE)" }
 
       - name: Assert GUI subsystem and version resource
+        id: version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -82,10 +83,15 @@ jobs:
           if ($vi.ProductName -ne 'WhaleGirlPet') { throw "unexpected ProductName: $($vi.ProductName)" }
           if ($vi.ProductVersion -ne '3.2.0.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
           if ($vi.FileDescription -match '3D') { throw "FileDescription still contains 3D: $($vi.FileDescription)" }
-          Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion)"
+          $label = $vi.ProductVersion -replace '\.0$', ''
+          "label=$label" >> $env:GITHUB_OUTPUT
+          Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion) label=$label"
 
       - name: Package portable ZIP
+        id: package
         shell: pwsh
+        env:
+          LABEL: ${{ steps.version.outputs.label }}
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $PWD 'ci-package'
@@ -97,18 +103,20 @@ jobs:
           Copy-Item -LiteralPath '3d\assets\models\whale_girl.vrm','3d\assets\models\whale_girl.glb','3d\assets\models\placeholder.glb','3d\assets\models\_whale_girl_atlas.png' -Destination (Join-Path $stage 'assets\models')
           Copy-Item -LiteralPath '3d\assets\ui\pet.ico' -Destination (Join-Path $stage 'assets\ui')
           Copy-Item -LiteralPath 'assets\2d_bridge\atlas.png','assets\2d_bridge\manifest.json' -Destination (Join-Path $stage 'assets\2d_bridge')
-          $zip = Join-Path $PWD 'whale3d-whale-girl-v3-ci.zip'
+          $zipName = "whale3d-whale-girl-v$env:LABEL-ci.zip"
+          $zip = Join-Path $PWD $zipName
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-          Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $(Split-Path -Leaf $zip)" -Encoding ascii
+          Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $zipName" -Encoding ascii
+          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
           Write-Output "zip=$zip bytes=$((Get-Item $zip).Length) sha256=$hash"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: whale3d-v3.1.2-ci
+          name: whale3d-v${{ steps.version.outputs.label }}-ci
           path: |
-            whale3d-whale-girl-v3-ci.zip
-            whale3d-whale-girl-v3-ci.zip.sha256
+            ${{ steps.package.outputs.zip_name }}
+            ${{ steps.package.outputs.zip_name }}.sha256
             3d/whale3d.exe
           if-no-files-found: error
