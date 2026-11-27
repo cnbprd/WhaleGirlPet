@@ -24,14 +24,15 @@
 |---|---|---|
 | 有效完成：`status=done`、`alive_after_soak=true` | exit 0 | exit 0 |
 | 进程已死：`status=done`、`alive_after_soak=false` | 非 0 | exit 1，列出 `alive_after_soak is not true` |
+| checkpoint 缺失（`--tag __missing_gate_fixture__`） | exit 2 | exit 2，打印 `missing checkpoint` |
+| 当前仍在运行（真实 tag） | exit 3 | exit 3，打印 `NOT FINISHED` |
 
 ## 未覆盖
 
 - 真实 24h 完成后的 `finish` 记录（要等 2026-11-28 13:51 后）；
-- checkpoint 缺失（脚本设计为 exit 2，但本次未单独构造）；
 - 样本数不足、`error` 非空等组合；
 - Windows 任务计划程序返回码与实际进程状态的交叉验证。
 
 ## 结论
 
-成功/失败两条核心路径符合预期；该脚本可以作为 24h 结束后的第一道 gate，但不能替代真实 24h 运行。
+成功/失败/缺失/运行中四条路径符合脚本声明；该脚本可以作为 24h 结束后的第一道 gate，但不能替代真实 24h 运行。
