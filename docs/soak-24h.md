@@ -44,6 +44,16 @@
 - Windows Application 日志在 12:44 前后没有 `whale3d.exe` 的崩溃事件；原因无法仅凭现有日志确定，可能是窗口被关闭/进程被终止/环境清理，不能归因于某一条代码路径。
 - 因此这轮**不能**当 24 小时通过；8 小时 26 分的数据可保留作中段趋势证据，但 24 小时结论要重新跑一轮。
 
+## 新一轮：带 sprite 的生产 exe（进行中）
+
+旧轮在 12:44 提前结束后没有重启。2026-11-27 13:41:47 +0800 用重建的 `3d/whale3d.exe`（1,377,792 B，含 sprite 接线）启动新一轮 24 小时离屏浸泡：
+
+- 启动：2026-11-27 13:41:47 +0800；预计结束：2026-11-28 13:41:47 +0800
+- 3D 进程 PID：31812；Python 启动器 PID：27352
+- 标签：`soak_24h_sprite`；检查点 `3d/longrun_soak_24h_sprite.json`；日志 `3d/longrun_soak_24h_sprite.log`
+- 启动日志：`Sprite layer: ready (F:\WhaleGirlPet\3d\../assets/2d_bridge)`、`Hit mask ready: 420x620 center_alpha=255`、FPS 约 29
+- 状态：`running`；这只是中段证据，结束前不能当 24 小时通过。
+
 ## 判定规则
 
 - 只有 `status=done` 且 `alive_after_soak=true`、RSS/CPU/FPS 样本完整，才算跑完。
