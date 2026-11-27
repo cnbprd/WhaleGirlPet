@@ -76,6 +76,8 @@
 - `3d/main.cpp`：日志追加 `card=... card_ttl=...`。
 - `tools/test_asset_bridge.py`：5 项通过；`tools/test_emotion_bridge.py`：9 项通过。
 - `3d/emotion_bus.cpp` 单独编译通过；`3d/main.cpp` `-fsyntax-only` 通过。
+- 端到端探针：`emotion_bus` 测试程序监听 `47833`，Python 发送 `action/wave`，接收端打印
+  `emotion=neutral intensity=0.70 card=action/wave ttl=2600 source=P_2D`；未占用浸泡用的 `47832`。
 
 ## 尚未做
 
