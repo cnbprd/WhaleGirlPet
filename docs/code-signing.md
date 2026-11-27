@@ -2,10 +2,11 @@
 
 ## 当前状态
 
-`WhaleGirlPet-3D-Setup-3.1.1.exe` 和 `WhaleGirlPet-3D-Setup-3.0.28.exe` 目前是**未签名**的 Inno Setup 安装包。
+`whale3d.exe` 和 `WhaleGirlPet-Setup-3.2.0-sprite.exe` 目前都是**未签名**状态；2026-11-27 复查 `Get-AuthenticodeSignature` 结果均为 `NotSigned`。
 
-- 本机证书库（`Cert:\CurrentUser\My`、`Cert:\LocalMachine\My`）没有可用的代码签名证书。
+- 本机证书库（`Cert:\CurrentUser\My`、`Cert:\LocalMachine\My`）没有可用的代码签名证书；2026-11-27 复查均为 0 张。
 - 仓库里也没有 `.pfx` / `.p12` 代码签名私钥。
+- 本机没有 `signtool.exe`；可先用 PowerShell 自带 `Set-AuthenticodeSignature`，但仍需要证书私钥。
 - 因此当前只能提供同名 `.sha256` 做完整性校验，无法消除 Windows SmartScreen 的“未知发布者”提示。
 
 ## SignPath Foundation 申请状态
@@ -45,7 +46,7 @@ SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚
 3. 签安装包。本机没有 `signtool.exe`，可先用 PowerShell 自带的 `Set-AuthenticodeSignature`（需要证书带私钥，且在 `Cert:\CurrentUser\My` 或 PFX 导入后）：
    ```powershell
    $cert = Get-Item Cert:\CurrentUser\My\<thumbprint>
-   Set-AuthenticodeSignature -FilePath .\dist\3d\WhaleGirlPet-3D-Setup-3.1.1.exe `
+   Set-AuthenticodeSignature -FilePath .\dist\3d\WhaleGirlPet-Setup-3.2.0-sprite.exe `
      -Certificate $cert -TimestampServer http://timestamp.digicert.com -HashAlgorithm SHA256
    ```
    如果使用 `signtool`，命令是 `signtool sign /fd SHA256 /tr <timestamp-url> /td SHA256 /sha1 <thumbprint> <file>`；有 PFX 时加 `/f`、`/p`。

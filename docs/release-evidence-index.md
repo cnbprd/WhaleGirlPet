@@ -19,6 +19,7 @@
 | 文档链接检查 | `docs/release-link-check-2026-11-27.md` | 11 个文件、14 个本地链接，0 死链 |
 | `gh` CLI 预检 | `docs/gh-cli-preflight-2026-11-27.md` | 已登录 `cnbprd`，`repo` scope，命令可用 |
 | release-notes 行为测试 | `docs/release-notes-workflow-test.md` | 假 `gh` 4/4 通过 |
+| 代码签名预检 | `docs/code-signing-preflight-2026-11-27.md` | 无证书、无 signtool、两个产物 `NotSigned`；SignPath 待审核 |
 
 当前低 FPS 观察项：日志只有 1 行 `fps=3.7` / `update_us=237118.46`，随后回到 27.8；不是连续降速。
 
