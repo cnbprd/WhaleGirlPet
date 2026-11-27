@@ -36,6 +36,31 @@ $env:WHALE3D_LONGRUN_CARD_TTL='6000'
 - `WHALE3D_LONGRUN_TAG`：`card_expr_idle_...`，只能用小写字母/数字/下划线；
 - 运行 `.\.venv\Scripts\python.exe 3d\tools\emotion_longrun.py`。
 
+17 个 id：
+
+`expression/idle`、`expression/happy`、`expression/eat`、`expression/walk`、`expression/sleep`、`expression/sleepy`、`expression/shy`、`expression/angry`、`expression/curious`、`expression/pat`、`action/wave`、`action/dance`、`action/type`、`action/balloon`、`action/fireworks`、`action/lion`、`action/change`。
+
+批量执行：
+
+```powershell
+$cards = @(
+  'expression/idle','expression/happy','expression/eat','expression/walk',
+  'expression/sleep','expression/sleepy','expression/shy','expression/angry',
+  'expression/curious','expression/pat','action/wave','action/dance',
+  'action/type','action/balloon','action/fireworks','action/lion','action/change'
+)
+$env:WHALE3D_LONGRUN_SECONDS='8'
+$env:WHALE3D_LONGRUN_SAMPLE='2'
+$env:WHALE3D_LONGRUN_OFFSCREEN='0'
+$env:WHALE3D_LONGRUN_CARD_TTL='6000'
+foreach ($card in $cards) {
+  $env:WHALE3D_LONGRUN_CARD = $card
+  $env:WHALE3D_LONGRUN_TAG = 'card_' + ($card -replace '/', '_')
+  & '.\.venv\Scripts\python.exe' '3d\tools\emotion_longrun.py'
+  if ($LASTEXITCODE -ne 0) { throw "card failed: $card" }
+}
+```
+
 验收点：
 
 - 日志 `Sprite layer: ready`；
