@@ -36,6 +36,17 @@ DEFAULT_HOST = "127.0.0.1"
 ATTACK_MS = 180
 RELEASE_MS = 420
 
+# v3.2 asset bridge: keep the old renderer compatible. The 3D process may
+# ignore `card`; the sprite layer can consume it later.
+CARD_FOR_EMOTION = {
+    "happy": "expression/happy",
+    "angry": "expression/angry",
+    "curious": "expression/curious",
+    "shy": "expression/shy",
+    "tired": "expression/sleepy",
+    "neutral": "expression/idle",
+}
+
 # These are renderer-side names, not the eight EmotionState dimensions.
 RENDER_EMOTIONS = {
     "happy", "joy", "excited", "smile", "laugh",
@@ -58,6 +69,10 @@ class Signal:
     priority: int
     ttl: float
     expires_at: float = field(default=0.0)
+    # Optional 2D card. Empty means emotion-only; the renderer must not
+    # require this field.
+    card: str = ""
+    card_ttl_ms: int = 1800
 
 
 class Arbiter:
@@ -96,12 +111,16 @@ class Arbiter:
 
 def payload_for(signal: Signal) -> dict:
     """Wire payload shared by the real sender and tests."""
-    return {
+    payload = {
         "emotion": signal.emotion,
         "intensity": round(signal.intensity, 3),
         "source": signal.source,
         "curve": {"attack_ms": ATTACK_MS, "release_ms": RELEASE_MS},
     }
+    if signal.card:
+        payload["card"] = signal.card
+        payload["card_ttl_ms"] = int(signal.card_ttl_ms)
+    return payload
 
 
 class UdpSender:
@@ -123,16 +142,19 @@ class UdpSender:
                 self.enabled = False
                 self._sock = None
 
-    def send(self, signal: Signal) -> bool:
+    def send_payload(self, payload: dict) -> bool:
         if not self.enabled or self._sock is None:
             return False
-        payload = json.dumps(payload_for(signal), ensure_ascii=False,
-                            separators=(",", ":")).encode("utf-8")
+        data = json.dumps(payload, ensure_ascii=False,
+                          separators=(",", ":")).encode("utf-8")
         try:
-            self._sock.sendto(payload, (self.host, self.port))
+            self._sock.sendto(data, (self.host, self.port))
             return True
         except OSError:
             return False
+
+    def send(self, signal: Signal) -> bool:
+        return self.send_payload(payload_for(signal))
 
     def close(self):
         if self._sock is not None:
@@ -246,6 +268,8 @@ class EmotionBridge:
                    before.emotion != after.emotion or
                    abs(before.intensity - after.intensity) >= 0.05)
         if changed:
+            if not after.card:
+                after.card = CARD_FOR_EMOTION.get(after.emotion, "")
             self.sender.send(after)
             self.last_emitted = after
         return after

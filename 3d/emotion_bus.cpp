@@ -196,6 +196,13 @@ bool EmotionBus::poll(Frame& out) {
         readPose(raw, "gaze", gazeX, gazeY, gazeWeight);
         readPose(raw, "lean", leanX, leanY, leanWeight);
 
+        std::string card;
+        jsonString(raw, "card", card);
+        float cardTtlMs = 0.0f;
+        jsonNumber(raw, "card_ttl_ms", cardTtlMs);
+        if (!std::isfinite(cardTtlMs) || cardTtlMs < 0.0f) cardTtlMs = 0.0f;
+        if (cardTtlMs > 10000.0f) cardTtlMs = 10000.0f;
+
         out.emotion = emotion;
         out.intensity = intensity;
         out.attackMs = attackMs;
@@ -206,6 +213,8 @@ bool EmotionBus::poll(Frame& out) {
         out.leanX = leanX;
         out.leanY = leanY;
         out.leanWeight = leanWeight;
+        out.card = card;
+        out.cardTtlMs = cardTtlMs;
         out.raw = raw;
         out.source.clear();
         jsonString(raw, "source", out.source);

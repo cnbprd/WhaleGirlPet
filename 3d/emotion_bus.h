@@ -26,6 +26,11 @@ public:
         float leanX = 0.0f;
         float leanY = 0.0f;
         float leanWeight = 0.0f;
+
+        // v3.2 asset bridge. The renderer ignores this until a sprite layer
+        // consumes it; an empty card means emotion-only.
+        std::string card;
+        float cardTtlMs = 0.0f;
     };
 
     EmotionBus();

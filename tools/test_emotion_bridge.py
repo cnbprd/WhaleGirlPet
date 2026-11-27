@@ -82,6 +82,12 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(payload["curve"], {"attack_ms": 180, "release_ms": 420})
         self.assertEqual(payload["intensity"], 0.8)
 
+    def test_emotion_signal_carries_2d_card(self):
+        self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
+        payload = eb.payload_for(self.bridge.last_emitted)
+        self.assertEqual(payload["card"], "expression/happy")
+        self.assertEqual(payload["card_ttl_ms"], 1800)
+
     def test_tts_hold_keeps_llm_face_through_long_speech(self):
         self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
         self.clock.t += 5.0
