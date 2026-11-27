@@ -50,6 +50,7 @@ $sources = @(
     (Join-Path $PSScriptRoot 'model.cpp'),
     (Join-Path $PSScriptRoot 'shell_ui.cpp'),
     (Join-Path $PSScriptRoot 'emotion_bus.cpp'),
+    (Join-Path $PSScriptRoot 'sprite.cpp'),
     $resourceObj
 )
 & $gxx.FullName -std=c++17 -Os -s -Wall -Wextra -mwindows `

@@ -1,0 +1,75 @@
+{
+  "probe": "build\\emotion_bus_probe_fuzz.exe",
+  "port": 65460,
+  "cases": [
+    {
+      "case": "empty_object",
+      "bytes": 2
+    },
+    {
+      "case": "truncated_emotion",
+      "bytes": 11
+    },
+    {
+      "case": "empty_emotion",
+      "bytes": 14
+    },
+    {
+      "case": "unclosed_object",
+      "bytes": 18
+    },
+    {
+      "case": "nan_intensity",
+      "bytes": 35
+    },
+    {
+      "case": "inf_intensity",
+      "bytes": 37
+    },
+    {
+      "case": "string_intensity",
+      "bytes": 38
+    },
+    {
+      "case": "negative_ttl",
+      "bytes": 37
+    },
+    {
+      "case": "huge_ttl",
+      "bytes": 40
+    },
+    {
+      "case": "path_card",
+      "bytes": 56
+    },
+    {
+      "case": "unclosed_gaze",
+      "bytes": 42
+    },
+    {
+      "case": "nan_gaze",
+      "bytes": 58
+    },
+    {
+      "case": "duplicate_keys",
+      "bytes": 53
+    },
+    {
+      "case": "non_utf8",
+      "bytes": 33
+    },
+    {
+      "case": "long_card",
+      "bytes": 629
+    },
+    {
+      "case": "long_junk",
+      "bytes": 700
+    }
+  ],
+  "valid_packet": "{\"emotion\":\"neutral\",\"card\":\"action/wave\",\"card_ttl_ms\":2600,\"source\":\"fuzz\"}",
+  "returncode": 0,
+  "stdout": "ready port=65460\nvalid emotion=happy card=- ttl=0 source=\nvalid emotion=happy card=- ttl=0 source=\nvalid emotion=happy card=- ttl=0 source=\nvalid emotion=happy card=expression/../../etc/passwd ttl=0 source=\nvalid emotion=happy card=- ttl=0 source=\nvalid emotion=happy card=- ttl=0 source=��\nvalid emotion=neutral card=action/wave ttl=2600 source=fuzz\ndone received=14\n",
+  "stderr": "",
+  "ok": true
+}

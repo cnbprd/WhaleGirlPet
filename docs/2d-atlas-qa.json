@@ -1,0 +1,286 @@
+{
+  "atlas": "assets\\2d_bridge\\atlas.png",
+  "sheet_size": [
+    1024,
+    512
+  ],
+  "cards": 17,
+  "failures": 0,
+  "max_alpha_mae": 0.0,
+  "max_rgb_mae": 0.005,
+  "max_coverage_delta": 0.0,
+  "results": [
+    {
+      "id": "expression/angry",
+      "source": "assets/expressions/angry.png",
+      "rect": [
+        35,
+        4,
+        90,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.002,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/curious",
+      "source": "assets/expressions/curious.png",
+      "rect": [
+        194,
+        4,
+        91,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/eat",
+      "source": "assets/expressions/eat.png",
+      "rect": [
+        358,
+        4,
+        84,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/happy",
+      "source": "assets/expressions/happy.png",
+      "rect": [
+        516,
+        4,
+        88,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/idle",
+      "source": "assets/expressions/idle.png",
+      "rect": [
+        677,
+        4,
+        86,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/pat",
+      "source": "assets/expressions/pat.png",
+      "rect": [
+        838,
+        4,
+        83,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/shy",
+      "source": "assets/expressions/shy.png",
+      "rect": [
+        37,
+        164,
+        86,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.002,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/sleep",
+      "source": "assets/expressions/sleep.png",
+      "rect": [
+        167,
+        164,
+        145,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.002,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/sleepy",
+      "source": "assets/expressions/sleepy.png",
+      "rect": [
+        356,
+        164,
+        87,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "expression/walk",
+      "source": "assets/expressions/walk.png",
+      "rect": [
+        516,
+        164,
+        88,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/balloon",
+      "source": "assets/actions/balloon.png",
+      "rect": [
+        679,
+        164,
+        81,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/change",
+      "source": "assets/actions/change.png",
+      "rect": [
+        833,
+        164,
+        94,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.002,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/dance",
+      "source": "assets/actions/dance.png",
+      "rect": [
+        35,
+        324,
+        89,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/fireworks",
+      "source": "assets/actions/fireworks.png",
+      "rect": [
+        188,
+        324,
+        103,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.005,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/lion",
+      "source": "assets/actions/lion.png",
+      "rect": [
+        347,
+        324,
+        105,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.003,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/type",
+      "source": "assets/actions/type.png",
+      "rect": [
+        503,
+        324,
+        114,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.002,
+      "coverage_delta": 0.0,
+      "ok": true
+    },
+    {
+      "id": "action/wave",
+      "source": "assets/actions/wave.png",
+      "rect": [
+        677,
+        324,
+        86,
+        152
+      ],
+      "inside": true,
+      "empty": false,
+      "alpha_mae": 0.0,
+      "rgb_mae": 0.004,
+      "coverage_delta": 0.0,
+      "ok": true
+    }
+  ]
+}

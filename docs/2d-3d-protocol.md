@@ -51,7 +51,7 @@
 - `expression/`：`idle`、`happy`、`eat`、`walk`、`sleep`、`sleepy`、`shy`、`angry`、`curious`、`pat`
 - `action/`：`wave`、`dance`、`type`、`balloon`、`fireworks`、`lion`、`change`
 
-渲染器只接受这些 id；未知 id 直接忽略，不打开文件。
+渲染器的 sprite 层只接受这些 id；未知 id 直接忽略，不打开文件。C++ 的 `EmotionBus` 只做字段搬运，不做卡面白名单（见下方 fuzz 结果）。
 
 ## 仲裁与显示
 
@@ -85,6 +85,17 @@
 - 假接收器实测：`action/dance` 后收到 `card=action/dance`，随后 `P_LLM happy` 包没有 `card` 字段（被 `hold_cards` 抑制），`packets=2 cards=1`。
 - 控制器端到端：`Controller.on_action("wave", 3000, "user")` 触发 `hold 3.4`，假接收器 `47836` 收到
   `card=action/wave card_ttl_ms=3400`。
+
+## 协议 fuzz（接渲染前）
+
+日期：2026-11-27；工具：`tools/test_protocol_fuzz.py` + `3d/tools/emotion_bus_probe.cpp`。
+
+- 只编译 `emotion_bus.cpp` + 探针，不开 SDL/GL 窗口，不碰 `47832` 和浸泡中的 PID 15080。
+- 先发 16 个畸形包：空对象、截断 JSON、空 emotion、未闭合对象、`NaN/Inf`、字符串 intensity、负/超大 TTL、带 `../` 的 card 路径、未闭合 gaze、非 UTF-8 source、600+ 字节 card、700 字节 junk。
+- 再发合法包 `{"emotion":"neutral","card":"action/wave","card_ttl_ms":2600,"source":"fuzz"}`。
+- 结果：进程 `returncode=0`，探针输出 `ready`，最后一行 `valid emotion=neutral card=action/wave ttl=2600 source=fuzz`；共 14 个包被解析为有效帧，畸形包没有导致崩溃/挂死。
+- **发现**：C++ 解析器本身不做 card 白名单，`expression/../../etc/passwd` 这种字符串会被接收并原样打印；真正的拒绝点在 `SpriteLayer::showCard` 的 manifest id 查找，未知 id 返回 false、不打开文件。接线时必须保证 `main.cpp` 只把 `frame.card` 交给 `showCard`，不要自己拼路径。
+- 机器可读报告：`docs/protocol-fuzz.json`。
 
 ## 尚未做
 
