@@ -26,7 +26,7 @@
 - 便携 ZIP：解压到干净目录后可启动，日志 `Sprite layer: ready (...\assets\2d_bridge)`，FPS 约 27.9–29.7。
 - 安装器：静默安装到临时目录 exit 0，安装后包含 `assets\2d_bridge`，启动/卸载 exit 0。
 - CI：代码提交 `5f49dcb` 对应 run `45946695091` success；后续 docs 提交对应 run `45947183087` success。
-- 当前本地 HEAD `bf88e74` 还未 push；远程 `main` 的 CI 结论对应 `7db57f5`，不是这个本地 docs 提交。
+- 本次新增的文档/QA 提交尚未 push；远程 `main` 的 CI 结论对应 `7db57f5`，不是本地这份新增文档。
 
 ## 发布前必须补的 gate
 
