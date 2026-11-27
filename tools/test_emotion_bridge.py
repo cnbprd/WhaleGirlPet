@@ -88,6 +88,16 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(payload["card"], "expression/happy")
         self.assertEqual(payload["card_ttl_ms"], 1800)
 
+    def test_action_hold_suppresses_auto_card_until_expiry(self):
+        self.bridge.hold_cards(3.0)
+        self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
+        payload = eb.payload_for(self.bridge.last_emitted)
+        self.assertNotIn("card", payload)
+        self.clock.t += 3.2
+        self.bridge.user_text("气死我了")
+        payload = eb.payload_for(self.bridge.last_emitted)
+        self.assertEqual(payload["card"], "expression/angry")
+
     def test_tts_hold_keeps_llm_face_through_long_speech(self):
         self.bridge.llm_reply("好呀。[[emo:happy:0.8]]")
         self.clock.t += 5.0

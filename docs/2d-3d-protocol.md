@@ -71,17 +71,24 @@
 ## 已实现/已验证
 
 - `app/asset_bridge.py`：manifest 白名单、`send_card`、`expression`、`action`、TTL 钳制。
-- `app/emotion_bridge.py`：`Signal` 增加 `card` / `card_ttl_ms`；`payload_for` 附带卡面；情绪自动映射。
+- `app/asset_bridge.py` 的 `CardArbiter`：动作卡优先级高于自动表情卡，低优先级包不覆盖当前卡，TTL 到期后放行。
+- `app/emotion_bridge.py`：`Signal` 增加 `card` / `card_ttl_ms`；`payload_for` 附带卡面；情绪自动映射；动作期间 `hold_cards()` 抑制自动卡面。
+- `app/main.py` 的 `Controller.on_action`：`wave / dance / type / balloon / fireworks / lion / change` 走 `AssetBridge.action()`；用户动作优先级 3，自主动作 2。
+- `app/pet_window.py`：`do_action` 把 `duration_ms` / `source` 传给 `Controller.on_action`，所以卡面 TTL 跟着动作时长走。
+- `tools/mock_3d_bus.py`：假接收器，默认监听 `47833`，打印 `emotion/card/card_ttl_ms`，可写 JSONL。
 - `3d/emotion_bus.h` / `cpp`：`Frame` 增加 `card` / `cardTtlMs`，解析并钳制 `0..10000`。
 - `3d/main.cpp`：日志追加 `card=... card_ttl=...`。
-- `tools/test_asset_bridge.py`：5 项通过；`tools/test_emotion_bridge.py`：9 项通过。
+- `tools/test_asset_bridge.py`：6 项通过；`tools/test_emotion_bridge.py`：10 项通过；`tools/test_action_wiring.py`：4 项通过。
 - `3d/emotion_bus.cpp` 单独编译通过；`3d/main.cpp` `-fsyntax-only` 通过。
 - 端到端探针：`emotion_bus` 测试程序监听 `47833`，Python 发送 `action/wave`，接收端打印
   `emotion=neutral intensity=0.70 card=action/wave ttl=2600 source=P_2D`；未占用浸泡用的 `47832`。
+- 假接收器实测：`action/dance` 后收到 `card=action/dance`，随后 `P_LLM happy` 包没有 `card` 字段（被 `hold_cards` 抑制），`packets=2 cards=1`。
+- 控制器端到端：`Controller.on_action("wave", 3000, "user")` 触发 `hold 3.4`，假接收器 `47836` 收到
+  `card=action/wave card_ttl_ms=3400`。
 
 ## 尚未做
 
 - **sprite 层还没画卡**：3D 只接收/记录，视觉卡面要等浸泡结束后接。
-- 没有把 `AssetBridge.action()` 接到 2D 的每个动作调用点；目前只提供协议入口，避免大面积改 `main.py`。
+- 只在 `Controller.on_action` 接了 7 个有卡面的动作；`run/brawl/tumble/eatrice/hop` 等没有卡面，继续走纯表情/状态。
 - 没有做卡面点击/拖拽；先保证装饰层不抢命中区。
 - 没有把 2D skins 搬成 3D 服装；那需要 3D 建模，不属于本协议层。

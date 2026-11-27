@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (QApplication, QMenu, QMessageBox, QSystemTrayIcon
 import accounts
 import ambient
 import asr_service
+import asset_bridge as asset_mod
 import awareness
 import care_ui
 import companion
@@ -196,11 +197,19 @@ class Controller:
             pass
         # v3.2 step 2: Python-side emotion labels -> local 3D UDP bus.
         self.emotion_bridge = emo_bridge.EmotionBridge()
+        # v3.2 asset bridge: 2D cards + action packets share the same local bus.
+        try:
+            self.asset_bridge = asset_mod.AssetBridge()
+        except Exception as exc:  # noqa: BLE001
+            self.asset_bridge = None
+            print(f"[asset_bridge] disabled: {type(exc).__name__}: {exc}")
         # v3.2 step 3: hold the reply emotion while TTS is actually speaking.
         self.audio.speechStarted.connect(self._on_speech_started)
         self.audio.speechFinished.connect(self._on_speech_finished)
         try:
             self.app.aboutToQuit.connect(self.emotion_bridge.close)
+            if self.asset_bridge is not None:
+                self.app.aboutToQuit.connect(self.asset_bridge.close)
         except Exception:  # noqa: BLE001
             pass
         self.memory = mem.MemoryStore()
@@ -1099,13 +1108,26 @@ class Controller:
     # ================= 动作体系 =================
     # v2.9.3 切换类动作不出声：换装/换形态只是"换个样子"，配一句台词反而吵
     SILENT_ACTIONS = {"change"}
+    # v3.2: only these keys have a matching card in the 2D atlas.
+    CARD_ACTIONS = {"wave", "dance", "type", "balloon", "fireworks", "lion", "change"}
 
-    def on_action(self, key: str):
+    def on_action(self, key: str, duration_ms: int = 0, source: str = "auto"):
         ev = {"run": "run", "brawl": "run", "tumble": "collide",
               "eatrice": "feed_like", "hop": "run"}.get(key)
         if ev:
             self.emotion.apply(ev, 0.8)
         self.beep(key)
+        if key in self.CARD_ACTIONS:
+            bridge = getattr(self, "asset_bridge", None)
+            if bridge is not None:
+                ttl = max(2600, min(10000, int(duration_ms or 2600) + 400))
+                priority = (asset_mod.P_ACTION if source == "user"
+                            else max(asset_mod.P_EXPRESSION, asset_mod.P_ACTION - 1))
+                if bridge.action(key, ttl_ms=ttl, source="P_2D", priority=priority):
+                    try:
+                        self.emotion_bridge.hold_cards(ttl / 1000.0)
+                    except Exception:  # noqa: BLE001
+                        pass
         if key in self.SILENT_ACTIONS:
             return
         self._speak(lines.pick(lines.ACTION_LINES.get(key, lines.HAPPY)), 2200)

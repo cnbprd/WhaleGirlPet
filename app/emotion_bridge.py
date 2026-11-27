@@ -244,14 +244,23 @@ class EmotionBridge:
             enabled = os.environ.get("WHALE3D_EMOTION_BRIDGE", "1").lower() not in (
                 "0", "false", "no", "off")
         self.enabled = bool(enabled)
+        self._clock = clock
         self.arbiter = Arbiter(clock=clock)
         self.sender = UdpSender(port=port or int(os.environ.get("WHALE3D_EMOTION_PORT", DEFAULT_PORT)),
                                 enabled=self.enabled)
         self.last_emitted: Optional[Signal] = None
         self.last_llm: Optional[Signal] = None
+        self.card_hold_until = 0.0
 
     def close(self):
         self.sender.close()
+
+    def hold_cards(self, seconds: float):
+        """Suppress auto emotion cards while a user/action card owns the layer."""
+        self.card_hold_until = max(
+            self.card_hold_until,
+            self._clock() + max(0.0, min(10.0, float(seconds))),
+        )
 
     def _submit_and_emit(self, emotion: str, intensity: float, source: str,
                          priority: int, ttl: float) -> Optional[Signal]:
@@ -268,7 +277,7 @@ class EmotionBridge:
                    before.emotion != after.emotion or
                    abs(before.intensity - after.intensity) >= 0.05)
         if changed:
-            if not after.card:
+            if not after.card and self._clock() >= self.card_hold_until:
                 after.card = CARD_FOR_EMOTION.get(after.emotion, "")
             self.sender.send(after)
             self.last_emitted = after

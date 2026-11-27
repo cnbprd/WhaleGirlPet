@@ -15,11 +15,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 import emotion_bridge as emo
+
+P_ACTION = 3
+P_EXPRESSION = 2
+P_UI = 1
 
 # Group mapping is deliberately small.  The renderer owns the actual visual
 # card; this layer only translates 2D semantic names to manifest ids.
@@ -45,6 +50,50 @@ class Card:
     source: str
     rect: tuple[int, int, int, int]
     slot: tuple[int, int, int, int]
+
+
+@dataclass
+class CardSignal:
+    card: str
+    priority: int
+    ttl_ms: int
+    source: str
+    expires_at: float
+
+
+class CardArbiter:
+    """Small local arbiter so an auto expression cannot cut off a user action.
+
+    The renderer still owns TTL display; this only prevents lower-priority
+    packets from overwriting the active higher-priority card.
+    """
+
+    def __init__(self, clock=time.monotonic):
+        self._clock = clock
+        self._current: Optional[CardSignal] = None
+
+    def clear(self):
+        self._current = None
+
+    def current(self) -> Optional[CardSignal]:
+        if self._current is not None and self._current.expires_at <= self._clock():
+            self._current = None
+        return self._current
+
+    def submit(self, card: str, priority: int, ttl_ms: int, source: str) -> bool:
+        now = self._clock()
+        current = self.current()
+        if current is not None and priority < current.priority:
+            return False
+        self._current = CardSignal(
+            card=card,
+            priority=max(0, min(9, int(priority))),
+            ttl_ms=max(200, min(10000, int(ttl_ms))),
+            source=source,
+            expires_at=now + max(0.2, min(10.0, ttl_ms / 1000.0)),
+        )
+        return True
+
 
 
 def _default_manifest() -> Path:
@@ -82,12 +131,20 @@ class AssetBridge:
     """Best-effort sender; a missing 3D process costs one sendto."""
 
     def __init__(self, host: str = emo.DEFAULT_HOST, port: Optional[int] = None,
-                 enabled: Optional[bool] = None, manifest_path: Optional[Path] = None):
+                 enabled: Optional[bool] = None, manifest_path: Optional[Path] = None,
+                 clock=time.monotonic):
         if enabled is None:
             enabled = os.environ.get("WHALE3D_ASSET_BRIDGE", "1").lower() not in (
                 "0", "false", "no", "off")
-        self.cards = load_cards(manifest_path)
+        self.manifest_error = ""
+        try:
+            self.cards = load_cards(manifest_path)
+        except Exception as exc:  # noqa: BLE001
+            self.cards = {}
+            self.manifest_error = f"{type(exc).__name__}: {exc}"
+            enabled = False
         self.enabled = bool(enabled)
+        self.arbiter = CardArbiter(clock=clock)
         self.sender = emo.UdpSender(
             host=host,
             port=port or int(os.environ.get("WHALE3D_EMOTION_PORT", emo.DEFAULT_PORT)),
@@ -99,10 +156,13 @@ class AssetBridge:
         self.sender.close()
 
     def send_card(self, card_id: str, ttl_ms: int = 1800,
-                  source: str = "P_2D", emotion: Optional[str] = None) -> bool:
+                  source: str = "P_2D", emotion: Optional[str] = None,
+                  priority: int = P_EXPRESSION) -> bool:
         if card_id not in self.cards:
             return False
         ttl = max(200, min(10000, int(ttl_ms)))
+        if not self.arbiter.submit(card_id, priority, ttl, source):
+            return False
         payload = {
             "emotion": emotion or EMOTION_FOR_CARD.get(card_id, "neutral"),
             "intensity": 0.7,
@@ -117,16 +177,21 @@ class AssetBridge:
 
     def expression(self, name: str, ttl_ms: int = 1800,
                    source: str = "P_2D") -> bool:
-        return self.send_card(f"expression/{name}", ttl_ms=ttl_ms, source=source)
+        return self.send_card(f"expression/{name}", ttl_ms=ttl_ms, source=source,
+                              priority=P_EXPRESSION)
 
     def action(self, name: str, ttl_ms: int = 2600,
-               source: str = "P_2D") -> bool:
-        return self.send_card(f"action/{name}", ttl_ms=ttl_ms, source=source)
+               source: str = "P_2D", priority: int = P_ACTION) -> bool:
+        return self.send_card(f"action/{name}", ttl_ms=ttl_ms, source=source,
+                              priority=priority)
 
     def describe(self) -> dict:
+        current = self.arbiter.current()
         return {
             "enabled": self.enabled,
             "cards": len(self.cards),
             "groups": sorted({c.group for c in self.cards.values()}),
             "last_card": self.last_card,
+            "current": current.card if current else None,
+            "error": self.manifest_error,
         }

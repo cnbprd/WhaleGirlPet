@@ -1082,7 +1082,7 @@ class PetWindow(QWidget):
                 self.tl.stop()
         except Exception:  # noqa: BLE001
             pass
-        self._controller.on_action(key)
+        self._controller.on_action(key, duration_ms=duration_ms, source=source)
         if duration_ms > 0 and not card.hold:
             self._action_timer = QTimer(self)
             self._action_timer.setSingleShot(True)

@@ -12,13 +12,22 @@ sys.path.insert(0, str(ROOT / "app"))
 import asset_bridge as ab  # noqa: E402
 
 
+class FakeClock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
 class AssetBridgeTests(unittest.TestCase):
     def setUp(self):
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.listener.bind(("127.0.0.1", 0))
         self.listener.settimeout(1.0)
         self.port = self.listener.getsockname()[1]
-        self.bridge = ab.AssetBridge(port=self.port, enabled=True)
+        self.clock = FakeClock()
+        self.bridge = ab.AssetBridge(port=self.port, enabled=True, clock=self.clock)
 
     def tearDown(self):
         self.bridge.close()
@@ -66,6 +75,18 @@ class AssetBridgeTests(unittest.TestCase):
         self.assertTrue(self.bridge.send_card("expression/idle", ttl_ms=99999))
         payload = self._recv()
         self.assertEqual(payload["card_ttl_ms"], 10000)
+
+    def test_action_blocks_lower_priority_expression_until_expiry(self):
+        self.assertTrue(self.bridge.action("wave", ttl_ms=2600))
+        self._recv()
+        self.assertFalse(self.bridge.expression("happy", ttl_ms=1800))
+        self.listener.settimeout(0.2)
+        with self.assertRaises(socket.timeout):
+            self.listener.recvfrom(4096)
+        self.clock.t += 3.0
+        self.assertTrue(self.bridge.expression("happy", ttl_ms=1800))
+        payload = self._recv()
+        self.assertEqual(payload["card"], "expression/happy")
 
 
 if __name__ == "__main__":
