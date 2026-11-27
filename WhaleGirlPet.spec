@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('assets/skins', 'assets/skins'), ('assets/expressions', 'assets/expressions'), ('assets/actions', 'assets/actions'), ('assets/loli', 'assets/loli'), ('assets/ui', 'assets/ui')]
+datas = [('assets/skins', 'assets/skins'), ('assets/expressions', 'assets/expressions'), ('assets/actions', 'assets/actions'), ('assets/loli', 'assets/loli'), ('assets/ui', 'assets/ui'), ('assets/2d_bridge', 'assets/2d_bridge')]
 binaries = []
 # v3.0.17 瘦身：v3.0.1 已删原生 Splash（Tk），这里去掉 tkinter —— 它会把整个
 #   tcl90/tk90 数据目录拖进包（未压缩约 15MB）。app 下全项目 0 次 import tkinter。

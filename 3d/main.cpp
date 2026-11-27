@@ -8,12 +8,14 @@
 #include "model.h"
 #include "shell_ui.h"
 #include "emotion_bus.h"
+#include "sprite.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -241,6 +243,37 @@ int main(int argc, char** argv) {
         return alpha > 16;
     });
 
+    // The 2D card sprite is a separate screen-space layer. Dev builds can
+    // point at the repository's root assets if the exe sits in `3d/`; packaged
+    // builds resolve `assets/2d_bridge` next to the exe.
+    SpriteLayer sprite;
+    std::string spriteBase = base;
+    {
+        std::ifstream localManifest(spriteBase + "assets/2d_bridge/manifest.json");
+        if (!localManifest.good()) {
+            const std::string parentBase = base + "../";
+            std::ifstream parentManifest(parentBase + "assets/2d_bridge/manifest.json");
+            if (parentManifest.good()) spriteBase = parentBase;
+        }
+    }
+    if (sprite.init(spriteBase)) {
+        SDL_Log("Sprite layer: ready (%sassets/2d_bridge)", spriteBase.c_str());
+    } else {
+        SDL_Log("Sprite layer unavailable: %s", sprite.error().c_str());
+    }
+    if (const char* card = std::getenv("WHALE3D_CARD")) {
+        float ttlMs = 5000.0f;
+        if (const char* rawTtl = std::getenv("WHALE3D_CARD_TTL")) {
+            const float parsed = static_cast<float>(std::atof(rawTtl));
+            if (parsed >= 200.0f && parsed <= 10000.0f) ttlMs = parsed;
+        }
+        if (sprite.showCard(card, ttlMs)) {
+            SDL_Log("Sprite forced: %s ttl=%.0fms", card, ttlMs);
+        } else {
+            SDL_Log("Sprite card rejected: %s", card);
+        }
+    }
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -262,6 +295,7 @@ int main(int argc, char** argv) {
     Uint64 perfFreq = SDL_GetPerformanceFrequency();
     Uint64 updateTicks = 0;
     int updateFrames = 0;
+    float lastT = 0.0f;
 
     while (running && !ui.quitRequested()) {
         SDL_Event ev;
@@ -329,6 +363,14 @@ int main(int argc, char** argv) {
                 SDL_Log("Emotion ignored: %s (raw %.80s)", emotion.emotion.c_str(),
                         emotion.raw.c_str());
             }
+            if (!emotion.card.empty() && emotion.cardTtlMs > 0.0f) {
+                if (sprite.showCard(emotion.card, emotion.cardTtlMs)) {
+                    SDL_Log("Sprite card: %s ttl=%.0fms", emotion.card.c_str(),
+                            emotion.cardTtlMs);
+                } else {
+                    SDL_Log("Sprite card rejected: %s", emotion.card.c_str());
+                }
+            }
         }
 
         int pw = 0, ph = 0;
@@ -346,8 +388,11 @@ int main(int argc, char** argv) {
         lastWinY = winY;
 
         float t = static_cast<float>(SDL_GetTicks() - start) / 1000.0f;
+        float dt = std::clamp(t - lastT, 0.0f, 0.1f);
+        lastT = t;
         Uint64 updateStart = SDL_GetPerformanceCounter();
         model.update(t);
+        sprite.update(dt);
         updateTicks += SDL_GetPerformanceCounter() - updateStart;
         ++updateFrames;
 
@@ -375,9 +420,25 @@ int main(int argc, char** argv) {
             SDL_Log("Hit mask ready: %dx%d center_alpha=%u", hitW, hitH, a);
             hitMaskLogged = true;
         }
+
+        // Decoration is drawn after the hit-mask read: it is visible, but
+        // `WM_NCHITTEST` still resolves against the model-only mask.
+        sprite.draw(pw, ph);
+        const SpriteLayer::PixelRect cardRect =
+            sprite.visible() ? sprite.lastRect() : SpriteLayer::PixelRect{};
+        if (std::getenv("WHALE3D_SPRITE_TRACE") && cardRect.width > 0 && cardRect.height > 0) {
+            static int traceFrame = 0;
+            if (traceFrame++ % 30 == 0) {
+                SDL_Log("Sprite rect: (%d,%d %dx%d)",
+                        cardRect.x, cardRect.y, cardRect.width, cardRect.height);
+            }
+        }
         static int regionFrame = 0;
         if (regionFrame++ % 6 == 0) {
-            ui.updateWindowRegion(hitMask.data(), hitW, hitH);
+            ui.updateWindowRegion(hitMask.data(), hitW, hitH,
+                                  cardRect.x, cardRect.y,
+                                  cardRect.x + cardRect.width,
+                                  cardRect.y + cardRect.height);
         }
 
         SDL_GL_SwapWindow(win);
@@ -403,6 +464,7 @@ int main(int argc, char** argv) {
         if (elapsed < target) SDL_Delay(static_cast<Uint32>(target - elapsed));
     }
 
+    sprite.shutdown();
     ui.shutdown();
     emotionBus.stop();
     model.shutdown();

@@ -1,7 +1,7 @@
-# 2D 卡面 sprite 层：骨架与接线契约
+# 2D 卡面 sprite 层：接线与验收
 
 日期：2026-11-27
-状态：**代码骨架 + 临时链接检查完成，未接入运行中的 3D**。24 小时离屏浸泡的 `whale3d.exe` 未重建、未启动新窗口；原浸泡进程在 12:44 已提前结束，见 `docs/soak-24h.md` 的说明。
+状态：**已接入 3D 主循环，并通过可见帧验收**。`3d/whale3d.exe` 已重建为带 sprite 的 1,377,792 B 版本；临时 exe 只用于调试时保留。24 小时离屏浸泡在 12:44 提前结束，未形成 24h 结论，见 `docs/soak-24h.md`。
 
 ## 目标
 
@@ -9,10 +9,11 @@
 
 ## 文件
 
-- `3d/sprite.h`：`SpriteLayer` 公开接口。
-- `3d/sprite.cpp`：manifest 解析、图集解码、GL 资源、quad 绘制。
-- 依赖 `3d/third_party/json.hpp` 与 `stb_image.h`；`stb_image` 的实现仍在 `model.cpp`，所以最终链接必须带 `model.cpp`。
-- `3d/sprite.cpp` 已加入 `3d/build.ps1` 的源码列表；因为没有 `main.cpp` 调用，临时链接产物不会改变现有 3D 行为。
+- `3d/sprite.h`：`SpriteLayer`、`PixelRect` 公开接口。
+- `3d/sprite.cpp`：manifest 解析、图集解码、GL 资源、quad 绘制、`uUvRect` 子图采样。
+- `3d/main.cpp`：初始化、UDP `card` 接线、每帧 `update/draw`、窗口 region 扩展。
+- `3d/shell_ui.h/.cpp`：`updateWindowRegion` 的 4 个可选额外边界；卡面只扩展 Win32 region，不进入点击 mask。
+- `3d/build.ps1` 已把 `sprite.cpp` 加入源码列表；`3d/tools/emotion_longrun.py` 支持 `WHALE3D_EXE`，并可发 `WHALE3D_LONGRUN_CARD` 做协议验收。
 
 ## 接口
 
@@ -27,37 +28,38 @@ sprite.draw(pixelW, pixelH);    // 命中区 glReadPixels 之后
 - `showCard` 只接受 manifest 里的 id；未知 id 返回 `false`，不会打开任何路径。
 - `ttlMs` 钳制 `200..10000`；过期后 `visible()` 为 `false`。
 - `draw` 画在右下角，高度 `min(220, 0.36 * 窗口高)`，宽高比按 manifest rect 计算；首尾 120 ms 淡入淡出。
-- 纹理 UV 使用 `v = 1 - y/h` 手工翻转，避免 `stb_image` 行序与 GL 原点导致上下颠倒；未改全局 `stbi_set_flip_vertically_on_load`，不会影响模型贴图。
+- 图集用 `stb_image` 解码后上传为 GL 纹理；`uUvRect` 把 quad 的 `aUv` 映射到卡面子矩形。纹理坐标约定为：`v0 = y / sheetH`（图集顶部），`v1 = (y + h) / sheetH`（图集底部），绘制时以 `v1` 为底、`v0 - v1` 为负向步长，避免上下颠倒。
+- 绘制前临时 `glDisable(GL_CULL_FACE)`，绘制后恢复原状态；这修复了模型遗留 culling 导致 quad 少一个三角形的问题。
 
-## 接线顺序（浸泡结束后）
+## 接线顺序（已完成）
 
-1. `main.cpp` 在 `ui.init` / 模型加载之后调用 `sprite.init(base)`；失败只记日志，不阻塞 3D。
-2. `EmotionBus::poll` 返回的 `frame.card` 非空时调用 `sprite.showCard(frame.card, frame.cardTtlMs)`；`cardTtlMs=0` 时不画，避免旧包残留。
-3. 主循环 `sprite.update(dt)`；`draw` 放在现有的命中区 `glReadPixels` 采样之后、`SDL_GL_SwapWindow` 之前。
-4. 需要单独测试 exe：`build.ps1 -OutFile build\whale3d_sprite_test.exe`，不要覆盖正在跑的 `3d\whale3d.exe`。
-5. 首测用 `WHALE3D_CARD=expression/happy` 或本地 UDP 发 `action/wave`；先看卡面位置/朝向/透明度，再测 FPS 与私有字节。
+1. `main.cpp` 在 `ui.setHitTest` 之后初始化 `SpriteLayer`；先找 `base + assets/2d_bridge/manifest.json`，找不到再找 `base + ../assets/2d_bridge/manifest.json`，因此 `3d\whale3d.exe` 与打包目录都能读到图集。
+2. `EmotionBus::poll` 返回的 `frame.card` 非空且 `cardTtlMs > 0` 时调用 `sprite.showCard(frame.card, frame.cardTtlMs)`；未知 id 只记 `Sprite card rejected`。
+3. 主循环 `sprite.update(dt)`，`dt = clamp(t - lastT, 0, 0.1)`。
+4. `sprite.draw(pw, ph)` 放在模型绘制和命中区 `glReadPixels` 采样之后、`SDL_GL_SwapWindow` 之前。
+5. 把 `sprite.lastRect()` 作为额外矩形传给 `ui.updateWindowRegion`，让卡面不被 Win32 region 裁掉；该矩形不进 `hitTest`，卡面区域仍然点击穿透。
+6. 结束顺序为 `sprite.shutdown()` → `ui.shutdown()` → `emotionBus.stop()` → `model.shutdown()` → 销毁 GL context。
+
+## 实测结果
+
+- 强制卡面：`WHALE3D_CARD=expression/happy`，3–4 秒可见运行，截图 `docs/_3d_longrun_sprite_clean_mid.png`，卡面完整、正向、位于右下角。
+- 真实 UDP：`WHALE3D_LONGRUN_CARD=action/wave`，`action/wave` 被 `SpriteLayer` 接收并绘制；日志 `Sprite draw card=action/wave active=1`，截图 `docs/_3d_longrun_sprite_action_mid.png`。
+- 真实 2D 端 `app.asset_bridge.AssetBridge`：读取 17 张卡，`bridge.action('wave', 2600)` 返回 True，3D 日志 `source=P_2D card=action/wave`、`Sprite card: action/wave ttl=2600ms`；截图 `docs/_3d_asset_bridge_action.png` 可见 wave 卡面。
+- 独立打包目录：`build/package-sprite` 内带 `assets/2d_bridge`，启动日志 `Sprite layer: ready (...\assets/2d_bridge)`，FPS 27.9–29.7，截图 `docs/_3d_longrun_sprite_package_mid.png`。
+- 从新 ZIP 解压到干净目录后再次启动：`Sprite layer: ready (...\assets/2d_bridge)`，强制 `expression/happy` 与 UDP `action/wave` 都可见；`action/wave` 的 TTL 2.6 s 到期后最终帧恢复无卡面，说明 TTL 和 window region 收缩正常。
+- 未开卡面时窗口 region 仍只覆盖模型；开卡面时只额外扩出卡面矩形，点击 mask 不变。
+- 调试开关 `WHALE3D_SPRITE_SOLID`、`WHALE3D_SPRITE_OPAQUE`、`WHALE3D_SPRITE_NO_REGION` 已从产品代码移除；只保留 `WHALE3D_SPRITE_TRACE` 做首帧 rect 日志，以及 `WHALE3D_CARD` / `WHALE3D_CARD_TTL` 作为开发期强制卡面。
 
 ## 边界
 
 - 没有做卡面点击/拖拽；它画在命中区采样之后，天然不抢点击。
 - 没有做多卡队列/动画；最新卡覆盖旧卡，过期隐藏，和 `CardArbiter` 的语义一致。
 - 没有把卡面接到 3D 骨骼/材质；这是屏幕空间浮层，不是“2D 皮肤变 3D 服装”。
-- 骨架只在 Windows + OpenGL 3.3 core 下设计；GL 入口点全部用 `SDL_GL_GetProcAddress` 加载，缺一个就 `init` 失败并返回错误，不会空指针调用。
-- 当前编译检查产物 `build\sprite_proto.o` 被 `build/` 忽略，不是交付物。
+- 只支持 Windows + OpenGL 3.3 core；GL 入口点全部用 `SDL_GL_GetProcAddress` 加载，缺一个就 `init` 失败并返回错误。
+- 发布包必须把 `assets/2d_bridge/` 放在 exe 同级；`3d/build.ps1` 只编译 exe，打包脚本负责复制图集。
 
-## 编译检查
+## 下一步
 
-```powershell
-$gxx = 'F:\WhaleGirlPet\.toolchains\w64devkit\w64devkit\bin\g++.exe'
-$inc = 'F:\WhaleGirlPet\.toolchains\SDL3\SDL3-3.4.20\x86_64-w64-mingw32\include'
-& $gxx -std=c++17 -Wall -Wextra -c -I3d "-I$inc" 3d\sprite.cpp -o build\sprite_proto.o
-```
-
-结果：`exit=0`，无 warning；对象 2,069,533 B。临时链接检查用 `3d\build.ps1 -OutFile build\whale3d_sprite_link_test.exe`，`exit=0`；产物 1,374,720 B，只验证链接，未启动、未替换 `3d\whale3d.exe`。链接产物在 `build/` 忽略范围内，不是交付物。
-
-## 下一步实测项
-
-- 接入后单卡 `expression/happy`、动作 `action/wave` 的可见帧。
-- 开/关 sprite 的 FPS、CPU、私有字节；当前私有字节 97,849,344 B，加图集估算约 99.9 MB，需确认是否过 100 MB。
-- 卡面与 3D 脸的遮挡关系；默认右下角，若挡住桌宠主体再调锚点/透明度。
-- 多卡快速切换时是否闪烁；当前是单 quad 覆盖，无队列。
+- 24 小时真浸泡仍未完成；当前约 8h26m 的旧 session 已结束，重启前需要决定是否用新 exe。
+- 2D PyInstaller 包需要把 `assets/2d_bridge` 加进 `WhaleGirlPet.spec`，否则冻结后的 2D 端可能拿不到 manifest。
+- 多卡快速切换、TTL 过期后的 region 收缩、卡面与模型遮挡关系仍需再做一轮可见目检。

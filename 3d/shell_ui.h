@@ -36,7 +36,9 @@ public:
     bool quitRequested() const;
     void showTrayMenu();
     void setHitTest(HitTestFn fn);
-    void updateWindowRegion(const unsigned char* rgba, int width, int height);
+    void updateWindowRegion(const unsigned char* rgba, int width, int height,
+                            int extraLeft = 0, int extraTop = 0,
+                            int extraRight = 0, int extraBottom = 0);
 
 private:
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);

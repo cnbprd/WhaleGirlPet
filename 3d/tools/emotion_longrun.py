@@ -27,6 +27,7 @@ import psutil
 from PIL import Image, ImageChops, ImageGrab
 
 ROOT = Path(__file__).resolve().parents[1]
+EXE = Path(os.environ.get("WHALE3D_EXE", str(ROOT / "whale3d.exe")))
 DOCS = ROOT.parent / "docs"
 user32 = ctypes.windll.user32
 WM_CLOSE = 0x0010
@@ -37,6 +38,8 @@ TAG = os.environ.get("WHALE3D_LONGRUN_TAG", "").strip().strip("_")
 if any(ch in TAG for ch in ("/", "\\", ":", "..")):
     raise SystemExit("WHALE3D_LONGRUN_TAG must be a simple filename token")
 OFFSCREEN = os.environ.get("WHALE3D_LONGRUN_OFFSCREEN", "") == "1"
+CARD = os.environ.get("WHALE3D_LONGRUN_CARD", "").strip()
+CARD_TTL_MS = int(os.environ.get("WHALE3D_LONGRUN_CARD_TTL", "2600"))
 SWP_NOSIZE = 0x0001
 SWP_NOZORDER = 0x0004
 user32.SetWindowPos.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.HWND,
@@ -94,7 +97,7 @@ def capture(hwnd: int, path: Path) -> Image.Image:
     return image
 
 
-def send(emotion: str, intensity: float, gaze=None, lean=None) -> None:
+def send(emotion: str, intensity: float, gaze=None, lean=None, card=None) -> None:
     payload = {
         "emotion": emotion,
         "intensity": intensity,
@@ -105,6 +108,9 @@ def send(emotion: str, intensity: float, gaze=None, lean=None) -> None:
         payload["gaze"] = gaze
     if lean is not None:
         payload["lean"] = lean
+    if card:
+        payload["card"] = card
+        payload["card_ttl_ms"] = CARD_TTL_MS
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.sendto(json.dumps(payload).encode("utf-8"), ("127.0.0.1", 47832))
@@ -146,7 +152,7 @@ def main() -> int:
     err_path = ROOT / (f"longrun_{TAG}.err.log" if TAG else "longrun.err.log")
     err = open(err_path, "w", encoding="utf-8", buffering=1)
     proc = subprocess.Popen(
-        [str(ROOT / "whale3d.exe")],
+        [str(EXE)],
         cwd=str(ROOT),
         env=env,
         stdout=subprocess.DEVNULL,
@@ -191,7 +197,8 @@ def main() -> int:
                     next_pose = start + (idx + 1) * CYCLE
             elif now >= next_pose:
                 if phase == 0:
-                    send("happy", 0.8, gaze={"x": 0.8, "y": -0.1, "weight": 1.0})
+                    send("happy", 0.8, gaze={"x": 0.8, "y": -0.1, "weight": 1.0},
+                         card=CARD or None)
                 elif phase == 1:
                     send("neutral", 0.0, lean={"x": 0.8, "y": 0.0, "weight": 0.8})
                 else:

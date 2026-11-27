@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -152,10 +153,11 @@ const char* kVert = R"(
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aUv;
 uniform vec4 uRect;
+uniform vec4 uUvRect;
 out vec2 vUv;
 void main() {
     gl_Position = vec4(uRect.xy + aPos * uRect.zw, 0.0, 1.0);
-    vUv = aUv;
+    vUv = uUvRect.xy + aUv * uUvRect.zw;
 }
 )";
 
@@ -188,12 +190,14 @@ struct SpriteLayer::Impl {
     GLuint vbo = 0;
     GLuint texture = 0;
     GLint uRect = -1;
+    GLint uUvRect = -1;
     GLint uTex = -1;
     GLint uAlpha = -1;
     std::string current;
     std::string error;
     float ttl = 0.0f;
     float age = 0.0f;
+    PixelRect lastRect;
 
     bool active() const { return !current.empty() && age < ttl; }
 
@@ -250,6 +254,7 @@ struct SpriteLayer::Impl {
             return false;
         }
         uRect = gl.getUniformLocation(program, "uRect");
+        uUvRect = gl.getUniformLocation(program, "uUvRect");
         uTex = gl.getUniformLocation(program, "uTex");
         uAlpha = gl.getUniformLocation(program, "uAlpha");
         return true;
@@ -307,9 +312,10 @@ struct SpriteLayer::Impl {
             Rect rect;
             rect.u0 = static_cast<float>(x) / sheetW;
             rect.u1 = static_cast<float>(x + w) / sheetW;
-            // stb rows are top-down; OpenGL texture origin is bottom-left.
-            rect.v0 = 1.0f - static_cast<float>(y + h) / sheetH;
-            rect.v1 = 1.0f - static_cast<float>(y) / sheetH;
+            // stb rows are top-down and the first uploaded row lands at GL
+            // texture v=0; keep v0 as the image top and v1 as the image bottom.
+            rect.v0 = static_cast<float>(y) / sheetH;
+            rect.v1 = static_cast<float>(y + h) / sheetH;
             rect.w = w;
             rect.h = h;
             cards[id] = rect;
@@ -403,6 +409,10 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
     const float ndcY = 2.0f * py / pixelHeight - 1.0f;
     const float ndcW = 2.0f * cardW / pixelWidth;
     const float ndcH = 2.0f * cardH / pixelHeight;
+    impl_->lastRect.x = static_cast<int>(px);
+    impl_->lastRect.y = static_cast<int>(pixelHeight - py - cardH);
+    impl_->lastRect.width = static_cast<int>(cardW);
+    impl_->lastRect.height = static_cast<int>(cardH);
     const float fadeIn = 0.12f;
     const float fadeOut = 0.12f;
     const float alpha = std::min({1.0f, impl_->age / fadeIn,
@@ -410,22 +420,49 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
 
     impl_->gl.useProgram(impl_->program);
     impl_->gl.uniform4f(impl_->uRect, ndcX, ndcY, ndcW, ndcH);
+    impl_->gl.uniform4f(impl_->uUvRect, rect.u0, rect.v1,
+                        rect.u1 - rect.u0, rect.v0 - rect.v1);
     impl_->gl.uniform1f(impl_->uAlpha, std::max(0.0f, alpha));
     impl_->gl.activeTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, impl_->texture);
     impl_->gl.uniform1i(impl_->uTex, 0);
+    static bool traced = false;
+    if (!traced && std::getenv("WHALE3D_SPRITE_TRACE")) {
+        SDL_Log("Sprite draw card=%s active=%d ttl=%.2f age=%.2f "
+                "rect=(%d,%d %dx%d) alpha=%.2f tex=%u prog=%u "
+                "uRect=%d uTex=%d uAlpha=%d",
+                impl_->current.c_str(), impl_->active() ? 1 : 0,
+                impl_->ttl, impl_->age, impl_->lastRect.x, impl_->lastRect.y,
+                impl_->lastRect.width, impl_->lastRect.height, alpha,
+                impl_->texture, impl_->program, impl_->uRect, impl_->uTex,
+                impl_->uAlpha);
+        traced = true;
+    }
     glDisable(GL_DEPTH_TEST);
+    const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     impl_->gl.bindVertexArray(impl_->vao);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     impl_->gl.bindVertexArray(0);
+    if (cullFace) glEnable(GL_CULL_FACE);
+    else glDisable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
     impl_->gl.useProgram(0);
+    if (std::getenv("WHALE3D_SPRITE_TRACE")) {
+        const GLenum err = glGetError();
+        if (err != GL_NO_ERROR) SDL_Log("Sprite draw GL error: 0x%x", err);
+    }
 }
 
 bool SpriteLayer::visible() const {
     return impl_ && impl_->active();
+}
+
+const SpriteLayer::PixelRect& SpriteLayer::lastRect() const {
+    static const PixelRect empty;
+    return impl_ ? impl_->lastRect : empty;
 }
 
 const std::string& SpriteLayer::card() const {

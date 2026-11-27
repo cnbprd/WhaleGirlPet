@@ -220,7 +220,9 @@ void ShellUi::setHitTest(HitTestFn fn) {
     hitTest_ = std::move(fn);
 }
 
-void ShellUi::updateWindowRegion(const unsigned char* rgba, int width, int height) {
+void ShellUi::updateWindowRegion(const unsigned char* rgba, int width, int height,
+                                 int extraLeft, int extraTop,
+                                 int extraRight, int extraBottom) {
     if (!hwnd_ || !rgba || width <= 0 || height <= 0) return;
 
     // Build horizontal runs from the alpha mask.  A window region is used
@@ -242,6 +244,20 @@ void ShellUi::updateWindowRegion(const unsigned char* rgba, int width, int heigh
             }
         }
         if (start >= 0) runs.push_back(RECT{start, y, width, y + 1});
+    }
+    // The sprite card is drawn after the hit-mask read, so it is absent from
+    // `rgba`. Extend only the window region (not the click mask) so the card
+    // is visible while clicks on it still fall through via WM_NCHITTEST.
+    if (extraRight > extraLeft && extraBottom > extraTop) {
+        RECT extra{
+            std::max(0, extraLeft),
+            std::max(0, extraTop),
+            std::min(width, extraRight),
+            std::min(height, extraBottom)
+        };
+        if (extra.right > extra.left && extra.bottom > extra.top) {
+            runs.push_back(extra);
+        }
     }
     if (runs.empty()) return;
 

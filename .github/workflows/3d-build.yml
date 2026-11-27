@@ -80,7 +80,7 @@ jobs:
           if ($subsystem -ne 2) { throw "expected GUI subsystem 2, got $subsystem (console window would appear)" }
           $vi = (Get-Item -LiteralPath $exe).VersionInfo
           if ($vi.ProductName -ne 'WhaleGirlPet') { throw "unexpected ProductName: $($vi.ProductName)" }
-          if ($vi.ProductVersion -ne '3.1.2.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
+          if ($vi.ProductVersion -ne '3.2.0.0') { throw "unexpected ProductVersion: $($vi.ProductVersion)" }
           if ($vi.FileDescription -match '3D') { throw "FileDescription still contains 3D: $($vi.FileDescription)" }
           Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion)"
 
@@ -93,8 +93,10 @@ jobs:
           Copy-Item -LiteralPath '3d\whale3d.exe','3d\SDL3.dll','3d\README.md','3d\THIRD_PARTY_NOTICES.txt' -Destination $stage
           New-Item -ItemType Directory -Force (Join-Path $stage 'assets\models') | Out-Null
           New-Item -ItemType Directory -Force (Join-Path $stage 'assets\ui') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $stage 'assets\2d_bridge') | Out-Null
           Copy-Item -LiteralPath '3d\assets\models\whale_girl.vrm','3d\assets\models\whale_girl.glb','3d\assets\models\placeholder.glb','3d\assets\models\_whale_girl_atlas.png' -Destination (Join-Path $stage 'assets\models')
           Copy-Item -LiteralPath '3d\assets\ui\pet.ico' -Destination (Join-Path $stage 'assets\ui')
+          Copy-Item -LiteralPath 'assets\2d_bridge\atlas.png','assets\2d_bridge\manifest.json' -Destination (Join-Path $stage 'assets\2d_bridge')
           $zip = Join-Path $PWD 'whale3d-whale-girl-v3-ci.zip'
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
