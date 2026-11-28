@@ -90,7 +90,7 @@
 - 状态切换 trace 可读；真实窗口手感验收记录完成。
 - 产出 `docs/anim-state-machine.md`。
 
-**首刀记录（2026-11-28）**：`3d/animation_controller.h` + 15 条夹具 + CI `Animation controller unit tests` 已落地，CI run `46125317184` success。当前只做纯逻辑仲裁，**尚未接入** `main.cpp`/`Model`/`SpriteLayer`；下一步先接 base clip + action TTL，再接卡面队列和 `EmotionBus` 有序队列。
+**首刀记录（2026-11-28）**：`3d/animation_controller.h` + 14 条夹具 + CI `Animation controller unit tests` 已落地，CI run `46125317184` success。当前只做纯逻辑仲裁，**尚未接入** `main.cpp`/`Model`/`SpriteLayer`；下一步先接 base clip + action TTL，再接卡面队列和 `EmotionBus` 有序队列。
 
 ### 阶段 3：资产管线与烘焙
 

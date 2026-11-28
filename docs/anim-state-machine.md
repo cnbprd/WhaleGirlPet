@@ -99,7 +99,7 @@
 已落地：
 
 - `3d/animation_controller.h`：纯 header，状态表加载、priority/seq 仲裁、TTL、不可打断、`advance()` 固定 1/60 tick（单次最多 4 substep）。
-- `3d/tests/test_animation_controller.cpp`：15 条断言组通过，覆盖优先级、同优先级 latest-wins、TTL 回退、不可打断、固定 tick、非法状态表。
+- `3d/tests/test_animation_controller.cpp`：14 条断言组通过，覆盖优先级、同优先级 latest-wins、TTL 回退、不可打断、固定 tick、非法状态表。
 - `.github/workflows/3d-build.yml`：新增 `Animation controller unit tests`，在 Windows CI 编译并运行同一份夹具。
 
 本地验证命令：
@@ -109,7 +109,7 @@
 & 'F:\WhaleGirlPet\build\test_animation_controller.exe'
 ```
 
-结果：15/15 PASS，exit 0。
+结果：14/14 PASS，exit 0。
 
 首刀**没有**接入 `main.cpp`/`Model`/`SpriteLayer`，也没有实际淡入淡出采样；这是刻意的边界。下一步是把 `main.cpp` 的三处直接调用收编到控制器，并先接 `setClip`/`setFace`，再接 `showCard` 队列。
 
