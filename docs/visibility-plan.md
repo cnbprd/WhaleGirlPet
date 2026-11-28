@@ -71,6 +71,8 @@ SignPath Foundation 拒绝的理由不是代码质量，而是“公开信任与
 
 ## 渠道优先级
 
+发布文案、英文帖和 15 秒视频脚本见 [`launch-kit.md`](launch-kit.md)。
+
 1. GitHub 自身：topics、README、Release、Discussions、good first issue
 2. 中文技术社区：V2EX、知乎、少数派（选一个主发，其余引用）
 3. 英文：Show HN、Reddit `r/opensource` / `r/desktop`（遵守版规，不跨版刷）
