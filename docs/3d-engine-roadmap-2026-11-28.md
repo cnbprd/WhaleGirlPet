@@ -114,7 +114,7 @@
 - 发布包与安装器使用 content 清单；现有 17 卡和模型加载无回归。
 - 产出 `docs/asset-cook.md`、`docs/asset-cook-report.json`。
 
-**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。运行时校验、ZIP/安装器接入、CI 夹具尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
+**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。CI `46137873849` 已跑 cook + 负向夹具 + content verify。运行时校验、ZIP/安装器接入尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
 
 ### 阶段 4：渲染 pass 边界与 inspector
 

@@ -2,7 +2,8 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-状态：**基线工具与负向夹具已通过；运行时 `content.json` 校验、安装器/ZIP 接入尚未完成，阶段 3 未收口。**
+CI：run `46137873849` success（Pillow + cook + 8 类负向夹具 + content verify）。  
+状态：**基线工具、负向夹具和 content 校验已通过；运行时 `content.json` 校验、安装器/ZIP 接入尚未完成，阶段 3 未收口。**
 
 ## 1. 工具
 
@@ -25,7 +26,7 @@
 | content 校验 | `3d/tools/verify_content.py` 通过：3 个 cooked 文件、所有 source hash 一致；篡改 model hash 的副本被拒绝 |
 | 确定性 | 同输入、同 `build/content` 连续两次 cook，content hash 不变 |
 | 报告 | `docs/asset-cook-report.json`，`ok:true`、errors 0、warnings 0 |
-| 负向夹具 | 8 类坏输入全部拒绝：坏 rect、重复 id、缺 source、坏 slot、坏 atlas 尺寸、坏 humanoid node、坏 accessor count、坏 spring joint |
+| 负向夹具 | 8 类坏输入全部拒绝：坏 rect、重复 id、缺 source、坏 slot、坏 atlas 尺寸、坏 humanoid node、坏 accessor count、坏 spring joint；CI `46137873849` 已跑 |
 
 ## 3. 已知边界
 
@@ -39,6 +40,6 @@
 ## 4. 下一步
 
 1. 把 `content.json` 接入 ZIP 打包和 `verify_release_assets.py`，先不强制运行时加载。
-2. 把 `3d/tests/test_cook_assets.py` 和 `verify_content.py` 接进 CI；需要确认 runner 有 Pillow。
+2. 若要运行时启动校验，再在 `model.cpp`/启动路径加只读检查，单独跑无头回归。
 3. 再评估是否值得做自定义 `content.bin`；没有实测加载/内存收益就不做。
-4. 若要运行时启动校验，再在 `model.cpp`/启动路径加只读检查，单独跑无头回归。
+4. 安装器/ZIP 使用 content 清单后，再决定阶段 3 是否收口。
