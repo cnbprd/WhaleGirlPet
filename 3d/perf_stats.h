@@ -184,11 +184,11 @@ public:
         SDL_Log("stat fps=%.1f interval_p50=%.2fms p95=%.2fms p99=%.2fms "
                 "work=%.2fms hitch=%u update=%.2fms render=%.2fms "
                 "readback=%.2fms region=%.2fms overlay=%.2fms swap=%.2fms "
-                "rss=%.1fMB private=%.1fMB",
+                "rss=%.1fMB private=%.1fMB clip=%s face=%s",
                 fps, intervalP50, intervalP95, intervalP99,
                 avgMs(sumWorkUs_), hitches_,
                 updateAvg, renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg,
-                rssMb, privateMb);
+                rssMb, privateMb, clip_, face_);
 
         if (trace_) {
             std::fprintf(trace_,
@@ -197,11 +197,13 @@ public:
                          "\"hitch\":%u,\"update_ms\":%.2f,\"render_ms\":%.2f,"
                          "\"readback_ms\":%.2f,\"region_ms\":%.2f,"
                          "\"overlay_ms\":%.2f,\"swap_ms\":%.2f,"
-                         "\"rss_mb\":%.1f,\"private_mb\":%.1f}\n",
+                         "\"rss_mb\":%.1f,\"private_mb\":%.1f,"
+                         "\"clip\":\"%s\",\"face\":\"%s\",\"card\":\"%s\"}\n",
                          static_cast<unsigned long long>(SDL_GetTicks()),
                          fps, frames_, intervalP50, intervalP95, intervalP99,
                          hitches_, updateAvg, renderAvg, readbackAvg,
-                         regionAvg, overlayAvg, swapAvg, rssMb, privateMb);
+                         regionAvg, overlayAvg, swapAvg, rssMb, privateMb,
+                         clip_, face_, card_);
             std::fflush(trace_);
         }
 
@@ -213,6 +215,13 @@ public:
     }
 
     FrameSample& current() { return current_; }
+
+    void setContext(const char* clip, const char* face, const char* card) {
+        if (!enabled_) return;
+        copyField(clip_, sizeof(clip_), clip);
+        copyField(face_, sizeof(face_), face);
+        copyField(card_, sizeof(card_), card);
+    }
 
     // Final summary for short headless runs. Unlike maybeLog() this does not
     // depend on one wall-clock second having elapsed.
@@ -239,23 +248,25 @@ public:
                 "p95=%.2fms p99=%.2fms work=%.2fms hitch=%u "
                 "update=%.2fms render=%.2fms readback=%.2fms "
                 "region=%.2fms overlay=%.2fms swap=%.2fms "
-                "rss=%.1fMB private=%.1fMB",
+                "rss=%.1fMB private=%.1fMB clip=%s face=%s",
                 mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
                 intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg,
                 renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg,
-                rssMb, privateMb);
+                rssMb, privateMb, clip_, face_);
 
-        char line[768];
+        char line[1024];
         const int n = std::snprintf(
             line, sizeof(line),
             "{\"mode\":\"%s\",\"frames\":%u,\"fps\":%.2f,\"p50_ms\":%.2f,"
             "\"p95_ms\":%.2f,\"p99_ms\":%.2f,\"work_ms\":%.2f,\"hitch\":%u,"
             "\"update_ms\":%.2f,\"render_ms\":%.2f,\"readback_ms\":%.2f,"
             "\"region_ms\":%.2f,\"overlay_ms\":%.2f,\"swap_ms\":%.2f,"
-            "\"rss_mb\":%.1f,\"private_mb\":%.1f}",
+            "\"rss_mb\":%.1f,\"private_mb\":%.1f,"
+            "\"clip\":\"%s\",\"face\":\"%s\",\"card\":\"%s\"}",
             mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
             intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg, renderAvg,
-            readbackAvg, regionAvg, overlayAvg, swapAvg, rssMb, privateMb);
+            readbackAvg, regionAvg, overlayAvg, swapAvg, rssMb, privateMb,
+            clip_, face_, card_);
         if (n <= 0) return;
 
         if (path && *path) {
@@ -273,6 +284,11 @@ public:
 
 private:
     static constexpr size_t kCapacity = 600;
+
+    static void copyField(char* dst, size_t cap, const char* src) {
+        if (!dst || cap == 0) return;
+        std::snprintf(dst, cap, "%s", src ? src : "");
+    }
 
     double avgMs(uint64_t sumUs) const {
         return frames_ > 0
@@ -309,6 +325,9 @@ private:
     uint32_t hitches_ = 0;
     uint64_t frameSerial_ = 0;
     uint64_t hitchTraceUs_ = 0;
+    char clip_[32] = "";
+    char face_[32] = "";
+    char card_[32] = "";
     std::array<FrameSample, kCapacity> samples_{};
     size_t sampleHead_ = 0;
     size_t sampleCount_ = 0;

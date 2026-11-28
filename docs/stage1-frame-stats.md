@@ -2,39 +2,44 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-状态：**FrameStats、1Hz trace、`--headless` 60/600 帧 smoke、CI no-GL smoke 已完成；`initLog` 分 session 尚未完成。**
+状态：**FrameStats、1Hz+trace、hitch 事件、RSS/state 字段、`--headless` 60/600 帧、CI no-GL smoke、10 分钟基线均已完成；只剩 CI 的 GPU render 路径未接。**
 
 ## 1. 已实现
 
 - `3d/perf_stats.h`：头文件实现，不新增 `.cpp`，不改变 `build.ps1` 源文件列表。
 - `WHALE3D_STAT=1`：每秒输出一行 `stat`，含：
-  - FPS、interval p50/p95/p99、work、hitch；
-  - update / render / readback / region / overlay / swap 的均值。
+  - FPS、interval p50/p95/p99、work、hitch、RSS/private；
+  - update / render / readback / region / overlay / swap 的均值；
+  - 当前 `clip` / `face`。
 - `WHALE3D_TRACE=<path>`：追加 JSONL，每秒一条，字段与 `stat` 对齐。
+- `WHALE3D_TRACE_HITCH_MS=<ms>`：超过阈值的单帧写成 `{"event":"hitch",...}`，带帧号和 pass 耗时，用来定位单帧 hitch。
 - 启动后 5 秒清空一次统计窗口，避免把模型加载、shader 编译、窗口创建的启动抖动算进稳态 p50/p95。
+- `WHALE3D_KEEP_AWAKE=1`：统计浸泡时阻止显示空闲，避免把系统降频误判成引擎退步。
 - `3d/main.cpp` 已接入 pass 计时点：model update、model render、hit-mask readback、region 更新、overlay 绘制、swap。
+- 默认日志改为追加并写 session 头；`WHALE3D_LOG` 覆盖时仍按测试需要覆盖。
 
 ## 2. 实测
 
-构建：`3d/whale3d-stage1-stats.exe` 与 `3d/whale3d-headless.exe` 均为 1,379,840 B，SHA256 `FB484EF558A4786B2E3808710ED0BE5DCEF4B2D81D791DA6E92D6C5923E8B80F`。  
+构建：`3d/whale3d-headless.exe` 为 1,381,888 B，SHA256 `CEA67348C99905EC6EE9626ECA20FB99C4E32374431CE5C0F742AB152013D9CF`。
 环境：GTX 1060 6GB，驱动 582.78，OpenGL 3.3.0。
 
 ### 2.1 无卡面、15 秒
 
 | 指标 | 值 |
 |---|---|
-| FPS | 27.5–28.2 |
-| interval p50 | 34.56–34.81 ms |
-| p95 | 38.76–39.48 ms |
-| p99 | 39.90–40.58 ms |
-| work | 2.05–2.47 ms |
-| update | 0.01 ms |
+| FPS | 28.6–28.8 |
+| interval p50 | 34.19–34.25 ms |
+| p95 | 37.99–38.38 ms |
+| p99 | 46.52–47.57 ms |
+| work | 1.31–1.47 ms |
+| update | 0.01–0.02 ms |
 | render | 0.01 ms |
-| readback | 1.20–1.66 ms |
-| region | 0.47–0.77 ms |
+| readback | 0.60–0.73 ms |
+| region | 0.47–0.59 ms |
 | overlay | 0.00 ms |
-| swap | 0.07–0.18 ms |
-| hitch | 0–1 |
+| swap | 0.07–0.10 ms |
+| RSS / private | 70.9–71.1 MB / 112.7 MB |
+| hitch | 0 |
 
 同 exe 关闭 `WHALE3D_STAT`、同样 15 秒：FPS 27.0–28.9。统计开销在当前样本内接近噪声。
 
@@ -51,6 +56,16 @@
 ```json
 {"t_ms":2089,"fps":28.68,"frames":29,"p50_ms":34.08,"p95_ms":38.60,"p99_ms":41.27,"hitch":0,"update_ms":0.01,"render_ms":0.01,"readback_ms":0.69,"region_ms":0.62,"overlay_ms":0.00,"swap_ms":0.07}
 ```
+
+当前构建的 1Hz trace 还带 `rss_mb`、`private_mb`、`clip`、`face`、`card`。设置 `WHALE3D_TRACE_HITCH_MS=45` 时，超阈值帧会额外写：
+
+```json
+{"event":"hitch","frame":11892,"interval_ms":49.70,"work_ms":102.78,"update_ms":0.01,"render_ms":0.02,"readback_ms":97.53,"region_ms":0.00,"overlay_ms":0.00,"swap_ms":0.63}
+```
+
+## 2.4 10 分钟基线
+
+完整结果见 `docs/stage1-baseline-10min.md`。摘要：600 个 1Hz 样本，FPS avg 27.86 / max 29.72，p50 avg 34.78 ms，p95 avg 39.18 ms，p99 avg 45.18 ms，RSS 70.1–73.0 MB，private 112.2–113.3 MB；190 条 hitch 事件（去启动前 160 帧后 186 条），最大单帧 interval 885 ms、最大 readback 97.5 ms。没有 crash 或持续内存增长。
 
 ## 3. Headless 60/600 帧
 
@@ -85,11 +100,11 @@ GitHub `windows-latest` 只有 `GDI Generic` / OpenGL 1.1，无法创建本引�
 
 ## 4. 未完成
 
-- 逐帧 trace/环形缓冲尚未落盘；当前是 1Hz 聚合 trace。
-- `initLog()` 每次覆盖日志的问题尚未修。
+- CI 仍只有 no-GL smoke；GPU 的 `--headless` render 路径没有 Windows GPU runner。
+- 全量逐帧 trace 没做；当前是 1Hz 摘要 + hitch 事件，已足够定位单帧异常，不再为“逐帧”而逐帧。
 
 ## 5. 下一步
 
-1. 处理 `initLog()` 覆盖问题：按启动时间分文件或追加 session 头。
-2. 再把 `--headless` 的 render 路径接到一台有 GPU 的 Windows runner（或接受 CI 只做 no-GL smoke 的 waiver）。
-3. 再评估是否需要逐帧 trace；没有明确定位需求前不先加。
+1. 接受“CI no-GL + 本机 GPU render”的双层门禁，或给 CI 接 GPU runner。
+2. 阶段 1 退出评审：60/600、10 分钟、CI、RSS/CPU 口径确认后进入阶段 2。
+3. 阶段 2 第一刀：`AnimationController` 状态表 + 固定 tick，不先改 `Model` 内部。

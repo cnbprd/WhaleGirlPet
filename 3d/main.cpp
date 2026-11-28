@@ -475,6 +475,7 @@ int main(int argc, char** argv) {
                 PerfStats::Timer timer(perf, perf.current().updateUs);
                 model.update(t);
             }
+            perf.setContext(model.clipName(), model.faceName(), "");
             const Mat4 proj = perspective(
                 35.0f * 3.14159265f / 180.0f,
                 static_cast<float>(pw) / static_cast<float>(ph), 0.1f, 20.0f);
@@ -756,6 +757,7 @@ int main(int argc, char** argv) {
             model.update(t);
             sprite.update(dt);
         }
+        perf.setContext(model.clipName(), model.faceName(), "");
         updateTicks += SDL_GetPerformanceCounter() - updateStart;
         ++updateFrames;
 
