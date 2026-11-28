@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-状态：**部分完成；headless 60 帧回归尚未接入。**
+状态：**FrameStats、1Hz trace、`--headless` 60/600 帧 smoke 已完成；`initLog` 分 session 和 CI 接入尚未完成。**
 
 ## 1. 已实现
 
@@ -16,7 +16,7 @@
 
 ## 2. 实测
 
-构建：`3d/whale3d-stage1-stats.exe`，1,374,208 B，SHA256 `E957BC3B7888A502A64B03D00C04685F9D1185DDE97220C605C35F1711B1BDEB`。  
+构建：`3d/whale3d-stage1-stats.exe` 与 `3d/whale3d-headless.exe` 均为 1,379,840 B，SHA256 `FB484EF558A4786B2E3808710ED0BE5DCEF4B2D81D791DA6E92D6C5923E8B80F`。  
 环境：GTX 1060 6GB，驱动 582.78，OpenGL 3.3.0。
 
 ### 2.1 无卡面、15 秒
@@ -52,15 +52,36 @@
 {"t_ms":2089,"fps":28.68,"frames":29,"p50_ms":34.08,"p95_ms":38.60,"p99_ms":41.27,"hitch":0,"update_ms":0.01,"render_ms":0.01,"readback_ms":0.69,"region_ms":0.62,"overlay_ms":0.00,"swap_ms":0.07}
 ```
 
-## 3. 未完成
+## 3. Headless 60/600 帧
 
-- `--headless --fixed-dt=1/60 --frames=N` 尚未接入。
-- `test_headless_smoke.py` 尚未编写。
+新增参数：
+
+```text
+--headless
+--frames=N
+--fixed-dt=1/60
+--summary=<path>
+```
+
+`--headless` 使用隐藏窗口，跳过托盘、overlay、UDP 和单实例互斥；模型路径仍可用位置参数指定。固定 dt 下只按帧数退出，summary 写入指定 JSON，trace 同时保留一行 summary。
+
+| 帧数 | exit | GL error | center_alpha | summary p50/p99 | work |
+|---|---|---|---|---|---|
+| 60 | 0 | 0 | 255 | 1.44 / 5.57 ms | 1.62 ms |
+| 600 | 0 | 0 | 255 | 0.96 / 3.34 ms | 1.14 ms |
+
+`fps` 是 headless 实际跑帧速度（60 帧约 104 FPS，600 帧约 575 FPS），不是目标刷新率；固定 dt 的模拟时间仍是 `frames × 1/60`。
+
+脚本：`3d/tools/test_headless_smoke.py`，已跑 60 和 600 帧，均 PASS。证据在 `build/headless-smoke/`。
+
+## 4. 未完成
+
 - 逐帧 trace/环形缓冲尚未落盘；当前是 1Hz 聚合 trace。
 - `initLog()` 每次覆盖日志的问题尚未修。
+- GitHub Actions 尚未接入 headless smoke。
 
-## 4. 下一步
+## 5. 下一步
 
-1. 给 `main` 增加 `--headless --fixed-dt=1/60 --frames=N`，隐藏窗口 + FBO 渲染，输出 summary JSON。
-2. 写 `3d/tools/test_headless_smoke.py`，跑 60 帧 smoke，校验 trace schema 和 exit 0。
-3. 处理 `initLog()` 覆盖问题：按启动时间分文件或追加 session 头。
+1. 处理 `initLog()` 覆盖问题：按启动时间分文件或追加 session 头。
+2. 把 `3d/tools/test_headless_smoke.py` 接进 `3d-build.yml`，至少跑 60 帧。
+3. 再评估是否需要逐帧 trace；没有明确定位需求前不先加。

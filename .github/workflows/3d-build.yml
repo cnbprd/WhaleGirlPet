@@ -87,6 +87,13 @@ jobs:
           "label=$label" >> $env:GITHUB_OUTPUT
           Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion) label=$label"
 
+      - name: Headless 60-frame smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python .\3d\tools\test_headless_smoke.py --exe .\3d\whale3d.exe --frames 60
+          if ($LASTEXITCODE -ne 0) { throw "headless smoke failed ($LASTEXITCODE)" }
+
       - name: Package portable ZIP
         id: package
         shell: pwsh

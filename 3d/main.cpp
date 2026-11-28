@@ -56,6 +56,21 @@ static void initLog() {
     SDL_Log("Log: %s", path.c_str());
 }
 
+static bool hasPrefix(const char* value, const char* prefix) {
+    return value && std::strncmp(value, prefix, std::strlen(prefix)) == 0;
+}
+
+// Accept both "--fixed-dt=0.016667" and "--fixed-dt=1/60".
+static double parseSeconds(const char* value) {
+    if (!value || !*value) return 0.0;
+    const char* slash = std::strchr(value, '/');
+    if (!slash) return std::strtod(value, nullptr);
+    const std::string numerator(value, static_cast<size_t>(slash - value));
+    const double denom = std::strtod(slash + 1, nullptr);
+    if (denom <= 0.0) return 0.0;
+    return std::strtod(numerator.c_str(), nullptr) / denom;
+}
+
 // ---- tiny column-major matrix math for the camera ----
 struct Mat4 { GLfloat m[16]; };
 
@@ -244,25 +259,52 @@ int main(int argc, char** argv) {
         return runRelaunchHelper(argc, argv);
     }
 
-    // One desktop pet per user session.  Without this guard a second direct
-    // launch can create another window/tray icon and race the UDP emotion
-    // socket (which intentionally enables address reuse).
-    SetLastError(0);
-    HANDLE instanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\WhaleGirlPet3D");
-    if (!instanceMutex) {
-        return 1;
+    bool headless = false;
+    int headlessFrames = 60;
+    double fixedDt = 1.0 / 60.0;
+    std::string modelArg;
+    std::string summaryPath;
+    for (int i = 1; i < argc; ++i) {
+        const char* arg = argv[i];
+        if (std::strcmp(arg, "--headless") == 0) {
+            headless = true;
+        } else if (hasPrefix(arg, "--frames=")) {
+            const int parsed = std::atoi(arg + std::strlen("--frames="));
+            if (parsed > 0) headlessFrames = parsed;
+        } else if (hasPrefix(arg, "--fixed-dt=")) {
+            const double parsed = parseSeconds(arg + std::strlen("--fixed-dt="));
+            if (parsed > 0.0 && parsed <= 0.1) fixedDt = parsed;
+        } else if (hasPrefix(arg, "--summary=")) {
+            summaryPath = arg + std::strlen("--summary=");
+        } else if (arg[0] != '-') {
+            modelArg = arg;
+        }
     }
-    if (GetLastError() == ERROR_ALREADY_EXISTS) {
-        CloseHandle(instanceMutex);
-        return 0;
+
+    // One desktop pet per user session. Without this guard a second direct
+    // launch can create another window/tray icon and race the UDP emotion
+    // socket (which intentionally enables address reuse). Headless runs are
+    // deliberately exempt so CI can run while the desktop pet is open.
+    HANDLE instanceMutex = nullptr;
+    if (!headless) {
+        SetLastError(0);
+        instanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\WhaleGirlPet3D");
+        if (!instanceMutex) {
+            return 1;
+        }
+        if (GetLastError() == ERROR_ALREADY_EXISTS) {
+            CloseHandle(instanceMutex);
+            return 0;
+        }
     }
 
     initLog();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
+        if (instanceMutex) CloseHandle(instanceMutex);
         return 1;
     }
-    PerfStats perf;
+    PerfStats perf(headless);
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -279,19 +321,26 @@ int main(int argc, char** argv) {
         SDL_WINDOW_OPENGL | SDL_WINDOW_TRANSPARENT | SDL_WINDOW_BORDERLESS |
         SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIGH_PIXEL_DENSITY |
         SDL_WINDOW_NOT_FOCUSABLE);
+    if (headless) {
+        flags = static_cast<SDL_WindowFlags>(
+            SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    }
 
     SDL_Window* win = SDL_CreateWindow("鲸鱼娘", winW, winH, flags);
     if (!win) {
         SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
         SDL_Quit();
+        if (instanceMutex) CloseHandle(instanceMutex);
         return 1;
     }
 
-    SDL_DisplayID display = SDL_GetPrimaryDisplay();
-    SDL_Rect usable{};
-    if (SDL_GetDisplayUsableBounds(display, &usable)) {
-        SDL_SetWindowPosition(win, usable.x + usable.w - winW - 80,
-                                   usable.y + usable.h - winH - 30);
+    if (!headless) {
+        SDL_DisplayID display = SDL_GetPrimaryDisplay();
+        SDL_Rect usable{};
+        if (SDL_GetDisplayUsableBounds(display, &usable)) {
+            SDL_SetWindowPosition(win, usable.x + usable.w - winW - 80,
+                                       usable.y + usable.h - winH - 30);
+        }
     }
 
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
@@ -316,7 +365,7 @@ int main(int argc, char** argv) {
         // calling SDL_free here corrupts the heap and crashes SDL_Quit on exit.
         base = raw;
     }
-    std::string modelPath = argc > 1 ? argv[1] : base + "assets/models/whale_girl.vrm";
+    std::string modelPath = modelArg.empty() ? base + "assets/models/whale_girl.vrm" : modelArg;
     Model model;
     if (!model.load(modelPath)) {
         SDL_Log("Primary VRM load failed: %s", model.error().c_str());
@@ -355,6 +404,76 @@ int main(int argc, char** argv) {
     }
     SDL_Log("Animator: %s; clip: %s; face: %s",
             model.animatorName(), model.clipName(), model.faceName());
+
+    if (headless) {
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        const float eye[3] = { 0.55f, 1.15f, 4.5f };
+        const float center[3] = { 0.0f, 1.0f, 0.0f };
+        const float up[3] = { 0.0f, 1.0f, 0.0f };
+        const Mat4 view = lookAt(eye, center, up);
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(win, &pw, &ph);
+        if (pw <= 0 || ph <= 0) {
+            SDL_Log("headless: invalid drawable %dx%d", pw, ph);
+            model.shutdown();
+            SDL_GL_DestroyContext(ctx);
+            SDL_DestroyWindow(win);
+            SDL_Quit();
+            if (instanceMutex) CloseHandle(instanceMutex);
+            return 1;
+        }
+        std::vector<unsigned char> pixels(static_cast<size_t>(pw) * ph * 4, 0);
+        while (glGetError() != GL_NO_ERROR) {}
+
+        int rendered = 0;
+        GLenum lastError = GL_NO_ERROR;
+        for (int i = 0; i < headlessFrames; ++i) {
+            perf.beginFrame();
+            const float t = fixedDt * static_cast<float>(i + 1);
+            {
+                PerfStats::Timer timer(perf, perf.current().updateUs);
+                model.update(t);
+            }
+            const Mat4 proj = perspective(
+                35.0f * 3.14159265f / 180.0f,
+                static_cast<float>(pw) / static_cast<float>(ph), 0.1f, 20.0f);
+            const Mat4 viewProj = multiply(proj, view);
+            glViewport(0, 0, pw, ph);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            {
+                PerfStats::Timer timer(perf, perf.current().renderUs);
+                model.draw(viewProj.m);
+            }
+            glReadBuffer(GL_BACK);
+            {
+                PerfStats::Timer timer(perf, perf.current().readbackUs);
+                glReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE,
+                             pixels.data());
+            }
+            lastError = glGetError();
+            SDL_GL_SwapWindow(win);
+            perf.endFrame();
+            ++rendered;
+        }
+        perf.writeSummary("headless", summaryPath.empty() ? nullptr : summaryPath.c_str());
+        const int cx = pw / 2;
+        const int cy = ph / 2;
+        const unsigned char centerAlpha =
+            pixels[(static_cast<size_t>(ph - 1 - cy) * pw + cx) * 4 + 3];
+        SDL_Log("headless done frames=%d gl_error=0x%x center_alpha=%u summary=%s",
+                rendered, static_cast<unsigned>(lastError), centerAlpha,
+                summaryPath.empty() ? "-" : summaryPath.c_str());
+
+        model.shutdown();
+        SDL_GL_DestroyContext(ctx);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        if (instanceMutex) CloseHandle(instanceMutex);
+        return lastError == GL_NO_ERROR ? 0 : 1;
+    }
 
     EmotionBus emotionBus;
     int emotionPort = 47832;

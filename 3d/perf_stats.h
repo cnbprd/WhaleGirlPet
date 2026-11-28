@@ -46,8 +46,9 @@ public:
         uint64_t start_ = 0;
     };
 
-    PerfStats()
-        : enabled_(std::getenv("WHALE3D_STAT") != nullptr ||
+    PerfStats(bool forceEnable = false)
+        : enabled_(forceEnable ||
+                   std::getenv("WHALE3D_STAT") != nullptr ||
                    std::getenv("WHALE3D_TRACE") != nullptr),
           freq_(SDL_GetPerformanceFrequency()),
           lastLog_(now()),
@@ -167,6 +168,56 @@ public:
     }
 
     FrameSample& current() { return current_; }
+
+    // Final summary for short headless runs. Unlike maybeLog() this does not
+    // depend on one wall-clock second having elapsed.
+    void writeSummary(const char* mode, const char* path) const {
+        if (!enabled_ || frames_ == 0 || freq_ == 0) return;
+        const double fps = static_cast<double>(frames_) * 1000000.0 /
+                           static_cast<double>(std::max<uint64_t>(
+                               toUs(now() - lastLog_), 1));
+        const double intervalP50 = percentileMs(0.50, true);
+        const double intervalP95 = percentileMs(0.95, true);
+        const double intervalP99 = percentileMs(0.99, true);
+        const double updateAvg = avgMs(sumUpdateUs_);
+        const double renderAvg = avgMs(sumRenderUs_);
+        const double readbackAvg = avgMs(sumReadbackUs_);
+        const double regionAvg = avgMs(sumRegionUs_);
+        const double overlayAvg = avgMs(sumOverlayUs_);
+        const double swapAvg = avgMs(sumSwapUs_);
+
+        SDL_Log("summary mode=%s frames=%u fps=%.1f interval_p50=%.2fms "
+                "p95=%.2fms p99=%.2fms work=%.2fms hitch=%u "
+                "update=%.2fms render=%.2fms readback=%.2fms "
+                "region=%.2fms overlay=%.2fms swap=%.2fms",
+                mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
+                intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg,
+                renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg);
+
+        char line[512];
+        const int n = std::snprintf(
+            line, sizeof(line),
+            "{\"mode\":\"%s\",\"frames\":%u,\"fps\":%.2f,\"p50_ms\":%.2f,"
+            "\"p95_ms\":%.2f,\"p99_ms\":%.2f,\"work_ms\":%.2f,\"hitch\":%u,"
+            "\"update_ms\":%.2f,\"render_ms\":%.2f,\"readback_ms\":%.2f,"
+            "\"region_ms\":%.2f,\"overlay_ms\":%.2f,\"swap_ms\":%.2f}",
+            mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
+            intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg, renderAvg,
+            readbackAvg, regionAvg, overlayAvg, swapAvg);
+        if (n <= 0) return;
+
+        if (path && *path) {
+            FILE* out = std::fopen(path, "w");
+            if (out) {
+                std::fprintf(out, "%s\n", line);
+                std::fclose(out);
+            }
+        }
+        if (trace_) {
+            std::fprintf(trace_, "%s\n", line);
+            std::fflush(trace_);
+        }
+    }
 
 private:
     static constexpr size_t kCapacity = 600;
