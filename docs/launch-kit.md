@@ -9,6 +9,7 @@
 - 仓库：https://github.com/cnbprd/WhaleGirlPet
 - 最新 Release：https://github.com/cnbprd/WhaleGirlPet/releases/tag/v3.2.0-sprite
 - 演示 GIF：https://github.com/cnbprd/WhaleGirlPet/blob/main/docs/demo/whale3d-demo.gif
+- 社交预览图：`docs/demo/social-preview.png`（1280×640；GitHub 仓库设置里上传）
 - 路线图：https://github.com/cnbprd/WhaleGirlPet/blob/main/docs/3d-engine-roadmap-2026-11-28.md
 
 ## 中文技术帖（V2EX / 知乎 / 少数派）
