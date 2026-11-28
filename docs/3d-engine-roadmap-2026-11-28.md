@@ -90,7 +90,7 @@
 - 状态切换 trace 可读；真实窗口手感验收记录完成。
 - 产出 `docs/anim-state-machine.md`。
 
-**第一轮集成（2026-11-28）**：`3d/animation_controller.h` + `3d/anim_state_table.h` + 20 条夹具 + `main.cpp` base/action 门禁已落地；首刀 CI run `46125317184` success，17 卡可见验收通过（`build/stage2-cards/2d-card-visible-qa.json`）。卡队列、`EmotionBus` 多帧有序队列、真实 crossfade、#70 手感验收仍未完成。
+**第一轮集成（2026-11-28）**：`3d/animation_controller.h` + `3d/anim_state_table.h` + 20 条夹具 + `main.cpp` base/action 门禁已落地；集成 CI run `46128539544` success，17 卡可见验收通过（`build/stage2-cards/2d-card-visible-qa.json`）。卡队列、`EmotionBus` 多帧有序队列、真实 crossfade、#70 手感验收仍未完成。
 
 ### 阶段 3：资产管线与烘焙
 

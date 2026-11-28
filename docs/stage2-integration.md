@@ -2,6 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
+CI：run `46128539544` success（20 条动画夹具 + headless 60 no-render）。  
 构建：`3d/whale3d-stage2-integration.exe`，1,410,048 B，
 SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。  
 性质：**测试构建，不替换生产 `3d/whale3d.exe`。**
@@ -20,7 +21,7 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 
 | 项 | 结果 | 证据 |
 |---|---|---|
-| 单元夹具 | 20/20 PASS | `build/test_animation_controller.exe` |
+| 单元夹具 | 20/20 PASS，CI run `46128539544` success | `build/test_animation_controller.exe`、`build/ci-46128539544.log` |
 | W 键单击 | idle→walk，`anim request base=walk active=walk clip=walk` | `build/stage2-key.log` |
 | W 键双击 | walk→idle，日志有两次 `anim request` / `anim base` | `build/stage2-keytoggle.log` |
 | 启动 clip=walk | `default=walk active=walk`，4 秒保持 | `build/stage2-clipwalk.log` |
