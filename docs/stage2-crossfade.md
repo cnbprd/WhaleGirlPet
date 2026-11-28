@@ -26,6 +26,12 @@ SHA256 `F16D41AE2A141D27C6B8F5156D4133393FC492BC0F4E7A42D179F045958D8F65`。
 | fade 结束 | 日志 `clip fade end: walk`；说明 180ms 后走完混合路径 |
 | headless 60 render | PASS，p50 1.81ms / p99 8.47ms / work 2.21ms |
 | headless 600 no-render | PASS，exit 0 |
+| 17 卡截图 | `build/stage2-crossfade-cards/` 捕获 17/17；状态 `needs_visual_review`，未把截图生成当成视觉通过 |
+| 队列回归 | `build/stage2-crossfade-queue/queue-test.json` 6/6 通过 |
+| 真实点击穿透 | `build/stage2-crossfade-click.json`：`ok:true`，卡面 `-1`、模型 `1`、目标 `clicks 0→1` |
+| 真实拖拽 | `build/stage2-crossfade/drag-test.json`：`ok:true`，窗口 (1420,430)→(1510,475)，delta (90,45) |
+| 90 秒快速 W | `build/stage2-crossfade-soak/crossfade-soak.json`：147 次 fade、无退出，CPU 单核 avg 31.93% / max 35.91% |
+| 10 分钟 W 浸泡 | 进行中；完成后单独记录，不与 90 秒结论混写 |
 | 进程 | 测试后无残留 |
 
 ## 3. 边界

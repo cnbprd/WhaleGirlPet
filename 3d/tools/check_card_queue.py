@@ -34,8 +34,8 @@ def send_payload(card: str, ttl_ms: int, source: str, emotion: str = "happy") ->
 
 
 def main() -> int:
-    exe = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "whale3d-stage2-queue.exe"
-    out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT.parent / "build" / "stage2-queue"
+    exe = (Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "whale3d-stage2-queue.exe").resolve()
+    out_dir = (Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT.parent / "build" / "stage2-queue").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     existing = qa.any_whale3d()
