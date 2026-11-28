@@ -64,7 +64,7 @@
 2. 同优先级时，后到的请求胜（latest-wins），但必须记录 `seq`，不能依赖遍历顺序。
 3. 当前状态 `interruptible=false` 时，低优先级请求被拒绝；同优先级也不抢占。
 4. TTL 到期后回退到当前最高优先级的 base；没有 base 时回 `default`。
-5. 切换有 `fadeInMs`/`fadeOutMs`；第一刀先只计算权重和目标状态，不实际采样混合。
+5. 切换有 `fadeInMs`/`fadeOutMs`；idle↔walk 已落地双 clip 采样混合（`Lerp`/`NLerp`），action/expression 没有独立 clip，仍只走状态权重。
 6. `FixedStep` 用 accumulator 固定 1/60 推进逻辑；单帧最多 4 个 substep，避免长帧炸开。
 
 ## 5. 卡面队列
@@ -78,7 +78,7 @@
 - 当前 `maxWaitMs=5000`；超时丢弃并写 `anim card dropped`。
 - `main.cpp` 在动作/base 切换后 `popReady`，request + `sprite.showCard`，日志 `Sprite card queued`。
 
-边界：高优先级动作仍可插队；没有 overlay crossfade。
+边界：高优先级动作仍可插队；clip crossfade 只覆盖 idle/walk，overlay 卡面仍硬切。
 
 ## 6. EmotionBus 顺序
 
@@ -146,5 +146,5 @@
 
 第二轮队列实测：`CardQueue` 35/35 PASS；同批 `Emotion batch: 2 frames`；动作期间 `anim card queued`；动作结束 `Sprite card queued: expression/happy`，补显 1.2 秒后回 idle。详见 `docs/stage2-queue.md`。
 
-仍未完成：真正 crossfade 采样、#70 聊天（3D shell 无聊天入口）。队列版已过真实点击穿透和拖拽；压力浸泡 60/60 补显、0 丢弃、CPU avg 26.35%、RSS 70.5–71.6MB，无 crash；idle 10 分钟 FPS 27.95 / p50 34.62ms / p99 48.36ms；历史 CPU 33.27%（阶段 1 26.30%），但同机 A/B 后 stage1-stats 31.52% vs queue 33.27%，只 +1.75pp；队列 FPS/p99 更好但 swap 路径不同，帧时间不能直接比较，见 `docs/stage2-queue.md`。第一轮 10 分钟浸泡：FPS avg 27.78（基线 27.86）、p50 34.92ms（34.78）、p99 47.02ms（45.18）、hitch 134（190）、RSS 70.2–72.9MB，无 crash；详见 `docs/stage2-integration.md`。
+仍未完成：#70 聊天（3D shell 无聊天入口）。idle↔walk 真采样 crossfade 已在 `docs/stage2-crossfade.md` 落地；action/expression 仍无独立 clip。队列版已过真实点击穿透和拖拽；压力浸泡 60/60 补显、0 丢弃、CPU avg 26.35%、RSS 70.5–71.6MB，无 crash；idle 10 分钟 FPS 27.95 / p50 34.62ms / p99 48.36ms；历史 CPU 33.27%（阶段 1 26.30%），但同机 A/B 后 stage1-stats 31.52% vs queue 33.27%，只 +1.75pp；队列 FPS/p99 更好但 swap 路径不同，帧时间不能直接比较，见 `docs/stage2-queue.md`。第一轮 10 分钟浸泡：FPS avg 27.78（基线 27.86）、p50 34.92ms（34.78）、p99 47.02ms（45.18）、hitch 134（190）、RSS 70.2–72.9MB，无 crash；详见 `docs/stage2-integration.md`。
 

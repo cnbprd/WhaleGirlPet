@@ -55,13 +55,13 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 - **第一轮卡队列未实现**：低优先级卡在动作期间只更新 pending，动作结束不会补显示；第二轮已改为 `CardQueue` 补显。
 - **第一轮 EmotionBus 未改多帧队列**：同一 poll 仍只取最后一帧；第二轮已改为 `pollAll`。
 - **动作状态 `interruptible=true`**：同优先级新动作可以替换旧动作，保证 17 卡 QA 和真实使用里 dance→wave 不被锁死；低优先级表情仍不能抢占。
-- **没有真正 crossfade 采样**：只输出 `fadeInMs/fadeOutMs` 和状态决策，`Model` 采样仍硬切。
+- **clip crossfade 已落地但只覆盖 idle/walk**：`Model::updateOzz` 现在双采样并混合局部骨骼；action/expression 没有独立 clip，仍不切 3D clip。详见 `docs/stage2-crossfade.md`。
 - **ShellUi 设置里的 `setFace` 仍是直接调用**；本轮只同步 `setClip`。
 - 10 分钟集成浸泡已完成，见上表；p99 略高于阶段 1 基线，CPU 高约 3.5 个百分点。
 
 ## 4. 下一步
 
-1. 第二轮 `CardQueue` 已完成，见 `docs/stage2-queue.md`；下一项是队列版 10 分钟浸泡。
-2. 做真实窗口 #70：点击/拖拽/动作/聊天触发全部走一次。
-3. 通过后再谈 `Model` 内部 crossfade，不先重写采样器。
+1. 第二轮 `CardQueue` 已完成，见 `docs/stage2-queue.md`；队列版 idle 10 分钟和同机 A/B 已完成。
+2. 做真实窗口 #70：点击/拖拽已过；聊天入口在 3D shell 不存在，待确认范围。
+3. idle↔walk clip crossfade 已完成，见 `docs/stage2-crossfade.md`；卡面 overlay crossfade 暂不做。
 4. 生产包和 Release 资产暂不替换。

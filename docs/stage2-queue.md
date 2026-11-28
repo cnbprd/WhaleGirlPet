@@ -88,14 +88,14 @@ A/B 结论：CPU 只高 **1.75pp**，不是相对历史基线的 6.97pp；队列
 
 - `maxWaitMs` 固定 5000ms；超过 5 秒还没轮到的卡会丢，日志 `anim card dropped`。
 - 队列 FIFO 只保证同优先级；高优先级动作仍可插队。
-- 没有真正 crossfade；卡面仍是硬切 + sprite 自身 0.12s alpha。
+- idle↔walk clip crossfade 已在 `stage2-crossfade` 构建落地；卡面 overlay 仍是硬切 + sprite 自身 0.12s alpha。
 - 队列版 10 分钟已跑：历史基线对比 p99 +3.18ms、CPU +6.97pp；同机 A/B 后 CPU 只 +1.75pp，且队列 FPS/p50/p99 更好，但两轮 swap 路径不同，帧时间不能直接下结论。
 - 生产 `3d/whale3d.exe`、Release 资产、阶段 0/1 waiver 均未改。
 - #70 已覆盖真实点击穿透和拖拽；3D shell 无聊天入口，聊天未验，所以 #70 仍不能关闭。
-- 没有真正 crossfade，`ShellUi::setFace` 仍直接调用。
+- idle↔walk clip crossfade 已落地；`ShellUi::setFace` 仍直接调用，face 不归 controller。
 
 ## 5. 下一步
 
 1. 接受 A/B 的 +1.75pp CPU 作为状态机/队列开销；不再使用历史 6.97pp 的说法。
 2. #70 剩余聊天触发；3D shell 当前无聊天入口，需要确认验收范围或接回 2D/聊天面板。
-3. 真实 crossfade 暂不先做；先等 action/expression 的真正动画资产。
+3. idle↔walk clip crossfade 已完成；卡面 overlay crossfade 等 action/expression 资产后再做。

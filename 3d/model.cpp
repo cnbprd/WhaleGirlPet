@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -30,6 +31,7 @@
 #include <ozz/animation/runtime/sampling_job.h>
 #include <ozz/animation/runtime/skeleton.h>
 #include <ozz/base/containers/vector.h>
+#include <ozz/base/maths/soa_quaternion.h>
 #include <ozz/base/maths/soa_transform.h>
 #include <ozz/base/maths/simd_math.h>
 #include <ozz/base/memory/unique_ptr.h>
@@ -463,13 +465,18 @@ struct Model::Impl {
     bool ozzReady = false;
     std::string ozzError;
     int activeClip = 0;
+    int previousClip = -1;
+    float clipFadeDurationMs = 180.0f;
+    float clipFadeElapsedMs = 0.0f;
 
 #ifdef WHALE3D_USE_OZZ
     ozz::unique_ptr<ozz::animation::Skeleton> ozzSkeleton;
     ozz::unique_ptr<ozz::animation::Animation> ozzIdle;
     ozz::unique_ptr<ozz::animation::Animation> ozzWalk;
     std::unique_ptr<ozz::animation::SamplingJob::Context> ozzContext;
+    std::unique_ptr<ozz::animation::SamplingJob::Context> ozzContextPrev;
     ozz::vector<ozz::math::SoaTransform> ozzLocals;
+    ozz::vector<ozz::math::SoaTransform> ozzLocalsPrev;
     ozz::vector<ozz::math::Float4x4> ozzModels;
     std::vector<int> skinToOzz;
 #endif
@@ -1016,6 +1023,9 @@ static bool buildOzz(Model::Impl& m) {
     m.ozzModels.resize((size_t)m.ozzSkeleton->num_joints());
     m.ozzContext = std::make_unique<ozz::animation::SamplingJob::Context>(
         m.ozzIdle->num_tracks());
+    m.ozzLocalsPrev.resize((size_t)m.ozzSkeleton->num_soa_joints());
+    m.ozzContextPrev = std::make_unique<ozz::animation::SamplingJob::Context>(
+        m.ozzIdle->num_tracks());
     m.ozzReady = true;
     return true;
 }
@@ -1294,11 +1304,15 @@ bool Model::setAnimator(const std::string& name) {
     if (name == "self") {
         impl_->useOzz = false;
         impl_->activeClip = 0;
+        impl_->previousClip = -1;
+        impl_->clipFadeElapsedMs = 0.0f;
         return true;
     }
     if (name == "ozz") {
 #ifdef WHALE3D_USE_OZZ
         impl_->useOzz = true;
+        impl_->previousClip = -1;
+        impl_->clipFadeElapsedMs = 0.0f;
         return impl_->ozzReady;
 #else
         impl_->ozzError = "ozz support was not compiled in";
@@ -1322,23 +1336,35 @@ const char* Model::animatorName() const {
 
 bool Model::setClip(const std::string& name) {
     if (!impl_) return false;
-    if (name == "idle") {
-        impl_->activeClip = 0;
-        return true;
-    }
+    int target = -1;
+    if (name == "idle") target = 0;
 #ifdef WHALE3D_USE_OZZ
-    if (name == "walk" && impl_->useOzz && impl_->ozzWalk) {
-        impl_->activeClip = 1;
-        return true;
+    if (name == "walk" && impl_->useOzz && impl_->ozzWalk) target = 1;
+#endif
+    if (target < 0) return false;
+    if (target == impl_->activeClip) return true;
+
+    const int previous = impl_->activeClip;
+    impl_->previousClip = (impl_->clipFadeDurationMs > 0.0f) ? previous : -1;
+    impl_->clipFadeElapsedMs = 0.0f;
+    impl_->activeClip = target;
+#ifdef WHALE3D_USE_OZZ
+    if (impl_->previousClip >= 0) {
+        SDL_Log("clip fade: %s -> %s %.0fms",
+                previous == 1 ? "walk" : "idle",
+                target == 1 ? "walk" : "idle",
+                impl_->clipFadeDurationMs);
     }
 #endif
-    return false;
+    return true;
 }
 
 void Model::nextClip() {
     if (!impl_) return;
 #ifdef WHALE3D_USE_OZZ
-    if (impl_->useOzz && impl_->ozzWalk) impl_->activeClip = (impl_->activeClip + 1) % 2;
+    if (impl_->useOzz && impl_->ozzWalk) {
+        setClip(impl_->activeClip == 1 ? "idle" : "walk");
+    }
 #endif
 }
 
@@ -1582,6 +1608,9 @@ bool Model::loadImpl(const std::string& path) {
     if (const char* freeze = std::getenv("WHALE3D_FREEZE")) {
         m.freezeAnimation = std::strcmp(freeze, "0") != 0;
     }
+    if (const char* fade = std::getenv("WHALE3D_CLIP_FADE_MS")) {
+        m.clipFadeDurationMs = std::max(0.0f, static_cast<float>(std::atof(fade)));
+    }
     if (const char* trace = std::getenv("WHALE3D_EMOTION_TRACE")) {
         m.emotionTrace = std::strcmp(trace, "0") != 0;
     }
@@ -1592,7 +1621,9 @@ bool Model::loadImpl(const std::string& path) {
     m.ozzIdle.reset();
     m.ozzWalk.reset();
     m.ozzContext.reset();
+    m.ozzContextPrev.reset();
     m.ozzLocals.clear();
+    m.ozzLocalsPrev.clear();
     m.ozzModels.clear();
     m.skinToOzz.clear();
 #endif
@@ -2127,22 +2158,62 @@ static void applySpringBones(Model::Impl& m, float timeSeconds, float dt) {
     }
 }
 
-static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
-    const ozz::animation::Animation* clip =
-        (m.activeClip == 1 && m.ozzWalk) ? m.ozzWalk.get() : m.ozzIdle.get();
-    if (!clip || !m.ozzContext || m.ozzModels.empty() || m.ozzLocals.empty()) return false;
-    float duration = clip->duration();
+static bool sampleOzzClip(Model::Impl& m, const ozz::animation::Animation* clip,
+                          ozz::animation::SamplingJob::Context* context,
+                          ozz::vector<ozz::math::SoaTransform>& output,
+                          float timeSeconds) {
+    if (!clip || !context || output.empty()) return false;
+    const float duration = clip->duration();
     if (duration <= 0.0f) return false;
-    float sampleTime = m.freezeAnimation ? 0.0f : timeSeconds;
+    const float sampleTime = m.freezeAnimation ? 0.0f : timeSeconds;
     float ratio = std::fmod(sampleTime, duration) / duration;
     if (ratio < 0.0f) ratio += 1.0f;
 
     ozz::animation::SamplingJob sampling;
     sampling.animation = clip;
-    sampling.context = m.ozzContext.get();
+    sampling.context = context;
     sampling.ratio = ratio;
-    sampling.output = ozz::make_span(m.ozzLocals);
-    if (!sampling.Run()) return false;
+    sampling.output = ozz::make_span(output);
+    return sampling.Run();
+}
+
+static bool updateOzz(Model::Impl& m, float timeSeconds, float dt) {
+    const ozz::animation::Animation* clip =
+        (m.activeClip == 1 && m.ozzWalk) ? m.ozzWalk.get() : m.ozzIdle.get();
+    if (!clip || !m.ozzContext || m.ozzModels.empty() || m.ozzLocals.empty()) return false;
+    if (clip->duration() <= 0.0f) return false;
+    if (!sampleOzzClip(m, clip, m.ozzContext.get(), m.ozzLocals, timeSeconds)) return false;
+
+    // Crossfade the two authored clips in local space before skinning. This is
+    // a real sampled blend (translation/scale lerp, rotation nlerp), not a
+    // delayed hard switch. Action/expression states currently have no clips,
+    // so they still route through the base clip without a second sample.
+    if (m.previousClip >= 0 && m.clipFadeDurationMs > 0.0f &&
+        m.clipFadeElapsedMs < m.clipFadeDurationMs) {
+        const ozz::animation::Animation* previous =
+            (m.previousClip == 1 && m.ozzWalk) ? m.ozzWalk.get() : m.ozzIdle.get();
+        if (previous && previous != clip && m.ozzContextPrev && !m.ozzLocalsPrev.empty() &&
+            sampleOzzClip(m, previous, m.ozzContextPrev.get(), m.ozzLocalsPrev, timeSeconds)) {
+            const float weight = std::clamp(
+                m.clipFadeElapsedMs / m.clipFadeDurationMs, 0.0f, 1.0f);
+            const auto alpha = ozz::math::simd_float4::Load1(weight);
+            for (size_t i = 0; i < m.ozzLocals.size() && i < m.ozzLocalsPrev.size(); ++i) {
+                const auto& from = m.ozzLocalsPrev[i];
+                auto& to = m.ozzLocals[i];
+                to.translation = ozz::math::Lerp(from.translation, to.translation, alpha);
+                to.rotation = ozz::math::NLerp(from.rotation, to.rotation, alpha);
+                to.scale = ozz::math::Lerp(from.scale, to.scale, alpha);
+            }
+        }
+        m.clipFadeElapsedMs += dt * 1000.0f;
+        if (m.clipFadeElapsedMs >= m.clipFadeDurationMs) {
+            m.previousClip = -1;
+            m.clipFadeElapsedMs = 0.0f;
+            SDL_Log("clip fade end: %s", m.activeClip == 1 ? "walk" : "idle");
+        }
+    } else if (m.clipFadeDurationMs <= 0.0f) {
+        m.previousClip = -1;
+    }
 
     applyPoseOffsets(m);
 
