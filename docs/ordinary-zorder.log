@@ -1,0 +1,21 @@
+Log: F:\WhaleGirlPet\build\ordinary-zorder.log
+GL renderer: NVIDIA GeForce GTX 1060 6GB/PCIe/SSE2
+GL version : 3.3.0 NVIDIA 582.78
+Pose bones: head=5 neck=4 spine=2 chest=3
+ozz ready: 28 joints, clips=idle/walk
+Model springs: 4 chains, vrm=1, enabled=1
+Model loaded: F:\WhaleGirlPet\3d\assets/models/whale_girl.vrm (2076 triangles, 28 joints, 1 animations)
+Spring bones: 4 chains, vrm=1
+Animator: ozz; clip: idle; face: open
+Emotion bus: udp://127.0.0.1:47832
+ShellUi: tray promotion set for key=674768749172540869
+Tray icon ready: rect=(1611,0)-(1643,48)
+Sprite overlay: exstyle 0x8000188 -> 0x8000188
+Sprite layer: ready (overlay F:\WhaleGirlPet\3d\../assets/2d_bridge)
+Sprite forced: expression/happy ttl=5000ms
+Hit mask ready: 420x620 center_alpha=255
+Sprite overlay: exstyle 0x8000188 -> 0x8000188
+Sprite draw card=expression/happy active=1 ttl=5.00 age=0.00 rect=(280,388 127x220) alpha=0.01 tex=1 prog=3 uRect=1 uTex=2 uAlpha=0
+Sprite rect: (280,388 127x220)
+fps=20.6 triangles=2076 update_us=10.00 animator=ozz clip=idle face=open
+Sprite rect: (280,388 127x220)

@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "target_topmost": false,
+  "card_screen": [
+    1763,
+    928
+  ],
+  "under_point": {
+    "hwnd": 2099352,
+    "pid": 19716,
+    "title": "鲸鱼娘卡面"
+  },
+  "clicks_before": 0,
+  "clicks_after": 1,
+  "received": true,
+  "log": "F:\\WhaleGirlPet\\build\\ordinary-zorder.log"
+}
