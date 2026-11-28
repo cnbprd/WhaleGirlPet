@@ -1,0 +1,69 @@
+{
+  "schema": "whale3d-stage5-installer-upgrade-v1",
+  "date": "2026-11-28",
+  "old_installer": {
+    "path": "dist/3d/WhaleGirlPet-Setup-3.2.0-ci.exe",
+    "bytes": 4812568,
+    "sha256": "2950B8845AFB6D554E56EF7E30A2C565F9AEFBAA1CFAC38202D37AC97007221A",
+    "install_exit": 0,
+    "installed_exe_bytes": 1457664,
+    "content_verify": "ok=True errors=0 files=3",
+    "headless_exit": 0,
+    "content_manifest": "verified package hashes"
+  },
+  "new_installer": {
+    "path": "dist/3d/WhaleGirlPet-Setup-3.3.0-stage4.exe",
+    "bytes": 4814785,
+    "sha256": "BA734D2EAA998C33086DBDAECAA43F36D6AFD79134D05009C6F80F893B1CD99D",
+    "fresh_install_exit": 0,
+    "fresh_installed_exe_bytes": 1463296,
+    "fresh_installed_exe_sha256": "E792667E212822C44352781223728DBE07FC3F0652AC6250ECCD3D078931EB93",
+    "fresh_content_verify": "ok=True errors=0 files=3",
+    "fresh_headless_exit": 0,
+    "fresh_content_manifest": "verified package hashes",
+    "upgrade_exit": 0,
+    "installed_exe_bytes": 1463296,
+    "installed_exe_sha256": "E792667E212822C44352781223728DBE07FC3F0652AC6250ECCD3D078931EB93",
+    "content_verify": "ok=True errors=0 files=3",
+    "headless_exit": 0,
+    "content_manifest": "verified package hashes"
+  },
+  "ci_package": {
+    "run_id": 46145187110,
+    "zip": "build/ci-package-46145187110/whale3d-whale-girl-v3.2.0-ci.zip",
+    "bytes": 3220152,
+    "sha256": "84C5EBB6EF4DC37C785297939AF5F442AAC8E3791393B85810786B2E423315E9",
+    "package_content": "ok=True errors=0 files=3"
+  },
+  "release_asset_hashes": {
+    "v3.2.0-sprite_zip": {
+      "bytes": 3076613,
+      "sha256": "B6D777D98FAA043C8215430FE7FB9809C43E321EF8F3A9A7C6BF5132A6E09AFF"
+    },
+    "model": "BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87",
+    "manifest": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D",
+    "atlas": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958",
+    "all_three_match_release": true
+  },
+  "uninstall": {
+    "exit": 0,
+    "leftover": ["whale3d.log"],
+    "cleanup": "test directory removed after archiving run log"
+  },
+  "signing": {
+    "current_user_code_signing_certs": 0,
+    "local_machine_code_signing_certs": 0,
+    "signtool_in_path": false,
+    "installer_status": "NotSigned",
+    "exe_status": "NotSigned"
+  },
+  "backend_decision": "no second IRenderer backend; keep OpenGL 3.3 + NullRenderer",
+  "boundaries": [
+    "installer AppVersion 3.3.0 while exe version resource remains 3.2.0.0",
+    "no public release; only three content asset hashes match the existing v3.2.0-sprite release",
+    "installer does not preflight content; runtime does",
+    "no downgrade or real-user migration test",
+    "no incremental patch",
+    "#71 boot animation remains backlog"
+  ]
+}

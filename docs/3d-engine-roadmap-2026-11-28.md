@@ -1,6 +1,6 @@
 # 3D 引擎分阶段计划（2026-11-28）
 
-状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已按 3D 引擎范围条件退出（聊天项不属 3D core，#70 仍独立待办），阶段 3 已按“资产校验/清单/打包/运行时校验”条件退出，阶段 4 尚未开始；#70 已覆盖点击/拖拽/动作，聊天待定；idle CPU A/B +1.75pp 已判定可接受。**
+状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已按 3D 引擎范围条件退出（聊天项不属 3D core，#70 仍独立待办），阶段 3 已按“资产校验/清单/打包/运行时校验”条件退出，阶段 4 已按“pass 边界 + inspector + golden”条件退出，阶段 5 已按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口；#70 已覆盖点击/拖拽/动作，聊天待定；idle CPU A/B +1.75pp 已判定可接受。**
 基线版本：`v3.2.0-sprite` 已公开发布，tag `v3.2.0-sprite` → `a2ef92c`。
 原则：学 UE 的**工业化方法**，不学 UE 的**功能体量**；每阶段有独立分支、证据和退出条件，不并行重构。
 
@@ -152,6 +152,8 @@
 - 内容包安装/卸载/升级通过；资产 hash 与 Release 一致。
 - 签名状态明确；后端决策有书面理由。
 
+**收口记录（2026-11-28）**：阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。用阶段 3 安装器 `WhaleGirlPet-Setup-3.2.0-ci.exe`（4,812,568 B，`2950B884...`）安装旧候选后，再安装阶段 4 候选安装器 `WhaleGirlPet-Setup-3.3.0-stage4.exe`（4,814,785 B，`BA734D2E...`）；升级 exit 0，`whale3d.exe` 从 1,457,664 B 替换为 1,463,296 B / `E792667E...`，`verify_package_content.py` 返回 `ok=True errors=0 files=3`，headless 60 帧输出 `Content manifest: verified package hashes` 且 exit 0；卸载 exit 0；同一新安装器另做一次全新安装、headless 和卸载也 exit 0。阶段 4 包内 model/manifest/atlas 三个资产 hash 与公开 `v3.2.0-sprite` Release ZIP 内同路径文件完全一致。签名仍为 `NotSigned`：本机 0 张代码签名证书、无 `signtool.exe`，SignPath 外部审核状态未知，维持阶段 0 waiver。后端决策：当前无跨平台/D3D12/Vulkan 明确需求，保留 `IRenderer + NullRenderer`，不引入第二后端；#71 开机动画仍在 backlog。边界：安装器版本 `3.3.0` 而 exe 版本资源仍是 `3.2.0.0`，这是内部候选；未发公开 Release，安装器仍不预检 content，升级只测同 AppId 覆盖，不测降级。详见 `docs/stage5-closeout.md`。
+
 ## 3. 与之前计划的合并
 
 | 旧计划项 | 并入阶段 | 处理方式 |
@@ -185,4 +187,4 @@
 
 ## 6. 下一步
 
-默认从**阶段 0** 开始：先做发布收尾和基线冻结，不改引擎代码；阶段 0 通过后进入阶段 1。
+阶段 0–5 已按各自条件/waiver 收口；主线不再扩大阶段。后续只在有明确发布需求时做发布候选：统一 bump exe 版本资源、替换生产 `3d/whale3d.exe`、重打签名/安装器/Release，并重跑阶段 4 golden 与安装升级。未拍板前保持内部候选，不替换生产 exe。
