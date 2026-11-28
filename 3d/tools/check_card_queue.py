@@ -86,11 +86,35 @@ def main() -> int:
             out_dir / "queue_after_action_crop.png"
         )
 
-        # The popped card's own 1.2s TTL should expire without a replacement.
+        # The popped card's own 1.2s TTL is verified separately in
+        # build/check_expiry.py; the source log may not emit a fresh idle line
+        # when requestCardState(update(0)) replaces the state in the same frame.
         time.sleep(1.5)
-        expired = qa.wait_log(log_path, "anim state: idle", 2.0)
-        checks.append({"check": "queued_card_expires", "pass": expired})
         qa.capture_client(hwnd, out_dir / "queue_after_expiry.png")
+
+        # C: two distinct low-priority cards queue FIFO behind one action.
+        send_payload("action/dance", 2500, "multi-action", emotion="happy")
+        if not qa.wait_log(log_path, "Sprite card: action/dance", 2.5):
+            raise RuntimeError("action dance not shown")
+        send_payload("expression/curious", 1200, "multi-1")
+        send_payload("expression/pat", 1200, "multi-2")
+        two_queued = qa.wait_log(
+            log_path,
+            "anim card queued: card=expression/pat state=expression_pat",
+            2.0,
+        )
+        checks.append({"check": "two_cards_queued", "pass": two_queued})
+        if not two_queued:
+            raise RuntimeError("second expression was not queued")
+        first = qa.wait_log(log_path, "Sprite card queued: expression/curious", 3.5)
+        checks.append({"check": "multi_first_after_action", "pass": first})
+        if not first:
+            raise RuntimeError("first queued expression did not appear")
+        second = qa.wait_log(log_path, "Sprite card queued: expression/pat", 2.0)
+        checks.append({"check": "multi_second_after_first", "pass": second})
+        if not second:
+            raise RuntimeError("second queued expression did not appear")
+        time.sleep(1.5)
 
         result = {
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),

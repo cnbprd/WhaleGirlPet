@@ -2,6 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
+CI：run `46130542797` success（20 条动画 + 35 条卡队列断言 + headless 60 no-render）。  
 构建：`3d/whale3d-stage2-queue.exe`，1,416,192 B，
 SHA256 `2C9AE17318840B7468F75D90901990DAC18B309E2C5B1B2D846BE7AC10AEB2CE`。  
 性质：**测试构建，不替换生产 `3d/whale3d.exe`。**
@@ -23,11 +24,12 @@ SHA256 `2C9AE17318840B7468F75D90901990DAC18B309E2C5B1B2D846BE7AC10AEB2CE`。
 | 项 | 结果 |
 |---|---|
 | AnimationController 单测 | 20/20 PASS |
-| CardQueue 单测 | 27/27 PASS |
+| CardQueue 单测 | 35/35 PASS；CI run `46130542797` success |
 | 同批多帧 | 日志 `Emotion batch: 2 frames`，两张卡都显示 |
 | 动作期间表情 | `anim card queued: card=expression/happy ... active=action_wave active_priority=40 queued=1` |
 | 动作结束补显 | `Sprite card queued: expression/happy state=expression_happy ttl=1200ms active=expression_happy queued_left=0` |
-| 补显后过期 | 约 1.2s 后回 `idle` |
+| 补显后过期 | 约 1.2s 后回 `idle`；独立 `build/check_expiry.py` 复核 |
+| 多张 FIFO | `action/dance` 期间连发 curious、pat：queued=1/2，动作结束先 curious、1.2s 后 pat；`build/stage2-queue-multi/queue-test.json` 6/6 |
 | 17 卡可见 | 17/17 captured，`build/stage2-queue-cards/2d-card-visible-qa.json` |
 | headless 60 render | exit 0；p50 1.14ms / p99 4.16ms / work 1.18ms |
 | headless 600 render | exit 0；p50 0.90ms / p99 1.97ms / work 0.96ms |
@@ -37,17 +39,43 @@ SHA256 `2C9AE17318840B7468F75D90901990DAC18B309E2C5B1B2D846BE7AC10AEB2CE`。
 日志：`build/stage2-queue/queue-test.log`。  
 headless 证据：`build/headless-smoke/headless-*-queue-summary.json`。
 
-## 3. 已知边界
+## 3. 队列版 10 分钟压力浸泡
+
+命令：`build/stage2-queue-soak.ps1`，正常窗口，`WHALE3D_KEEP_AWAKE=1`，600 秒；每 10 秒发一组 `action/wave`（2500ms）+ `expression/happy`（1200ms），共 60 组。日志 `build/stage2-queue-soak.log`，CSV `build/stage2-queue-soak.csv`。
+
+| 指标 | 本轮 | 对照 |
+|---|---:|---:|
+| 队列产生 / 补显 / 丢弃 | 60 / 60 / 0 | 目标 60/60 |
+| FPS avg | 21.58 | 阶段 1 Run B（keep-awake）21.40 |
+| interval p50 avg | 46.04ms | Run B 45.96ms |
+| p95 avg | 51.55ms | Run B 52.79ms |
+| p99 avg | 54.40ms | Run B 61.35ms |
+| hitch 总数 | 1691 | 阶段 1 Run A 190（条件不同） |
+| CPU 单核 avg | 26.35%（24.32–29.53%） | 阶段 1 Run B 26.30% |
+| RSS | 70.50–71.60MB | Run B 69.75–70.58MB |
+| private | 113.0–114.3MB | Run B 112.7–114.1MB |
+
+结论：60 次动作+排队表情全部补显，0 丢弃，无 crash，RSS/private 无持续增长；CPU 与阶段 1 keep-awake 基本持平。FPS 21.58 和 hitch 1691 是桌面合成/overlay 的 swap 限制（swap ≈ 11ms）在 50ms hitch 阈值下的结果，不能当作 GPU 帧时间回归；本轮没有做 idle 队列版基线，不能替代阶段 1 的 27.86 FPS 基线。
+
+### 3.1 真实窗口点击与拖拽
+
+- 点击穿透：`check_click_through.py --click`，卡片命中 `HTTRANSPARENT (-1)`，模型区 `HTCLIENT (1)`，Tk 目标实际收到 1 次点击。结果 `build/stage2-queue/click-through-result.json`。
+- 拖拽：真实鼠标 down → 10 步移动 → up，窗口从 (1420,430) 移到 (1510,475)，位移 (90,45)；目标 (100,50)，误差来自起点/系统缩放取整。结果 `build/stage2-queue/drag-test.json`。
+- 聊天：3D shell 没有聊天入口，本轮未验；#70 只能算部分覆盖。
+
+## 4. 已知边界
 
 - `maxWaitMs` 固定 5000ms；超过 5 秒还没轮到的卡会丢，日志 `anim card dropped`。
 - 队列 FIFO 只保证同优先级；高优先级动作仍可插队。
 - 没有真正 crossfade；卡面仍是硬切 + sprite 自身 0.12s alpha。
-- 没有 10 分钟队列版浸泡；旧 10 分钟浸泡属于上一构建。
+- 队列版 10 分钟已跑，但是动作/表情压力场景，不是 idle 基线；swap 限制使 FPS 约 21.6。
 - 生产 `3d/whale3d.exe`、Release 资产、阶段 0/1 waiver 均未改。
-- 真实鼠标点击/拖拽/聊天 #70 仍未做。
+- #70 已覆盖真实点击穿透和拖拽；3D shell 无聊天入口，聊天未验，所以 #70 仍不能关闭。
+- 没有真正 crossfade，`ShellUi::setFace` 仍直接调用。
 
-## 4. 下一步
+## 5. 下一步
 
-1. 队列构建跑 10 分钟浸泡，确认 tick/queue 无泄漏。
+1. 队列版 idle 10 分钟基线（与阶段 1 27.86 FPS 同条件）后再定阶段 2 帧时间结论。
 2. 补多张低优先级卡连续排队（happy→shy）实测。
-3. 再进 #70 真实窗口点击/拖拽/聊天验收。
+3. #70 剩余聊天触发；3D shell 当前无聊天入口，需要确认验收范围或接回 2D/聊天面板。
+4. 真实 crossfade 暂不先做。

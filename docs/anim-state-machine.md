@@ -144,7 +144,7 @@
 | headless 600 render | exit 0，p50 0.90ms / p99 1.97ms / work 0.96ms |
 | normal stats | 第一轮：FPS 28.8，RSS 70.6–71.1MB；动作晚段曾掉到 20.9 FPS，随后恢复 28.7 |
 
-第二轮队列实测：`CardQueue` 27/27 PASS；同批 `Emotion batch: 2 frames`；动作期间 `anim card queued`；动作结束 `Sprite card queued: expression/happy`，补显 1.2 秒后回 idle。详见 `docs/stage2-queue.md`。
+第二轮队列实测：`CardQueue` 35/35 PASS；同批 `Emotion batch: 2 frames`；动作期间 `anim card queued`；动作结束 `Sprite card queued: expression/happy`，补显 1.2 秒后回 idle。详见 `docs/stage2-queue.md`。
 
-仍未完成：真正 crossfade 采样、真实窗口手感 #70、队列版 10 分钟浸泡。第一轮 10 分钟浸泡：FPS avg 27.78（基线 27.86）、p50 34.92ms（34.78）、p99 47.02ms（45.18）、hitch 134（190）、RSS 70.2–72.9MB，无 crash；详见 `docs/stage2-integration.md`。
+仍未完成：真正 crossfade 采样、#70 聊天（3D shell 无聊天入口）、队列版 idle 10 分钟基线。队列版已过真实点击穿透和拖拽；压力浸泡 60/60 补显、0 丢弃、CPU avg 26.35%、RSS 70.5–71.6MB，无 crash；因 swap 限制 FPS 21.58，见 `docs/stage2-queue.md`。第一轮 10 分钟浸泡：FPS avg 27.78（基线 27.86）、p50 34.92ms（34.78）、p99 47.02ms（45.18）、hitch 134（190）、RSS 70.2–72.9MB，无 crash；详见 `docs/stage2-integration.md`。
 
