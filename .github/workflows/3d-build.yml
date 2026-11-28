@@ -145,9 +145,15 @@ jobs:
           Copy-Item -LiteralPath '3d\assets\models\whale_girl.vrm','3d\assets\models\whale_girl.glb','3d\assets\models\placeholder.glb','3d\assets\models\_whale_girl_atlas.png' -Destination (Join-Path $stage 'assets\models')
           Copy-Item -LiteralPath '3d\assets\ui\pet.ico' -Destination (Join-Path $stage 'assets\ui')
           Copy-Item -LiteralPath 'assets\2d_bridge\atlas.png','assets\2d_bridge\manifest.json' -Destination (Join-Path $stage 'assets\2d_bridge')
+          python .\3d\tools\package_content.py --cook .\build\content\content.json --stage $stage --out (Join-Path $stage 'content.json')
+          if ($LASTEXITCODE -ne 0) { throw "package content generation failed ($LASTEXITCODE)" }
+          python .\3d\tools\verify_package_content.py --stage $stage --report .\build\package-content-verify.json
+          if ($LASTEXITCODE -ne 0) { throw "package content stage verify failed ($LASTEXITCODE)" }
           $zipName = "whale3d-whale-girl-v$env:LABEL-ci.zip"
           $zip = Join-Path $PWD $zipName
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+          python .\3d\tools\verify_package_content.py --zip $zip --report .\build\package-content-verify-zip.json
+          if ($LASTEXITCODE -ne 0) { throw "package content ZIP verify failed ($LASTEXITCODE)" }
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
           Set-Content -LiteralPath "$zip.sha256" -Value "$hash  $zipName" -Encoding ascii
           "zip_name=$zipName" >> $env:GITHUB_OUTPUT
