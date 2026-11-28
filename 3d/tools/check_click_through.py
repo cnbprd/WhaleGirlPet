@@ -109,6 +109,32 @@ def window_pid(hwnd: int) -> int:
     return int(owner.value)
 
 
+def find_overlay_window(pid: int) -> int:
+    for hwnd in find_windows_for_pid(pid):
+        if "卡面" in window_title(hwnd):
+            return hwnd
+    return 0
+
+
+def promote_3d_above_target(main_hwnd: int, overlay_hwnd: int) -> None:
+    """Place the test target directly under the 3D window.
+
+    A topmost target keeps unrelated always-on-top tools (screenshot overlays,
+    browser popups) from sitting between the card and the target.  The 3D main
+    window is promoted first, then the card overlay, so the overlay stays on
+    top of the main window and both stay above the target.
+    """
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+    for hwnd in (main_hwnd, overlay_hwnd):
+        if hwnd:
+            user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0,
+                                0x0001 | 0x0002 | 0x0010)
+
+
 def client_geometry(hwnd: int) -> tuple[int, int, int, int]:
     rect = wintypes.RECT()
     if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
@@ -194,7 +220,12 @@ def describe_window(hwnd: int) -> dict[str, object]:
 
 
 class ClickTarget:
-    """A small Tk target that sits behind the always-on-top 3D window."""
+    """A small Tk target placed directly under the 3D card.
+
+    It is topmost while being constructed, then ``promote_3d_above_target``
+    moves the 3D main window and the card overlay above it.  This avoids
+    unrelated windows stealing the click during the probe.
+    """
 
     def __init__(self, screen_x: int, screen_y: int, size: int = 96) -> None:
         import tkinter as tk
@@ -205,7 +236,7 @@ class ClickTarget:
         self._top.overrideredirect(True)
         self._top.geometry(f"{size}x{size}+{screen_x - size // 2}+{screen_y - size // 2}")
         self._top.configure(bg="#202020")
-        self._top.attributes("-topmost", False)
+        self._top.attributes("-topmost", True)
         self._clicks = 0
         self._top.bind("<Button-1>", self._on_click)
         self._top.update_idletasks()
@@ -327,6 +358,7 @@ def main() -> int:
 
         if args.click:
             target = ClickTarget(screen_x, screen_y)
+            promote_3d_above_target(hwnd, find_overlay_window(pid))
             # Re-check after the target exists so the report names the window
             # that actually sits under the card.
             under_point = describe_window(window_from_point(screen_x, screen_y))

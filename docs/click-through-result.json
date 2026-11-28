@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "hwnd": 1247160,
+  "pid": 23148,
+  "client": {
+    "x": 1420,
+    "y": 430,
+    "w": 420,
+    "h": 620
+  },
+  "card_rect": {
+    "x": 280,
+    "y": 388,
+    "w": 127,
+    "h": 220,
+    "screen_x": 1763,
+    "screen_y": 928
+  },
+  "card_hit_test": -1,
+  "model_hit_test": 1,
+  "card_expected": "HTTRANSPARENT (-1)",
+  "model_expected": "HTCLIENT (1)",
+  "window_from_point": {
+    "hwnd": 264128,
+    "pid": 23148,
+    "title": "鲸鱼娘卡面"
+  },
+  "target": {
+    "clicks_before": 0,
+    "clicks_after": 1,
+    "received": true
+  },
+  "mode": "click",
+  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-3.2.0-sprite\\whale3d.exe"
+}

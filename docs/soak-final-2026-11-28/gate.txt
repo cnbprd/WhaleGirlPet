@@ -1,0 +1,18 @@
+tag: soak_24h_sprite_task
+status: done
+finished: True
+valid: True
+issues: []
+samples: 2880
+expected_samples: 2881
+sample_count_field: 2880
+duration_s: 86400.0
+elapsed_s: 86370.2
+started_at: 2026-11-27T13:51:03+0800
+finished_at: 2026-11-28T13:53:36+0800
+wall_clock_s: 86553.0
+alive_after_soak: True
+rss_start_mb: 69.5
+rss_end_mb: 11.4
+rss_delta_mb: -58.1
+fps: {'min': 0.0, 'max': 29.3, 'avg': 27.25, 'last': 9.6}

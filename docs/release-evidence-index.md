@@ -1,38 +1,30 @@
 # v3.2.0-sprite 发布证据索引
 
-状态：**本地候选，未发布。** 本页只做路径索引，不替代证据本身；标“待补”的路径现在不存在，不能在发布说明里写成已通过。
+状态：**本地发布候选，尚未创建 GitHub Release。** 本页只做路径索引，不替代证据本身。
 
-## 0. 当前 24h 浸泡
+## 0. 24h 浸泡
 
 | 项 | 路径 / 值 | 状态 |
 |---|---|---|
-| 任务 | `WhaleGirlSoak24hSprite`，标签 `soak_24h_sprite_task` | 运行中 |
-| 启动 / 预计结束 | 2026-11-27 13:51:03 / 2026-11-28 13:51:03 | — |
-| checkpoint | `3d/longrun_soak_24h_sprite_task.json` | 运行中，15:45:35 为 230 样本 |
-| 日志 | `3d/longrun_soak_24h_sprite_task.log` | 运行中 |
-| 最终 gate | `3d/tools/check_soak_final.py` | 结束后才能 `exit 0` |
-| gate 合成测试 | `3d/tools/test_check_soak_final.py`、`docs/final-gate-test.md` | 8/8 已通过 |
-| 运行中预检 | `docs/soak-prefinal-2026-11-27.md` | 已验证 `exit 3` |
-| 浸泡记录 | `docs/soak-24h.md` | 已更新到 230 样本 |
-| 失败取证 | `3d/tools/collect_soak_evidence.ps1`、`docs/soak-evidence.md` | 工具已 smoke test |
-| 工具链预检 | `docs/toolchain-preflight-2026-11-27.md` | 路径/版本/磁盘 PASS；未构建 |
-| 文档链接检查 | `docs/release-link-check-2026-11-27.md` | 11 个文件、14 个本地链接，0 死链 |
-| `gh` CLI 预检 | `docs/gh-cli-preflight-2026-11-27.md` | 已登录 `cnbprd`，`repo` scope，命令可用 |
-| release-notes 行为测试 | `docs/release-notes-workflow-test.md` | 假 `gh` 4/4 通过 |
-| 代码签名预检 | `docs/code-signing-preflight-2026-11-27.md` | 无证书、无 signtool、两个产物 `NotSigned`；SignPath 待审核 |
+| 任务 | `WhaleGirlSoak24hSprite`，标签 `soak_24h_sprite_task`，PID 7816 已退出 | 完成 |
+| 启动 / 结束 | 2026-11-27T13:51:03+0800 / 2026-11-28T13:53:36+0800 | 完成 |
+| 最终 gate | `3d/tools/check_soak_final.py`，`exit 0`、`valid=True`、`issues=[]` | PASS |
+| 证据 | `docs/soak-final-2026-11-28.md`、同目录 `gate.txt`、checkpoint、`.log`、`.err.log` | 已归档 |
+| 墙钟 / 样本 | 86,553.0s（24h 2m33s）；2880/2881 | 仅差最后一条采样 |
+| 存活 | `alive_after_soak=True`，非中途退出 | PASS |
 
-当前低 FPS 观察项：日志只有 1 行 `fps=3.7` / `update_us=237118.46`，随后回到 27.8；不是连续降速。
+任务计划程序历史中的 `0x800710E0` 是 13:52:40 重复触发被拒绝，不是 PID 7816 失败；`healthy=false` 是进程正常退出后的状态。
 
-## 1. P1 manifest 回归（分支，未编译）
+## 1. P1 manifest 回归
 
 | 项 | 路径 | 状态 |
 |---|---|---|
-| 纯解析代码 | `build/worktrees/fix-sprite-parser/3d/sprite_manifest.h` / `.cpp` | 已写，未编译 |
-| harness | `build/worktrees/fix-sprite-parser/3d/tests/test_sprite_manifest.cpp` | 已写，未编译 |
-| 17 条夹具 | `build/worktrees/fix-sprite-parser/3d/tests/fixtures/sprite_manifest/cases.json` | 17 条，lint PASS |
-| 静态自审 | `build/worktrees/fix-sprite-parser/docs/p1-static-self-review.md` | 未发现阻断项 |
-| 设计说明 | `build/worktrees/fix-sprite-parser/docs/p1-sprite-manifest-harness.md` | 已写 |
-| 分支 | `fix/sprite-parser`，HEAD `88a4e5d` | 未合入 main |
+| 纯解析代码 | `3d/sprite_manifest.h` / `.cpp`（集成分支） | 已提交 |
+| harness | `3d/tests/test_sprite_manifest.cpp` | 已提交 |
+| 17 条夹具 | `3d/tests/fixtures/sprite_manifest/cases.json` | 17 条 |
+| 编译产物 | `build/test_sprite_manifest_integration.exe` | 已生成 |
+| 运行结果 | `17/17 passed`，exit 0 | PASS |
+| 分支 | `integrate/sprite-parser-static-20261127` | 未合入 main |
 
 ## 2. 17 卡可见验收
 
@@ -41,22 +33,23 @@
 | 图集 / 清单 | `assets/2d_bridge/atlas.png`、`assets/2d_bridge/manifest.json` | 1024×512，17 卡 |
 | 图集离线 QA | `docs/2d-atlas-card-qa.md`、`docs/2d-atlas-qa.json`、`docs/_2d_bridge_contact.png` | 17/17 通过 |
 | 清单 QA | `docs/2d-manifest-qa.md`、`docs/2d-manifest-qa.json` | 17 卡，0 error / 0 warning |
-| 单实例脚本 | `3d/tools/check_cards_visible.py` | 已写，只做过保护预检 |
-| 17 卡 contact sheet | `docs/_3d_visible_17_cards.png` | 待补 |
-| 逐卡坐标 JSON | `docs/2d-card-visible-qa.json` | 待补 |
-| 已目检卡面 | `expression/happy`、`action/wave` | 只有 2 张 |
+| 17 卡 contact sheet | `docs/_3d_visible_17_cards.png` | 已生成 |
+| 逐卡坐标 JSON | `docs/2d-card-visible-qa.json` | 17/17，`status=pass` |
+| 验收报告 | `docs/2d-card-visible-qa.md` | 已写 |
+| 验收实例 | 安装器静默安装到临时目录后的 `whale3d.exe` | 17/17 captured |
 
-其余 15 张必须在浸泡结束后逐张目检；离线 QA 不能替代 3D 可见验收。
+截图背景是透明卡面叠在桌面/浏览器上，背景文字不是卡面错误；卡面本身完整、正向、无图集网格。
 
 ## 3. 卡面点击穿透
 
 | 项 | 路径 | 状态 |
 |---|---|---|
-| 探针 | `3d/tools/check_click_through.py` | 已写，`--pid 7816` 干跑 `exit 2` |
-| 真实点击结果 | `docs/click-through-result.json` | 待补 |
-| 判定 | `card_hit_test=-1` 且 `target.received=true` | 未执行 |
+| 探针 | `3d/tools/check_click_through.py` | 已更新 overlay 发现与 z 序提升 |
+| 真实点击结果 | `docs/click-through-result.json` | `ok=true`、`card_hit_test=-1`、`model_hit_test=1`、`target.received=true`、exit 0 |
+| 验收报告 | `docs/click-through-qa.md` | 已写 |
+| 实现 | 独立透明 overlay + `PostMessage` 向下层窗口转发 | 通过 |
 
-设计上卡面不进入 `hitTest`；在真实坐标采样前，不能写成“点击穿透已通过”。
+点击测试目标临时置顶，再把主窗和 overlay 提到目标上方；这是受控 z 序，不代表所有普通窗口 z 序都已覆盖。
 
 ## 4. 2D PyInstaller 冻结包
 
@@ -64,52 +57,52 @@
 |---|---|---|
 | spec | `WhaleGirlPet.spec` | datas 已含 `assets/2d_bridge` |
 | AssetBridge | `app/asset_bridge.py` | 不依赖 PIL |
-| 静态审计 | `docs/package-static-audit.md` | 已完成 |
-| 冻结包构建 / 启动 | 输出目录由 PyInstaller 决定 | 待浸泡结束 |
+| 冻结包构建 / 启动 | 输出目录由 PyInstaller 决定 | **未在本轮执行**；不阻塞 3D sprite 发布 |
 
 ## 5. 安装器
 
 | 项 | 路径 / 值 | 状态 |
 |---|---|---|
-| 安装器 | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe` | 4,791,434 B |
+| 安装器 | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe` | 4,791,938 B |
+| SHA256 | `B2D4CCF00545C90A78A4454E86111C58FE3F0C55ADE1A3F56C992CCFD59A68ED` | 与 verifier 一致 |
 | sidecar | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe.sha256` | 已写入 |
-| SHA256 | `510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96` | 与 verifier 一致 |
-| staging payload | `build/3d-installer-payload/3.2.0-sprite` | 含 `assets/2d_bridge` |
-| 安装器脚本 | `installer/whale3d.iss`、`installer/build_3d_installers.ps1` | 自动构建缺 sprite 条目，修复分支 `fix/installer-build-sprite` 未合入 |
-| 回归 | 临时目录安装/启动/卸载 exit 0 | 已有记录；最终安装器重建后需复跑 |
+| staging | `build/3d-installer-payload/3.2.0-sprite` | 含新 exe 和 `assets/2d_bridge` |
+| 构建脚本 | `installer/build_3d_installers.ps1` | sprite 条目已 cherry-pick 到集成分支 |
+| 安装回归 | 临时目录静默安装 exit 0；`whale3d.exe`、`assets/2d_bridge` 哈希匹配；卸载 exit 0 | PASS |
 
 ## 6. Release 资产
 
 | 项 | 路径 / 值 | 状态 |
 |---|---|---|
-| 3D exe | `3d/whale3d.exe` | 1,377,792 B；SHA256 `3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C` |
-| 便携 ZIP | `3d/whale3d-whale-girl-v3.2-sprite.zip` | 3,187,948 B；SHA256 `BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE` |
+| 3D exe | `3d/whale3d.exe` | 1,370,624 B；SHA256 `BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650` |
+| 便携 ZIP | `3d/whale3d-whale-girl-v3.2-sprite.zip` | 3,076,689 B；SHA256 `2261ABE89D411F2021D130C9C98C7B9B94088E8E32C63131B3AB4C54DAB68396` |
 | 期望清单 | `docs/release-assets-3.2.0-sprite.json` | 已写 |
 | verifier | `3d/tools/verify_release_assets.py` | 38 checks、0 error / 0 warning PASS |
 | 报告 | `docs/release-asset-verify.md`、`docs/release-asset-verify.json` | 已生成 |
-| 限制 | 安装器内部 payload 未解包核对 | — |
+| 限制 | 安装器内部 payload 由独立 smoke install 回放核对 | 通过 |
 
 ## 7. Release notes 与 CI
 
 | 项 | 路径 | 状态 |
 |---|---|---|
-| 正式 Release notes | `docs/releases/v3.2.0-sprite.md` | 本地草稿，未发布 |
-| 发布草稿 | `docs/release-3.2.0-sprite.md` | 已链接正式 notes |
-| 执行手册 | `docs/post-soak-runbook.md` | 含 P1、17 卡、点击、安装器、上传顺序 |
-| CI / Release 审计 | `docs/ci-release-static-audit.md` | 已审计；`release-notes.yml` 的 push 风险已记录 |
+| 正式 Release notes | `docs/releases/v3.2.0-sprite.md` | 已更新为当前资产/验收 |
+| 发布草稿 | `docs/release-3.2.0-sprite.md` | 已更新 |
+| 执行手册 | `docs/post-soak-runbook.md` | 保留流程记录 |
+| CI / Release 审计 | `docs/ci-release-static-audit.md` | `release-notes.yml` push 风险仍记录 |
 | CI artifact 命名修复 | 分支 `fix/ci-artifact-name`，提交 `94d4fdd` | 未合入、未触发 CI |
-| GitHub Release | `v3.2.0-sprite` | 未创建、未上传 |
+| CI release-notes 修复 | 分支 `fix/release-notes-tag`，提交 `56ba124` | 未合入 |
+| GitHub Release | `v3.2.0-sprite` | **未创建、未上传** |
 
 ## 发布前硬门槛
 
-- [ ] `check_soak_final.py` `exit 0`、`valid=True`、`status=done`、`alive_after_soak=True`
-- [ ] P1 harness 编译并 17/17 通过
-- [ ] 17 卡逐张可见目检完成
-- [ ] `docs/click-through-result.json` 满足 `-1` / `true`
-- [ ] 2D 冻结包启动并读到 17 卡
-- [ ] 安装器最终回归 exit 0
-- [ ] Release verifier 重跑 38 项 PASS
-- [ ] 文件大小 / SHA256 与 Release notes、期望清单一致
+- [x] `check_soak_final.py` `exit 0`、`valid=True`、`status=done`、`alive_after_soak=True`
+- [x] P1 harness 编译并 17/17 通过
+- [x] 17 卡逐张可见目检完成
+- [x] `docs/click-through-result.json` 满足 `-1` / `true`
+- [ ] 2D 冻结包启动并读到 17 卡（本版不阻塞）
+- [x] 安装器最终回归 exit 0
+- [x] Release verifier 重跑 38 项 PASS
+- [x] 文件大小 / SHA256 与 Release notes、期望清单一致
 - [ ] `release-notes.yml` 触发条件已确认，不被误触改写旧 Release
-
-任何一项没有证据，发布说明只能写“待验证”，不能写成“已通过”。
+- [ ] 代码签名（`NotSigned`，SignPath 审核状态未知）
+- [ ] 创建 `v3.2.0-sprite` Release 并上传资产

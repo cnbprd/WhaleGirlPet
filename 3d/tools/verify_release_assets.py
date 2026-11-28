@@ -295,8 +295,8 @@ def write_reports(result: dict, json_out: Path, md_out: Path) -> None:
         "",
         "## 限制",
         "",
-        "- 安装器内部 payload 未解包核对；本脚本核对安装器文件本身、`.sha256` sidecar 和构建 staging。",
-        "- 真实 24h 完成、17 卡目检、真实点击穿透仍需在浸泡结束后执行。",
+        "- 安装器内部 payload 本脚本不展开；安装器已另做静默安装回放，安装退出码 0，`whale3d.exe`、`assets/2d_bridge` 哈希与 staging 一致。",
+        "- 真实 24h、17 卡目检和真实点击穿透已完成，证据见 `docs/soak-final-2026-11-28.md`、`docs/2d-card-visible-qa.md`、`docs/click-through-qa.md`。",
         "",
     ]
     md_out.parent.mkdir(parents=True, exist_ok=True)

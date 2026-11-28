@@ -1,0 +1,204 @@
+{
+  "generated_at": "2026-11-28T14:29:20+08:00",
+  "window": {
+    "hwnd": 657334,
+    "pid": 1396,
+    "client_w": 420,
+    "client_h": 620
+  },
+  "baseline": "F:\\WhaleGirlPet\\docs\\_3d_visible_baseline.png",
+  "contact_sheet": "F:\\WhaleGirlPet\\docs\\_3d_visible_17_cards.png",
+  "cards": [
+    {
+      "card": "expression/idle",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_idle.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_idle_crop.png",
+      "client_rect": {
+        "x": 283,
+        "y": 388,
+        "w": 124,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/happy",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_happy.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_happy_crop.png",
+      "client_rect": {
+        "x": 280,
+        "y": 388,
+        "w": 127,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/eat",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_eat.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_eat_crop.png",
+      "client_rect": {
+        "x": 286,
+        "y": 388,
+        "w": 121,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/walk",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_walk.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_walk_crop.png",
+      "client_rect": {
+        "x": 280,
+        "y": 388,
+        "w": 127,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/sleep",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_sleep.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_sleep_crop.png",
+      "client_rect": {
+        "x": 198,
+        "y": 388,
+        "w": 209,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/sleepy",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_sleepy.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_sleepy_crop.png",
+      "client_rect": {
+        "x": 282,
+        "y": 388,
+        "w": 125,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/shy",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_shy.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_shy_crop.png",
+      "client_rect": {
+        "x": 283,
+        "y": 388,
+        "w": 124,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/angry",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_angry.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_angry_crop.png",
+      "client_rect": {
+        "x": 277,
+        "y": 388,
+        "w": 130,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/curious",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_curious.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_curious_crop.png",
+      "client_rect": {
+        "x": 276,
+        "y": 388,
+        "w": 131,
+        "h": 220
+      }
+    },
+    {
+      "card": "expression/pat",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_pat.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_expression_pat_crop.png",
+      "client_rect": {
+        "x": 287,
+        "y": 388,
+        "w": 120,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/wave",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_wave.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_wave_crop.png",
+      "client_rect": {
+        "x": 283,
+        "y": 388,
+        "w": 124,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/dance",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_dance.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_dance_crop.png",
+      "client_rect": {
+        "x": 279,
+        "y": 388,
+        "w": 128,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/type",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_type.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_type_crop.png",
+      "client_rect": {
+        "x": 243,
+        "y": 388,
+        "w": 165,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/balloon",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_balloon.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_balloon_crop.png",
+      "client_rect": {
+        "x": 290,
+        "y": 388,
+        "w": 117,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/fireworks",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_fireworks.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_fireworks_crop.png",
+      "client_rect": {
+        "x": 258,
+        "y": 388,
+        "w": 149,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/lion",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_lion.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_lion_crop.png",
+      "client_rect": {
+        "x": 256,
+        "y": 388,
+        "w": 151,
+        "h": 220
+      }
+    },
+    {
+      "card": "action/change",
+      "full": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_change.png",
+      "crop": "F:\\WhaleGirlPet\\docs\\_3d_visible_card_action_change_crop.png",
+      "client_rect": {
+        "x": 271,
+        "y": 388,
+        "w": 136,
+        "h": 220
+      }
+    }
+  ],
+  "status": "pass",
+  "reviewed_at": "2026-11-28T14:29:30+08:00",
+  "review_note": "17/17 cards visible from the installed 3.2.0-sprite payload; upright, no atlas grid; desktop background varies behind the transparent sprite.",
+  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-3.2.0-sprite\\whale3d.exe"
+}

@@ -1,68 +1,64 @@
 # 2D 卡面 sprite 层：接线与验收
 
-日期：2026-11-27
-状态：**已接入 3D 主循环，并通过可见帧验收**。`3d/whale3d.exe` 已重建为带 sprite 的 1,377,792 B 版本；临时 exe 只用于调试时保留。旧 24 小时轮在 12:44 提前结束，当前有效轮由 Windows 任务计划程序 `WhaleGirlSoak24hSprite` 运行，见 `docs/soak-24h.md`。
+日期：2026-11-28  
+状态：**已接入 3D，24h 浸泡通过，17/17 可见，卡面点击穿透通过**
 
 ## 目标
 
-在 3D 渲染循环里加一个最小屏幕空间卡面层：读 `assets/2d_bridge/manifest.json`，启动时上传 `atlas.png` 一次，每帧最多画一个 textured quad。它只做装饰，不参与命中区，不替换 3D 脸/身体，也不碰 2D PySide6 面板。
+在 3D 渲染循环外挂一层屏幕空间卡面：读 `assets/2d_bridge/manifest.json`，启动时上传 `atlas.png` 一次，每帧最多画一个 textured quad。卡面不替换 3D 脸/身体，也不参与主窗口的点击 mask。
+
+## 当前架构
+
+- **主 3D 窗口**：只绘制模型；`ShellUi::updateWindowRegion` 只按模型 alpha 生成 region，不再把卡面矩形并进主窗口 region。
+- **卡面 overlay 窗口**：单独一个透明、无边框、置顶、不可聚焦的 SDL/OpenGL 临时窗口，尺寸与主窗口一致；它只负责卡面 quad。
+- overlay 的 Win32 region 被裁成卡面矩形，因此它只覆盖卡面，不会挡住模型区域的鼠标。
+- overlay 收到卡面点击后，用 `GetWindow(GW_HWNDNEXT)` 向下找第一个真正可点的窗口，把 `WM_LBUTTONDOWN/UP`、右键/中键事件转发过去；这样主窗口不需要把卡面放回 region，也不会用 `HTTRANSPARENT` 去赌跨进程投递。
+- 如果第二窗口/第二 GL context 创建失败，代码回退到旧路径：卡面画在主窗口，主窗口 region 额外扩卡面矩形。
 
 ## 文件
 
 - `3d/sprite.h`：`SpriteLayer`、`PixelRect` 公开接口。
-- `3d/sprite.cpp`：manifest 解析、图集解码、GL 资源、quad 绘制、`uUvRect` 子图采样。
-- `3d/main.cpp`：初始化、UDP `card` 接线、每帧 `update/draw`、窗口 region 扩展。
-- `3d/shell_ui.h/.cpp`：`updateWindowRegion` 的 4 个可选额外边界；卡面只扩展 Win32 region，不进入点击 mask。
-- `3d/build.ps1` 已把 `sprite.cpp` 加入源码列表；`3d/tools/emotion_longrun.py` 支持 `WHALE3D_EXE`，并可发 `WHALE3D_LONGRUN_CARD` 做协议验收。
+- `3d/sprite.cpp`：P1 `sprite_manifest` 解析、图集解码、GL 资源、quad 绘制、`uUvRect` 子图采样。
+- `3d/main.cpp`：overlay 窗口/context、卡面 region、点击转发、显示/隐藏/跟随主窗口。
+- `3d/shell_ui.h/.cpp`：`updateWindowRegion` 仍保留 4 个额外边界参数；overlay 可用时传 0，回退路径才传卡面矩形。
+- `3d/build.ps1` 已把 `sprite.cpp`、`sprite_manifest.cpp` 加入源码列表。
 
 ## 接口
 
 ```cpp
 SpriteLayer sprite;
-sprite.init(basePath);          // GL context current 之后
+sprite.init(basePath);          // overlay GL context current 之后
 sprite.showCard("expression/happy", 1800.0f);
 sprite.update(dt);
-sprite.draw(pixelW, pixelH);    // 命中区 glReadPixels 之后
+sprite.draw(pixelW, pixelH);    // overlay context current 时
 ```
 
-- `showCard` 只接受 manifest 里的 id；未知 id 返回 `false`，不会打开任何路径。
-- `ttlMs` 钳制 `200..10000`；过期后 `visible()` 为 `false`。
-- `draw` 画在右下角，高度 `min(220, 0.36 * 窗口高)`，宽高比按 manifest rect 计算；首尾 120 ms 淡入淡出。
-- 图集用 `stb_image` 解码后上传为 GL 纹理；`uUvRect` 把 quad 的 `aUv` 映射到卡面子矩形。纹理坐标约定为：`v0 = y / sheetH`（图集顶部），`v1 = (y + h) / sheetH`（图集底部），绘制时以 `v1` 为底、`v0 - v1` 为负向步长，避免上下颠倒。
-- 绘制前临时 `glDisable(GL_CULL_FACE)`，绘制后恢复原状态；这修复了模型遗留 culling 导致 quad 少一个三角形的问题。
+- `showCard` 只接受 manifest 里的 id；未知 id 返回 `false`。
+- `ttlMs` 钳制 `200..10000`；过期后 `visible()` 为 `false`，overlay 隐藏。
+- `draw` 画在右下角，高度 `min(220, 0.36 * 窗口高)`，宽高比按 manifest rect 计算。
+- 图集用 `stb_image` 解码后上传为 GL 纹理；`uUvRect` 把 quad 的 `aUv` 映射到卡面子矩形。
 
-## 接线顺序（已完成）
+## 接线顺序
 
-1. `main.cpp` 在 `ui.setHitTest` 之后初始化 `SpriteLayer`；先找 `base + assets/2d_bridge/manifest.json`，找不到再找 `base + ../assets/2d_bridge/manifest.json`，因此 `3d\whale3d.exe` 与打包目录都能读到图集。
-2. `EmotionBus::poll` 返回的 `frame.card` 非空且 `cardTtlMs > 0` 时调用 `sprite.showCard(frame.card, frame.cardTtlMs)`；未知 id 只记 `Sprite card rejected`。
-3. 主循环 `sprite.update(dt)`，`dt = clamp(t - lastT, 0, 0.1)`。
-4. `sprite.draw(pw, ph)` 放在模型绘制和命中区 `glReadPixels` 采样之后、`SDL_GL_SwapWindow` 之前。
-5. 把 `sprite.lastRect()` 作为额外矩形传给 `ui.updateWindowRegion`，让卡面不被 Win32 region 裁掉；该矩形不进 `hitTest`，卡面区域仍然点击穿透。
-6. 结束顺序为 `sprite.shutdown()` → `ui.shutdown()` → `emotionBus.stop()` → `model.shutdown()` → 销毁 GL context。
+1. 主窗口 GL context 创建后，初始化模型和 `ShellUi`。
+2. 解析 `spriteBase`：先找 `base + assets/2d_bridge/manifest.json`，找不到再找 `base + ../assets/2d_bridge/manifest.json`。
+3. 创建隐藏的 overlay 窗口；设置置顶、不可聚焦、tool window；获取 HWND，设置 Win32 region 和输入转发 WndProc。
+4. 在 overlay GL context 上 `sprite.init`；成功后切回主 context。
+5. `WHALE3D_CARD` / UDP `card` 只调用 `sprite.showCard`；overlay 根据 `sprite.visible()` 显示/隐藏。
+6. 每帧把主窗口位置同步给 overlay；overlay 绘制前设置卡面 region，绘制后 swap。
+7. 结束时先切到 overlay context 执行 `sprite.shutdown()`，再销毁 overlay context/window。
 
 ## 实测结果
 
-- 强制卡面：`WHALE3D_CARD=expression/happy`，3–4 秒可见运行，截图 `docs/_3d_longrun_sprite_clean_mid.png`，卡面完整、正向、位于右下角。
-- 真实 UDP：`WHALE3D_LONGRUN_CARD=action/wave`，`action/wave` 被 `SpriteLayer` 接收并绘制；日志 `Sprite draw card=action/wave active=1`，截图 `docs/_3d_longrun_sprite_action_mid.png`。
-- 真实 2D 端 `app.asset_bridge.AssetBridge`：读取 17 张卡，`bridge.action('wave', 2600)` 返回 True，3D 日志 `source=P_2D card=action/wave`、`Sprite card: action/wave ttl=2600ms`；截图 `docs/_3d_asset_bridge_action.png` 可见 wave 卡面。
-- 独立打包目录：`build/package-sprite` 内带 `assets/2d_bridge`，启动日志 `Sprite layer: ready (...\assets/2d_bridge)`，FPS 27.9–29.7，截图 `docs/_3d_longrun_sprite_package_mid.png`。
-- 从新 ZIP 解压到干净目录后再次启动：`Sprite layer: ready (...\assets/2d_bridge)`，强制 `expression/happy` 与 UDP `action/wave` 都可见；`action/wave` 的 TTL 2.6 s 到期后最终帧恢复无卡面，说明 TTL 和 window region 收缩正常。
-- 安装器 `WhaleGirlPet-Setup-3.2.0-sprite.exe`：静默安装到临时目录 exit 0，`assets\2d_bridge` 被正确写入；安装后的 `whale3d.exe` 日志 `Sprite layer: ready`，强制 happy 卡面可见，27.8–29.5 FPS；卸载 exit 0。
-- 未开卡面时窗口 region 仍只覆盖模型；开卡面时只额外扩出卡面矩形，点击 mask 不变。
-- 调试开关 `WHALE3D_SPRITE_SOLID`、`WHALE3D_SPRITE_OPAQUE`、`WHALE3D_SPRITE_NO_REGION` 已从产品代码移除；只保留 `WHALE3D_SPRITE_TRACE` 做首帧 rect 日志，以及 `WHALE3D_CARD` / `WHALE3D_CARD_TTL` 作为开发期强制卡面。
+- **24h 浸泡**：`soak_24h_sprite_task` gate `exit 0`、`valid=True`、`alive_after_soak=True`；证据见 `docs/soak-final-2026-11-28.md`。
+- **17 卡可见**：17/17 通过，总览 `docs/_3d_visible_17_cards.png`，逐卡证据 `docs/2d-card-visible-qa.json`、`docs/2d-card-visible-qa.md`。
+- **点击穿透**：`docs/click-through-result.json` 中 `card_hit_test=-1`、`model_hit_test=1`、`target.received=true`；脚本返回 `exit 0`。
+- **overlay 可见性**：`Sprite draw card=expression/happy` 日志确认 overlay context 绘制；17 卡截图确认卡面不再被主窗口 region 裁掉。
 
 ## 边界
 
-- 没有做卡面点击/拖拽；设计上它画在命中区采样之后、不进入 `hitTest`；真实点击穿透仍待坐标采样。
-- 没有做多卡队列/动画；最新卡覆盖旧卡，过期隐藏，和 `CardArbiter` 的语义一致。
-- 没有把卡面接到 3D 骨骼/材质；这是屏幕空间浮层，不是“2D 皮肤变 3D 服装”。
-- 只支持 Windows + OpenGL 3.3 core；GL 入口点全部用 `SDL_GL_GetProcAddress` 加载，缺一个就 `init` 失败并返回错误。
-- 发布包必须把 `assets/2d_bridge/` 放在 exe 同级；`3d/build.ps1` 只编译 exe，打包脚本负责复制图集。
-
-## 下一步
-
-- 24 小时真浸泡：由 Windows 任务计划程序 `WhaleGirlSoak24hSprite` 运行，标签 `soak_24h_sprite_task`；预计 2026-11-28 13:51:03 结束，结束前不能当 24h 通过。
-- 2D PyInstaller 冻结包：`WhaleGirlPet.spec` 已补 `assets/2d_bridge`，源码层 `AssetBridge` 已验证；冻结后的 2D exe 仍需一次打包/启动回归，安排在浸泡结束后。
-- 卡面可见验收：`expression/happy`、`action/wave` 已确认；其余 15 张只完成图集级 QA（`docs/2d-atlas-card-qa.md`），仍需可见窗口逐张确认 UV、方向、裁切。
-- 卡面点击穿透：代码上卡面不进入 `hitTest`，但还没有用卡面坐标做一次真实点击采样；安排在浸泡结束后。
-- 多卡快速切换、TTL 过期后的 region 收缩、卡面与模型遮挡关系：仍需一轮可见目检。
+- overlay 的输入转发主要覆盖左键/右键/中键按下和抬起；鼠标 hover 不保证逐像素转发到下层应用。
+- 点击测试为了保证目标窗口在 3D 下方，测试目标临时置顶，再把 3D 主窗口和卡面 overlay 重新提到目标上方；这是为了排除截图工具/浏览器等第三方窗口抢点击，不改变产品点击路径。
+- 回退路径仍保留旧行为：卡面画在主窗口，主窗口 region 包含卡面；这条路径没有 overlay 的点击转发能力。
+- 只支持 Windows + OpenGL 3.3 core；overlay 需要第二个 GL context，创建失败会回退。
+- 发布包必须把 `assets/2d_bridge/` 放在 exe 同级。

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-27T15:00:08+08:00",
+  "generated_at": "2026-11-28T14:30:18+08:00",
   "release": {
     "version": "3.2.0-sprite",
     "tag": "v3.2.0-sprite"
@@ -21,43 +21,43 @@
     {
       "name": "3D exe 大小",
       "ok": true,
-      "detail": "1377792",
+      "detail": "1370624",
       "warning": false
     },
     {
       "name": "3D exe SHA256",
       "ok": true,
-      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "detail": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650",
       "warning": false
     },
     {
       "name": "便携 ZIP 大小",
       "ok": true,
-      "detail": "3187948",
+      "detail": "3076689",
       "warning": false
     },
     {
       "name": "便携 ZIP SHA256",
       "ok": true,
-      "detail": "BF310AB7D82342463FAEA2CEB7408F64024FB7C9A51B7654F0F440666F5928BE",
+      "detail": "2261ABE89D411F2021D130C9C98C7B9B94088E8E32C63131B3AB4C54DAB68396",
       "warning": false
     },
     {
       "name": "安装器 大小",
       "ok": true,
-      "detail": "4791434",
+      "detail": "4791938",
       "warning": false
     },
     {
       "name": "安装器 SHA256",
       "ok": true,
-      "detail": "510D182B7358E6A1601B085244D70F23724A236C6857D4FEF28AA4AD803E6C96",
+      "detail": "B2D4CCF00545C90A78A4454E86111C58FE3F0C55ADE1A3F56C992CCFD59A68ED",
       "warning": false
     },
     {
       "name": "安装器 .sha256",
       "ok": true,
-      "detail": "hash=510D182B7358E6A1..., file=WhaleGirlPet-Setup-3.2.0-sprite.exe",
+      "detail": "hash=B2D4CCF00545C90A..., file=WhaleGirlPet-Setup-3.2.0-sprite.exe",
       "warning": false
     },
     {
@@ -87,13 +87,13 @@
     {
       "name": "ZIP whale3d.exe 大小",
       "ok": true,
-      "detail": "1377792",
+      "detail": "1370624",
       "warning": false
     },
     {
       "name": "ZIP whale3d.exe SHA256",
       "ok": true,
-      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "detail": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650",
       "warning": false
     },
     {
@@ -195,13 +195,13 @@
     {
       "name": "staging whale3d.exe 大小",
       "ok": true,
-      "detail": "1377792",
+      "detail": "1370624",
       "warning": false
     },
     {
       "name": "staging whale3d.exe SHA256",
       "ok": true,
-      "detail": "3B2BE72FE1823FF2BBDA2884A218EE538F19871A2641BC06FBFF056910E3635C",
+      "detail": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650",
       "warning": false
     },
     {
