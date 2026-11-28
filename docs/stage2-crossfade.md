@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-CI：run `46135131492` success（build + 20 条动画 + 35 条卡队列 + headless 60）；QA 工具提交 `9897d22` 的 CI run `46136266420` success。  
+CI：run `46135131492` success（build + 20 条动画 + 35 条卡队列 + headless 60）；QA 工具提交 `9897d22` 的 CI run `46136266420` success。
 构建：`3d/whale3d-stage2-crossfade.exe`，1,417,216 B，
 SHA256 `F16D41AE2A141D27C6B8F5156D4133393FC492BC0F4E7A42D179F045958D8F65`。  
 性质：测试构建，不替换生产 `3d/whale3d.exe`。
