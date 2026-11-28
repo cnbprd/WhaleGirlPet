@@ -48,7 +48,7 @@
 
 **建议**：统一改成 `whale3d-v3.2.0-ci` / `whale3d-whale-girl-v3.2.0-ci.zip`，或从 `whale3d.rc` 读取版本后生成名字。
 
-**修复状态**：`fix/ci-artifact-name` 已改为从构建出的 `whale3d.exe` 读取 `ProductVersion`，生成 `whale3d-v3.2.0-ci` artifact 和 `whale3d-whale-girl-v3.2.0-ci.zip`；已随集成分支合入本地 `main`，尚未 push、未触发 CI。
+**修复状态**：`fix/ci-artifact-name` 已改为从构建出的 `whale3d.exe` 读取 `ProductVersion`，生成 `whale3d-v3.2.0-ci` artifact 和 `whale3d-whale-girl-v3.2.0-ci.zip`；已随集成分支合入 `main` 并 push 到 `origin/main`，CI `Build 3D (Windows)` run 46117963651 成功。
 
 ## P2：3D CI 不构建安装器，Release 必须本地做
 
@@ -67,7 +67,7 @@
 `release-notes.yml` 原先在 `docs/releases/*.md` push 时遍历所有 notes 文件，对每个已存在的 tag 执行 `gh release edit`（第 29–33 行）。
 它不改资产，但如果某个历史 notes 文件被修改，会连带改写对应旧 Release 的说明。现在已有 `docs/releases/v3.2.0-sprite.md`；如果把它 push 到 `main`，旧 workflow 可能在 tag 尚不存在时运行并遍历旧 notes。
 
-**修复状态**：`fix/release-notes-tag` 已移除 push 触发，改为手动 `workflow_dispatch`，只接收一个 `tag` 输入，只更新 `docs/releases/<tag>.md` 对应的一个 Release；已随集成分支合入本地 `main`，尚未 push、未触发 workflow。
+**修复状态**：`fix/release-notes-tag` 已移除 push 触发，改为手动 `workflow_dispatch`，只接收一个 `tag` 输入，只更新 `docs/releases/<tag>.md` 对应的一个 Release；已随集成分支合入 `main` 并 push 到 `origin/main`，workflow 未运行。
 
 ## P3：版本硬编码的维护点
 
@@ -87,7 +87,7 @@
 | 3.2.0-sprite 资产 | 本地构建、`verify_release_assets.py` 38 项 PASS 后手动上传 |
 | tag | `v3.2.0-sprite`，不要复用 `v3.2.0-dev` |
 | Release notes | `docs/releases/v3.2.0-sprite.md` 已就绪；工作流已改为单 tag 手动触发，旧 push 遍历逻辑已合入本地 `main` |
-| 远程状态 | 本地 `main` 领先 `origin/main`；尚未 push，remote 仍是旧 workflow；首次 push 后会更新为本地合并后的 workflow |
+| 远程状态 | `main` 已 push 到 `origin/main`；tag `v3.2.0-sprite` 已推送并指向 `a2ef92c`；draft Release 已创建，尚未公开 |
 
 ## 证据文件
 
