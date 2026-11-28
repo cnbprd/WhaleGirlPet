@@ -185,11 +185,12 @@ Get-FileHash -Algorithm SHA256 -LiteralPath `
 
 - 要求 verifier `exit 0`，`docs\release-asset-verify.md` 的 38 项全 PASS；
 - 安装器 `.sha256` sidecar 必须与安装器同目录、同哈希；
-- 安装器内部 payload 仍未解包核对，不能把 verifier PASS 当成“安装器内容逐字节确认”。
+- 安装器内部 payload 已用静默安装回放核对：安装 exit 0，安装后的 `whale3d.exe` 和 `assets/2d_bridge` 哈希与 staging 一致；verifier 本身仍不展开安装器。
 
 ### 5.3 上传顺序
 
-只有 24h gate、17 卡、点击穿透、2D 冻结包、安装器五项都有证据后才上传：
+- 本轮 24h gate、17 卡、点击穿透、安装器、verifier 五项已有证据；
+- 2D PyInstaller 冻结包仍未在本轮重新打包/启动；如果坚持原五项门禁，先补这一项；当前 3D sprite 本地候选已按“不阻塞”记录在 `docs/release-evidence-index.md`。
 
 1. 确认 tag `v3.2.0-sprite` 指向最终发布提交，不复用 `v3.2.0-dev`；
 2. 创建 Release，说明文件用 `docs\releases\v3.2.0-sprite.md`；
@@ -204,6 +205,6 @@ Get-FileHash -Algorithm SHA256 -LiteralPath `
 ## 失败回滚
 
 - 17 卡中某张裁切/方向错：先看 `manifest` rect 和图集内容，再决定是否重建图集；
-- 点击穿透失败：检查 `ShellUi::updateWindowRegion` 和 `WndProc` 的 `WM_NCHITTEST`，不要在 24h 期间改；
+- 点击穿透失败：先确认卡面 overlay 是否创建、`findWindowBelow` 是否找到目标，再查 `PostMessage` 转发；不要再回退到主窗口 `HTTRANSPARENT` 方案；
 - 2D 冻结包读不到卡：检查 `WhaleGirlPet.spec` datas 和冻结目录结构；
 - 安装器启动失败：先看安装目录 `assets\2d_bridge` 是否存在，再看 `whale3d.log` 的 `Sprite layer unavailable` 原因。
