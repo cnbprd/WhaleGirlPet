@@ -2,8 +2,8 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify）；`46138563544` success（package content + stage/ZIP verify，ZIP SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`）。
-状态：**基线工具、负向夹具、content 校验、CI ZIP 包内校验、release verifier 的 content 段和运行时启动校验已通过；安装器 payload 已包含 content，待用新 CI 包复跑安装器/17 卡，阶段 3 暂未正式收口。**
+CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify）；`46138563544` success（package content + stage/ZIP verify）；`46139915847` success（新增 packaged exe `--no-render` 运行时 content 校验，ZIP SHA256 `AF28BEE328AC35348542565A67B665379A6ED217562E43F5EAF7266C36A3C4FE`）。
+状态：**阶段 3 已按“资产校验 + 清单 + 可重复打包 + 运行时校验”条件退出；安装器自身不预检 content，首次启动由 `whale3d.exe` 校验。详见 `docs/stage3-closeout.md`。**
 
 ## 1. 工具
 
@@ -18,7 +18,7 @@ CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify�
 
 - 把 cook 的仓库路径转成 package 根路径（`3d/assets/...` → `assets/...`）。
 - 在写 `content.json` 前校验 stage 中 model/manifest/atlas 的大小和 hash；不一致直接失败。
-- 输出 `whale3d-content-package-v1`，带 `cook_sha256`，供 ZIP/安装器读取。
+- 输出 `whale3d-content-package-v1`，带 `cook_sha256`，随 ZIP/安装器 payload 携带，由运行时读取校验。
 
 `3d/tools/verify_package_content.py`：
 
@@ -36,9 +36,10 @@ CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify�
 | content.json | SHA256 `009A8AB750E218556EFFBCCD99E0C9744F48940E5A56CA500FB97C1B2137CE61` |
 | content 校验 | `3d/tools/verify_content.py` 通过：3 个 cooked 文件、所有 source hash 一致；篡改 model hash 的副本被拒绝 |
 | package content | 本地合成 stage 和真实 CI ZIP：`verify_package_content.py` 均 `ok:true`、3 文件 hash 一致 |
-| CI ZIP | `46138563544` 产出 `whale3d-whale-girl-v3.2.0-ci.zip`，3,206,085 B，SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`；包内 `content.json` 校验通过 |
+| CI ZIP | `46139915847` 产出 `whale3d-whale-girl-v3.2.0-ci.zip`，3,216,957 B，SHA256 `AF28BEE328AC35348542565A67B665379A6ED217562E43F5EAF7266C36A3C4FE`；包内 `content.json` 校验通过 |
 | release verifier | `verify_release_assets.py` 的 `content` 段对 CI ZIP 通过（9 checks）；把 model 的 bytes 改成 123 的另一份 ZIP 被拒绝 |
 | runtime content | 新构建在带 `content.json` 的 stage 中 `--headless --no-render` 和真实 headless 均输出 `Content manifest: verified package hashes`；改 model 一字节后 `--no-render` 退出 1，日志为 `content file mismatch` |
+| 安装器 | 从 `46139915847` ZIP 编译 `WhaleGirlPet-Setup-3.2.0-ci.exe`，4,812,568 B，SHA256 `2950B8845AFB6D554E56EF7E30A2C565F9AEFBAA1CFAC38202D37AC97007221A`；静默安装 exit 0，安装目录 3 文件 content 校验通过，启动日志 `verified package hashes` + `Model loaded`，17/17 卡截图，卸载 exit 0 |
 | 确定性 | 同输入、同 `build/content` 连续两次 cook，content hash 不变 |
 | 报告 | `docs/asset-cook-report.json`，`ok:true`、errors 0、warnings 0 |
 | 负向夹具 | 8 类坏输入全部拒绝：坏 rect、重复 id、缺 source、坏 slot、坏 atlas 尺寸、坏 humanoid node、坏 accessor count、坏 spring joint；CI `46137873849` 已跑 |
@@ -55,6 +56,6 @@ CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify�
 
 ## 4. 下一步
 
-1. 用新 CI 包重跑安装器静默安装 + 安装目录 content 校验 + 17 卡目检，拿到最终包/安装器 hash。
-2. 再评估是否值得做自定义 `content.bin`；没有实测加载/内存收益就不做。
-3. 阶段 3 收口后，阶段 4 再动渲染 pass 边界；不改运行时的内容加载语义。
+1. 阶段 3 已收口；阶段 4 再做渲染 pass 边界，不改运行时内容加载语义。
+2. 若后续要求安装器安装前预检，再给安装器 build/payload 步骤加 content 校验；当前是首次启动校验。
+3. 再评估是否值得做自定义 `content.bin`；没有实测加载/内存收益就不做。

@@ -1,6 +1,6 @@
 # 3D 引擎分阶段计划（2026-11-28）
 
-状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已按 3D 引擎范围条件退出（聊天项不属 3D core，#70 仍独立待办），阶段 3 资产 cook 已开始；#70 已覆盖点击/拖拽/动作，聊天待定；idle CPU A/B +1.75pp 已判定可接受。**
+状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已按 3D 引擎范围条件退出（聊天项不属 3D core，#70 仍独立待办），阶段 3 已按“资产校验/清单/打包/运行时校验”条件退出，阶段 4 尚未开始；#70 已覆盖点击/拖拽/动作，聊天待定；idle CPU A/B +1.75pp 已判定可接受。**
 基线版本：`v3.2.0-sprite` 已公开发布，tag `v3.2.0-sprite` → `a2ef92c`。
 原则：学 UE 的**工业化方法**，不学 UE 的**功能体量**；每阶段有独立分支、证据和退出条件，不并行重构。
 
@@ -104,7 +104,7 @@
 
 1. 新增 `3d/tools/cook_assets.py`：校验 GLB/VRM 的 19 根骨骼、4 条 spring 链、mesh/accessor、材质、动画；校验 atlas 1024×512、slot 160、17 卡 rect 和 UV 方向。
 2. 输出 `content.json`：schema 版本、源文件 hash、cooked hash、资产列表、17 卡清单；运行时启动时校验。
-3. 生成 `build/content` 验证副本；安装器、ZIP、`verify_release_assets.py` 都读同一份清单。
+3. 生成 `build/content` 验证副本；ZIP/安装器 payload 携带同一份 `content.json`，运行时启动校验；`verify_release_assets.py` 可选校验。
 4. 增加坏资产夹具：坏 bone 索引、坏 accessor、坏 atlas 尺寸、坏 manifest、重复卡 id，全部在 cook 阶段拒绝。
 5. 只有实测加载时间/内存明显受益时，才做自定义 `content.bin`；否则保留 GLB/VRM 运行时解析。
 
@@ -114,7 +114,7 @@
 - 发布包与安装器使用 content 清单；现有 17 卡和模型加载无回归。
 - 产出 `docs/asset-cook.md`、`docs/asset-cook-report.json`。
 
-**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。CI `46137873849` 已跑 cook + 负向夹具 + content verify；CI `46138563544` 已把 package content 接进 ZIP，实际包内 3 文件 hash、17 卡 id 校验通过，ZIP SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`。`verify_release_assets.py` 可选 `content` 段已对 CI ZIP 通过，篡改副本被拒绝。安装器读取、运行时校验尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
+**收口记录（2026-11-28）**：阶段 3 按“资产校验 + 清单 + 可重复打包 + 运行时校验”条件退出。cook 正向 hash 稳定、8 类坏输入拒绝、`verify_content.py` 通过；`package_content.py`/`verify_package_content.py` 接进 CI ZIP，`46139915847` 包内 3 文件 hash/17 卡通过；`content_manifest.cpp` 在启动时校验 package content，篡改 model 或错误 hash 退出 1，缺失 manifest 走 legacy；从该 ZIP 编译安装器，静默安装、安装目录 content 校验、`verified package hashes`、17/17 卡、卸载均通过。边界：安装器自身不预检 content，运行时只校验 package 的 3 个文件；已发布资产未替换。详见 `docs/stage3-closeout.md`。
 
 ### 阶段 4：渲染 pass 边界与 inspector
 
