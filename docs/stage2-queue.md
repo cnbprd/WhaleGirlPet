@@ -74,6 +74,10 @@ headless 证据：`build/headless-smoke/headless-*-queue-summary.json`。
 
 结论：平均 FPS、p50、hitch 与阶段 1 基线基本一致；**p99 高 3.18ms（+7%），CPU 高 6.97 个百分点**。但压力浸泡的 CPU 26.35% 反而低于本轮 idle 33.27%，FPS 也 21.58 vs 27.95，说明窗口/桌面合成状态对 CPU 和帧时间影响很大。本轮 idle 与阶段 1 不是同一会话，不能把 6.97pp 全归因于状态机；要严格门禁，需要同一桌面状态下的 A/B 复测。
 
+补充 A/B（同机同日，连续两轮 10 分钟，同一脚本/窗口默认位置）：`whale3d-stage1-stats.exe`（SHA256 `FB484EF5...`）稳态 CPU **31.52%**、FPS **21.79**、p50 **44.04ms**、p99 **111.50ms**、swap **7.05ms**；队列构建稳态 CPU **33.27%**、FPS **27.95**、p50 **34.62ms**、p99 **48.36ms**、swap **0.11ms**。摘要 `build/stage1-vs-queue-idle-ab.json`。
+
+A/B 结论：CPU 只高 **1.75pp**，不是相对历史基线的 6.97pp；队列构建帧时间反而更好，但 swap 7.05 vs 0.11ms 说明两轮的桌面合成路径不同，FPS/p99 不能直接当作代码优劣。可接受“+1.75pp CPU”作为状态机/队列开销，历史 6.97pp 视为环境混淆。
+
 ### 3.2 真实窗口点击与拖拽
 
 - 点击穿透：`check_click_through.py --click`，卡片命中 `HTTRANSPARENT (-1)`，模型区 `HTCLIENT (1)`，Tk 目标实际收到 1 次点击。结果 `build/stage2-queue/click-through-result.json`。
@@ -85,13 +89,13 @@ headless 证据：`build/headless-smoke/headless-*-queue-summary.json`。
 - `maxWaitMs` 固定 5000ms；超过 5 秒还没轮到的卡会丢，日志 `anim card dropped`。
 - 队列 FIFO 只保证同优先级；高优先级动作仍可插队。
 - 没有真正 crossfade；卡面仍是硬切 + sprite 自身 0.12s alpha。
-- 队列版 10 分钟已跑：idle 基线平均/p50 接近阶段 1，但 p99 +3.18ms、CPU +6.97pp；压力场景 swap 限制使 FPS 约 21.6。
+- 队列版 10 分钟已跑：历史基线对比 p99 +3.18ms、CPU +6.97pp；同机 A/B 后 CPU 只 +1.75pp，且队列 FPS/p50/p99 更好，但两轮 swap 路径不同，帧时间不能直接下结论。
 - 生产 `3d/whale3d.exe`、Release 资产、阶段 0/1 waiver 均未改。
 - #70 已覆盖真实点击穿透和拖拽；3D shell 无聊天入口，聊天未验，所以 #70 仍不能关闭。
 - 没有真正 crossfade，`ShellUi::setFace` 仍直接调用。
 
 ## 5. 下一步
 
-1. 决定是否接受 idle p99 48.36ms / CPU 33.27% 的回归；不接受就先做 idle 路径优化，再复跑 10 分钟。
+1. 接受 A/B 的 +1.75pp CPU 作为状态机/队列开销；不再使用历史 6.97pp 的说法。
 2. #70 剩余聊天触发；3D shell 当前无聊天入口，需要确认验收范围或接回 2D/聊天面板。
 3. 真实 crossfade 暂不先做；先等 action/expression 的真正动画资产。
