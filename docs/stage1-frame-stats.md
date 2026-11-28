@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-状态：**FrameStats、1Hz+trace、hitch 事件、RSS/state 字段、`--headless` 60/600 帧、CI no-GL smoke、10 分钟基线均已完成；只剩 CI 的 GPU render 路径未接。**
+状态：**阶段 1 已按 1 项条件 waiver 退出：CPU 10 分钟已实测；CI 仍只有 no-GL smoke，GPU runner 转入阶段 4/基础设施。阶段 2 首刀已落地，待集成。**
 
 ## 1. 已实现
 
@@ -67,6 +67,17 @@
 
 完整结果见 `docs/stage1-baseline-10min.md`。摘要：600 个 1Hz 样本，FPS avg 27.86 / max 29.72，p50 avg 34.78 ms，p95 avg 39.18 ms，p99 avg 45.18 ms，RSS 70.1–73.0 MB，private 112.2–113.3 MB；190 条 hitch 事件（去启动前 160 帧后 186 条），最大单帧 interval 885 ms、最大 readback 97.5 ms。没有 crash 或持续内存增长。
 
+## 2.5 CPU 10 分钟
+
+完整结果见 `docs/stage1-cpu-10min.md`。两次 10 分钟进程采样，取 30 秒后的 58 个稳态样本：
+
+| Run | CPU 单核 avg | p50 | p95 | RSS | private |
+|---|---:|---:|---:|---:|---:|
+| 无 keep-awake | 29.61% | 29.31% | 34.35% | 70.94–73.00 MB | 113.2–114.3 MB |
+| keep-awake | 26.30% | 26.37% | 28.06% | 69.75–70.58 MB | 112.7–114.1 MB |
+
+CPU 没有接近单核跑满，也没有单调上涨。两次 run 的 FPS 被当前桌面合成压到 21–22，不作为帧时间基线；帧时间仍以 2.4 的 27.86 FPS / p50 34.78 ms 为准。
+
 ## 3. Headless 60/600 帧
 
 新增参数：
@@ -98,13 +109,14 @@ GitHub `windows-latest` 只有 `GDI Generic` / OpenGL 1.1，无法创建本引�
 
 脚本：`3d/tools/test_headless_smoke.py`，本机已跑 60/600 帧 render 路径和 60 帧 no-render 路径，均 PASS。证据在 `build/headless-smoke/`。
 
-## 4. 未完成
+## 4. 未完成 / waiver
 
-- CI 仍只有 no-GL smoke；GPU 的 `--headless` render 路径没有 Windows GPU runner。
+- **GPU CI waiver**：CI 仍只有 no-GL smoke；GPU 的 `--headless` render 路径没有 Windows GPU runner。本机已跑 60/600 帧 render 路径，作为替代证据；该项转入阶段 4/基础设施，不冒充已验证。
 - 全量逐帧 trace 没做；当前是 1Hz 摘要 + hitch 事件，已足够定位单帧异常，不再为“逐帧”而逐帧。
 
-## 5. 下一步
+## 5. 退出记录与下一步
 
-1. 接受“CI no-GL + 本机 GPU render”的双层门禁，或给 CI 接 GPU runner。
-2. 阶段 1 退出评审：60/600、10 分钟、CI、RSS/CPU 口径确认后进入阶段 2。
-3. 阶段 2 第一刀：`AnimationController` 状态表 + 固定 tick，不先改 `Model` 内部。
+1. **阶段 1 条件退出**：CPU 10 分钟实测完成；60/600 帧、本机 GPU render、CI no-GL smoke、10 分钟帧时间基线均通过。唯一未闭合项是 GPU CI runner，按 waiver 记录。
+2. **阶段 2 首刀已落地**：`AnimationController` + 15 条夹具 + CI 编译运行，未接入 `model.cpp`；详见 `docs/anim-state-machine.md`。
+3. **下一步**：把 `main.cpp` 的 `setClip` / `setFace` / `showCard` 三处直接调用收编到控制器；先做 base clip + action TTL，再接卡面队列和 `EmotionBus` 有序队列。
+4. 旧任务 #70 的真实窗口手感验收仍然保留，作为阶段 2 退出条件，不因状态机单测通过而提前关闭。
