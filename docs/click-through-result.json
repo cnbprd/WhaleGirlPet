@@ -1,7 +1,7 @@
 {
   "ok": true,
-  "hwnd": 1247160,
-  "pid": 23148,
+  "hwnd": 854096,
+  "pid": 20080,
   "client": {
     "x": 1420,
     "y": 430,
@@ -21,15 +21,15 @@
   "card_expected": "HTTRANSPARENT (-1)",
   "model_expected": "HTCLIENT (1)",
   "window_from_point": {
-    "hwnd": 264128,
-    "pid": 23148,
+    "hwnd": 133362,
+    "pid": 20080,
     "title": "鲸鱼娘卡面"
   },
   "target": {
     "clicks_before": 0,
-    "clicks_after": 1,
+    "clicks_after": 2,
     "received": true
   },
   "mode": "click",
-  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-3.2.0-sprite\\whale3d.exe"
+  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-main-3.2.0-sprite\\whale3d.exe"
 }

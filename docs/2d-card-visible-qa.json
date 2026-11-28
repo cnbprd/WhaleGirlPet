@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-28T14:29:20+08:00",
+  "generated_at": "2026-11-28T14:36:18+08:00",
   "window": {
-    "hwnd": 657334,
-    "pid": 1396,
+    "hwnd": 461034,
+    "pid": 3804,
     "client_w": 420,
     "client_h": 620
   },
@@ -198,7 +198,7 @@
     }
   ],
   "status": "pass",
-  "reviewed_at": "2026-11-28T14:29:30+08:00",
-  "review_note": "17/17 cards visible from the installed 3.2.0-sprite payload; upright, no atlas grid; desktop background varies behind the transparent sprite.",
-  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-3.2.0-sprite\\whale3d.exe"
+  "reviewed_at": "2026-11-28T14:36:59+08:00",
+  "review_note": "17/17 cards visible from the installed main-built 3.2.0-sprite payload; upright, no atlas grid; desktop background varies behind the transparent sprite.",
+  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-main-3.2.0-sprite\\whale3d.exe"
 }

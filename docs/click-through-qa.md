@@ -5,7 +5,7 @@
 
 ## 结果
 
-- 测试对象：`3.2.0-sprite` 安装器静默安装到临时目录后的 `whale3d.exe`（SHA256 `BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650`）
+- 测试对象：`3.2.0-sprite` 安装器静默安装到临时目录后的 `whale3d.exe`（SHA256 `74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893`）
 - 卡面：`expression/happy`
 - `card_hit_test`：`-1`（主窗口在卡面位置返回 `HTTRANSPARENT`）
 - `model_hit_test`：`1`（模型位置仍是 `HTCLIENT`）

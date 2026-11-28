@@ -63,8 +63,8 @@
 
 | 项 | 路径 / 值 | 状态 |
 |---|---|---|
-| 安装器 | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe` | 4,791,938 B |
-| SHA256 | `B2D4CCF00545C90A78A4454E86111C58FE3F0C55ADE1A3F56C992CCFD59A68ED` | 与 verifier 一致 |
+| 安装器 | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe` | 4,791,958 B |
+| SHA256 | `CA6C2525FCB50D21699F512AECFCB18CFEBDA37337C9DE07EC5554E5A6974A45` | 与 verifier 一致 |
 | sidecar | `dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe.sha256` | 已写入 |
 | staging | `build/3d-installer-payload/3.2.0-sprite` | 含新 exe 和 `assets/2d_bridge` |
 | 构建脚本 | `installer/build_3d_installers.ps1` | sprite 条目已 cherry-pick 到集成分支 |
@@ -74,8 +74,8 @@
 
 | 项 | 路径 / 值 | 状态 |
 |---|---|---|
-| 3D exe | `3d/whale3d.exe` | 1,370,624 B；SHA256 `BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650` |
-| 便携 ZIP | `3d/whale3d-whale-girl-v3.2-sprite.zip` | 3,076,689 B；SHA256 `2261ABE89D411F2021D130C9C98C7B9B94088E8E32C63131B3AB4C54DAB68396` |
+| 3D exe | `3d/whale3d.exe` | 1,370,112 B；SHA256 `74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893` |
+| 便携 ZIP | `3d/whale3d-whale-girl-v3.2-sprite.zip` | 3,076,613 B；SHA256 `B6D777D98FAA043C8215430FE7FB9809C43E321EF8F3A9A7C6BF5132A6E09AFF` |
 | 期望清单 | `docs/release-assets-3.2.0-sprite.json` | 已写 |
 | verifier | `3d/tools/verify_release_assets.py` | 38 checks、0 error / 0 warning PASS |
 | 报告 | `docs/release-asset-verify.md`、`docs/release-asset-verify.json` | 已生成 |

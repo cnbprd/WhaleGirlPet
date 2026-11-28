@@ -8,20 +8,20 @@
     {
       "name": "3D exe",
       "path": "3d/whale3d.exe",
-      "size": 1370624,
-      "sha256": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650"
+      "size": 1370112,
+      "sha256": "74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893"
     },
     {
       "name": "便携 ZIP",
       "path": "3d/whale3d-whale-girl-v3.2-sprite.zip",
-      "size": 3076689,
-      "sha256": "2261ABE89D411F2021D130C9C98C7B9B94088E8E32C63131B3AB4C54DAB68396"
+      "size": 3076613,
+      "sha256": "B6D777D98FAA043C8215430FE7FB9809C43E321EF8F3A9A7C6BF5132A6E09AFF"
     },
     {
       "name": "安装器",
       "path": "dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe",
-      "size": 4791938,
-      "sha256": "B2D4CCF00545C90A78A4454E86111C58FE3F0C55ADE1A3F56C992CCFD59A68ED",
+      "size": 4791958,
+      "sha256": "CA6C2525FCB50D21699F512AECFCB18CFEBDA37337C9DE07EC5554E5A6974A45",
       "sidecar": "dist/3d/WhaleGirlPet-Setup-3.2.0-sprite.exe.sha256",
       "must_contain": [
         "3.2.0-sprite"
@@ -36,8 +36,8 @@
     "required_entries": [
       {
         "path": "whale3d.exe",
-        "size": 1370624,
-        "sha256": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650"
+        "size": 1370112,
+        "sha256": "74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893"
       },
       {
         "path": "assets/ui/pet.ico",
@@ -94,8 +94,8 @@
     "required_entries": [
       {
         "path": "whale3d.exe",
-        "size": 1370624,
-        "sha256": "BDCB6E682F098591D80D282845EBF8FC76594D24E64CC5C2E7FD8BD7B7B1C650"
+        "size": 1370112,
+        "sha256": "74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893"
       },
       {
         "path": "assets/ui/pet.ico",
