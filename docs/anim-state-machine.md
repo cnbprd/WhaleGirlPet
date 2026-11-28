@@ -1,6 +1,6 @@
 # 阶段 2 设计：动画状态机与手感
 
-状态：**首刀已落地并通过 CI（`46125317184`）；尚未接入 `main.cpp`/`Model`/`SpriteLayer`。**
+状态：**首刀与第一轮集成已落地；base clip、action/expression 卡门禁、17 卡验收通过；卡队列与 `EmotionBus` 有序队列尚未做。**
 
 ## 1. 当前问题
 
@@ -13,13 +13,13 @@
 
 | 层 | 内容 | 优先级 | 说明 |
 |---|---|---:|---|
-| base | idle、walk、sleep | 0–10 | 常驻底层，可循环 |
-| face | open、blink、smile | 15–25 | 增量覆盖，不抢占 base |
-| action | wave、dance、type、balloon 等 | 30–50 | 高优先级、有限 TTL；默认不可被低优先级打断 |
-| overlay | gaze、lean、spring | 0–50（权重） | 叠加层，不参与 clip 抢占 |
-| card | 17 张 2D 卡面 | 独立队列 | UI 层，按 priority + TTL 排队 |
+| base | idle、walk | 0 | 常驻底层，可循环；与 expression 同优先级，后到者胜 |
+| face | expression/idle 等 10 张 | 0 | 第一轮集成按独占状态处理，避免挡住 base；后续再做真正的叠加 |
+| action | wave、dance、type、balloon 等 7 张 | 40 | 高优先级、有限 TTL；同优先级的新动作可替换旧动作，低优先级表情不能抢占 |
+| overlay | gaze、lean、spring | 0–50（权重） | 仍由 `applyGazeLean` 直接处理，不参与 clip 抢占 |
+| card | 17 张 2D 卡面 | 独立队列 | **队列尚未实现**；当前低优先级卡直接丢弃，不排队 |
 
-原则：`AnimationController` 只决定“当前应该是什么状态/权重”，`Model` 继续负责采样、GL、spring、表情帧。第一刀不改 `Model` 内部。
+原则：`AnimationController` 只决定“当前应该是什么状态/权重”，`Model` 继续负责采样、GL、spring、表情帧。第一轮集成没有改 `Model` 内部。
 
 ## 3. 状态表 schema
 
@@ -40,13 +40,13 @@
       "fadeOutMs": 0
     },
     {
-      "id": "wave",
+      "id": "action_wave",
       "layer": "action",
       "clip": "idle",
       "face": "smile",
       "priority": 40,
       "loop": false,
-      "interruptible": false,
+      "interruptible": true,
       "ttlMs": 1800,
       "fadeInMs": 120,
       "fadeOutMs": 180
@@ -67,16 +67,16 @@
 5. 切换有 `fadeInMs`/`fadeOutMs`；第一刀先只计算权重和目标状态，不实际采样混合。
 6. `FixedStep` 用 accumulator 固定 1/60 推进逻辑；单帧最多 4 个 substep，避免长帧炸开。
 
-## 5. 卡面队列
+## 5. 卡面队列（尚未实现）
 
-- `CardRequest` 字段：`cardId`、`priority`、`ttlMs`、`source`。
-- 只显示最高优先级且未过期的一张；低优先级不顶掉高优先级。
-- 同优先级后到者胜，但旧卡保留到新卡 fade-out 完成（后续阶段再接 overlay 混合）。
-- 当前 `sprite.showCard()` 的单卡覆盖在集成时替换为队列 pop。
+- 目标：`CardRequest` 字段 `cardId`、`priority`、`ttlMs`、`source`；只显示最高优先级且未过期的一张。
+- 当前第一轮集成：低优先级卡请求只更新控制器 pending，**不显示、也不在动作结束后补显示**；等于直接丢弃。17 卡验收靠动作状态可被同优先级新动作替换才通过。
+- 下一步：实现真正的 `CardQueue`，动作结束后 pop 下一条，避免低优先级表情卡在动作期间永久丢失。
 
-## 6. EmotionBus 顺序
+## 6. EmotionBus 顺序（尚未实现）
 
-- `poll()` 改为一次取出本次 socket 队列中的全部有效帧，写入有序队列，不再只返回最后一帧。
+- 目标：`poll()` 改为一次取出本次 socket 队列中的全部有效帧，写入有序队列，不再只返回最后一帧。
+- 当前仍是原 `poll()`：同一轮只返回最后一帧；控制器已能按状态优先级拦截卡面，但同批多帧仍在传输层丢失。
 - 每帧带 `seq`；同一 `source` 的连续包按 latest-wins 合并，不同 source 按 priority + seq 仲裁。
 - 保留现有 JSON 字段，不改 Python/LLM 侧协议。
 
@@ -99,7 +99,7 @@
 已落地：
 
 - `3d/animation_controller.h`：纯 header，状态表加载、priority/seq 仲裁、TTL、不可打断、`advance()` 固定 1/60 tick（单次最多 4 substep）。
-- `3d/tests/test_animation_controller.cpp`：14 条断言组通过，覆盖优先级、同优先级 latest-wins、TTL 回退、不可打断、固定 tick、非法状态表。
+- `3d/tests/test_animation_controller.cpp`：20 条断言组通过，覆盖 base 切换、优先级、同优先级 latest-wins、TTL 回退、不可打断、固定 tick、启动状态保持、非法状态表。
 - `.github/workflows/3d-build.yml`：新增 `Animation controller unit tests`，在 Windows CI 编译并运行同一份夹具。
 
 本地验证命令：
@@ -109,7 +109,31 @@
 & 'F:\WhaleGirlPet\build\test_animation_controller.exe'
 ```
 
-结果：14/14 PASS，exit 0。
+结果：20/20 PASS，exit 0。
 
-首刀**没有**接入 `main.cpp`/`Model`/`SpriteLayer`，也没有实际淡入淡出采样；这是刻意的边界。下一步是把 `main.cpp` 的三处直接调用收编到控制器，并先接 `setClip`/`setFace`，再接 `showCard` 队列。
+## 10. 第一轮集成记录（2026-11-28）
+
+已接入：
+
+- `3d/anim_state_table.h`：内置 19 态 fallback 表（2 base + 10 expression + 7 action）；阶段 3 的资产 cook 再替换成 content 表。
+- `main.cpp`：W 键不再直接 `nextClip()`，改为 `animation.request()`；每帧 `advance(dt*1000,4)`，只把 base 决策落到 `model.setClip()`。
+- 动作/表情卡：`action/wave` → `action_wave`，`expression/happy` → `expression_happy`；动作 40、表情 0。低优先级表情卡在动作期间被拒绝显示，动作结束回 base。
+- `WHALE3D_CLIP=walk` 启动时控制器同步为 walk；`ShellUi` 设置里的直接 `setClip` 被主循环检测为 external 并同步，避免动作结束把用户设置打回 idle。
+- `PerfStats` 的 `card` 字段暂填当前 controller activeId，方便从 `stat` 直接看状态。
+
+实测：
+
+| 项 | 结果 |
+|---|---|
+| 单元夹具 | 20/20 PASS |
+| W 键注入 WM_KEYDOWN | idle→walk→idle，日志 `anim request` / `anim base` 正确 |
+| `WHALE3D_CLIP=walk` | `AnimationController ready default=walk active=walk`，4 秒保持 walk |
+| action TTL 到期 | `action_wave` 到期后 `anim state: walk clip=walk priority=0 source=default` |
+| 动作/表情优先级 | wave 活跃时 `expression/happy` 被 `anim card deferred` 拒绝显示 |
+| 17 卡可见 | `check_cards_visible.py` 17/17 captured；QA `build/stage2-cards/2d-card-visible-qa.json` |
+| headless 60 render | exit 0，p50 1.01ms / p99 3.50ms / work 1.21ms |
+| headless 600 render | exit 0，p50 0.85ms / p99 2.31ms / work 0.96ms |
+| normal stats | FPS 28.8，RSS 70.6–71.1MB，private 113.3–113.7MB；动作晚段曾掉到 20.9 FPS，随后恢复 28.7 |
+
+仍未完成：卡队列、`EmotionBus` 多帧有序队列、真正 crossfade 采样、真实窗口手感 #70、10 分钟集成浸泡（正在跑）。
 

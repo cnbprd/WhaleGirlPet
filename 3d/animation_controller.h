@@ -129,6 +129,8 @@ public:
             return false;
         }
         activeId_ = id;
+        defaultId_ = id;
+        activeFromPending_ = false;
         pending_.clear();
         seq_ = 0;
         error.clear();
@@ -148,11 +150,13 @@ public:
             ? priorityOverride : state->priority;
         const float ttl = ttlOverrideMs >= 0.0f
             ? ttlOverrideMs : state->ttlMs;
+        // A zero/unset TTL means "no expiry", not "expire on the next update".
+        const float remainingMs = ttl > 0.0f ? ttl : -1.0f;
 
         for (auto& pending : pending_) {
             if (pending.id == id && pending.source == source) {
                 pending.priority = priority;
-                pending.remainingMs = ttl;
+                pending.remainingMs = remainingMs;
                 pending.seq = ++seq_;
                 if (error) error->clear();
                 return true;
@@ -163,14 +167,14 @@ public:
         for (auto& pending : pending_) {
             if (pending.id == id) {
                 pending.priority = priority;
-                pending.remainingMs = ttl;
+                pending.remainingMs = remainingMs;
                 pending.source = source;
                 pending.seq = ++seq_;
                 if (error) error->clear();
                 return true;
             }
         }
-        pending_.push_back(Pending{id, source, priority, ttl, ++seq_});
+        pending_.push_back(Pending{id, source, priority, remainingMs, ++seq_});
         if (error) error->clear();
         return true;
     }
@@ -182,14 +186,16 @@ public:
         expire(dtMs);
 
         // An expired action must stop blocking lower-priority requests even
-        // though its state definition is still in the table.
-        if (!activeId_.empty() && activeId_ != defaultId_) {
+        // though its state definition is still in the table. A state passed
+        // directly to start() is pinned until an explicit request replaces it.
+        if (!activeId_.empty() && activeId_ != defaultId_ && activeFromPending_) {
             const bool stillPending = std::any_of(
                 pending_.begin(), pending_.end(),
                 [&](const Pending& p) { return p.id == activeId_; });
             if (!stillPending) {
                 activeId_.clear();
                 activeSource_.clear();
+                activeFromPending_ = false;
             }
         }
 
@@ -208,12 +214,15 @@ public:
         if (switchToBest) {
             activeId_ = best->id;
             activeSource_ = best->source;
+            activeFromPending_ = true;
         } else if (!best && !activeId_.empty()) {
             activeId_ = defaultId_;
             activeSource_.clear();
+            activeFromPending_ = false;
         } else if (activeId_.empty()) {
             activeId_ = defaultId_;
             activeSource_.clear();
+            activeFromPending_ = false;
         }
 
         const State* current = find(activeId_);
@@ -256,6 +265,7 @@ public:
 
     const Decision& current() const { return last_; }
     bool active() const { return !activeId_.empty(); }
+    bool hasState(const std::string& id) const { return find(id) != nullptr; }
     const std::string& activeId() const { return activeId_; }
     const std::string& defaultId() const { return defaultId_; }
     int pendingCount() const { return static_cast<int>(pending_.size()); }
@@ -305,6 +315,7 @@ private:
     std::string defaultId_;
     std::string activeId_;
     std::string activeSource_;
+    bool activeFromPending_ = false;
     std::vector<Pending> pending_;
     uint64_t seq_ = 0;
     float fixedStepMs_ = 1000.0f / 60.0f;

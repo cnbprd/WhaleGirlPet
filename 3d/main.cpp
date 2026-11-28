@@ -10,6 +10,8 @@
 #include "emotion_bus.h"
 #include "sprite.h"
 #include "perf_stats.h"
+#include "animation_controller.h"
+#include "anim_state_table.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +23,26 @@
 #include <vector>
 
 static FILE* gLogFile = nullptr;
+
+static std::string animationStateForCard(const std::string& card) {
+    std::string id = card;
+    for (char& c : id) {
+        if (c == '/') c = '_';
+    }
+    return id;
+}
+
+static void applyBaseClipDecision(const AnimationController::Decision& decision,
+                                 Model& model) {
+    if (decision.stateId != "idle" && decision.stateId != "walk") return;
+    if (decision.clip.empty() || model.clipName() == decision.clip) return;
+    if (model.setClip(decision.clip)) {
+        SDL_Log("anim base: %s (source=%s)", decision.clip.c_str(),
+                decision.source.empty() ? "default" : decision.source.c_str());
+    } else {
+        SDL_Log("anim base rejected: %s", decision.clip.c_str());
+    }
+}
 
 static std::string moduleLogPath() {
     wchar_t modulePath[MAX_PATH];
@@ -515,6 +537,25 @@ int main(int argc, char** argv) {
         return lastError == GL_NO_ERROR ? 0 : 1;
     }
 
+    AnimationController animation;
+    std::string animationError;
+    bool animationReady = animation.loadJson(kAnimStatesJson, animationError);
+    if (animationReady) {
+        const std::string initialClip = std::string(model.clipName()) == "walk" ? "walk" : "idle";
+        if (!animation.start(initialClip, animationError)) {
+            SDL_Log("AnimationController start failed: %s", animationError.c_str());
+            animationReady = false;
+        } else {
+            animation.update(0.0f);
+            SDL_Log("AnimationController ready: default=%s active=%s states=json",
+                    animation.defaultId().c_str(), animation.activeId().c_str());
+        }
+    } else {
+        SDL_Log("AnimationController unavailable: %s; direct clip fallback",
+                animationError.c_str());
+    }
+    std::string lastModelClip = model.clipName();
+
     EmotionBus emotionBus;
     int emotionPort = 47832;
     if (const char* rawPort = std::getenv("WHALE3D_EMOTION_PORT")) {
@@ -667,8 +708,22 @@ int main(int argc, char** argv) {
                 if (ev.key.key == SDLK_ESCAPE) {
                     running = false;
                 } else if (ev.key.key == SDLK_W) {
-                    model.nextClip();
-                    SDL_Log("clip: %s", model.clipName());
+                    const std::string target = std::string(model.clipName()) == "walk" ? "idle" : "walk";
+                    std::string error;
+                    if (animationReady &&
+                        animation.request(target, "key", -1, -1.0f, &error)) {
+                        const auto decision = animation.update(0.0f);
+                        applyBaseClipDecision(decision, model);
+                        SDL_Log("anim request: base=%s active=%s clip=%s",
+                                target.c_str(), animation.activeId().c_str(),
+                                model.clipName());
+                    } else {
+                        if (animationReady) {
+                            SDL_Log("anim base request failed: %s", error.c_str());
+                        }
+                        model.nextClip();
+                        SDL_Log("clip fallback: %s", model.clipName());
+                    }
                 } else if (ev.key.key == SDLK_O) {
                     const bool toOzz = !model.usesOzz();
                     if (model.setAnimator(toOzz ? "ozz" : "self")) {
@@ -725,10 +780,33 @@ int main(int argc, char** argv) {
                         emotion.raw.c_str());
             }
             if (spriteReady && !emotion.card.empty() && emotion.cardTtlMs > 0.0f) {
-                if (sprite.showCard(emotion.card, emotion.cardTtlMs)) {
+                bool allowCard = true;
+                if (animationReady) {
+                    const std::string cardState = animationStateForCard(emotion.card);
+                    if (animation.hasState(cardState)) {
+                        std::string error;
+                        if (animation.request(cardState, "emotion", -1,
+                                              emotion.cardTtlMs, &error)) {
+                            const auto decision = animation.update(0.0f);
+                            applyBaseClipDecision(decision, model);
+                            allowCard = decision.stateId == cardState;
+                            if (!allowCard) {
+                                SDL_Log("anim card deferred: card=%s requested=%s active=%s",
+                                        emotion.card.c_str(), cardState.c_str(),
+                                        decision.stateId.c_str());
+                            }
+                        } else {
+                            allowCard = false;
+                            SDL_Log("anim card request failed: %s", error.c_str());
+                        }
+                    } else {
+                        SDL_Log("anim card unmapped: %s; direct show", emotion.card.c_str());
+                    }
+                }
+                if (allowCard && sprite.showCard(emotion.card, emotion.cardTtlMs)) {
                     SDL_Log("Sprite card: %s ttl=%.0fms", emotion.card.c_str(),
                             emotion.cardTtlMs);
-                } else {
+                } else if (allowCard) {
                     SDL_Log("Sprite card rejected: %s", emotion.card.c_str());
                 }
             }
@@ -751,13 +829,33 @@ int main(int argc, char** argv) {
         float t = static_cast<float>(SDL_GetTicks() - start) / 1000.0f;
         float dt = std::clamp(t - lastT, 0.0f, 0.1f);
         lastT = t;
+        if (animationReady) {
+            if (model.clipName() != lastModelClip) {
+                std::string error;
+                if (animation.request(model.clipName(), "external", -1, -1.0f, &error)) {
+                    SDL_Log("anim sync external base=%s", model.clipName());
+                } else {
+                    SDL_Log("anim external base ignored: %s", error.c_str());
+                }
+            }
+            const auto decision = animation.advance(dt * 1000.0f, 4);
+            if (decision.changed) {
+                SDL_Log("anim state: %s clip=%s priority=%d source=%s",
+                        decision.stateId.c_str(), decision.clip.c_str(),
+                        decision.priority,
+                        decision.source.empty() ? "default" : decision.source.c_str());
+            }
+            applyBaseClipDecision(decision, model);
+            lastModelClip = model.clipName();
+        }
         Uint64 updateStart = SDL_GetPerformanceCounter();
         {
             PerfStats::Timer timer(perf, perf.current().updateUs);
             model.update(t);
             sprite.update(dt);
         }
-        perf.setContext(model.clipName(), model.faceName(), "");
+        perf.setContext(model.clipName(), model.faceName(),
+                        animationReady ? animation.activeId().c_str() : "");
         updateTicks += SDL_GetPerformanceCounter() - updateStart;
         ++updateFrames;
 

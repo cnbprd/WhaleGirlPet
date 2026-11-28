@@ -1,6 +1,6 @@
 # 3D 引擎分阶段计划（2026-11-28）
 
-状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 首刀已落地、待集成（分支 `feat/v3.3-observe`）。**
+状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 第一轮集成已落地并过 17 卡（卡队列/EmotionBus 队列待做）。**
 基线版本：`v3.2.0-sprite` 已公开发布，tag `v3.2.0-sprite` → `a2ef92c`。
 原则：学 UE 的**工业化方法**，不学 UE 的**功能体量**；每阶段有独立分支、证据和退出条件，不并行重构。
 
@@ -90,7 +90,7 @@
 - 状态切换 trace 可读；真实窗口手感验收记录完成。
 - 产出 `docs/anim-state-machine.md`。
 
-**首刀记录（2026-11-28）**：`3d/animation_controller.h` + 14 条夹具 + CI `Animation controller unit tests` 已落地，CI run `46125317184` success。当前只做纯逻辑仲裁，**尚未接入** `main.cpp`/`Model`/`SpriteLayer`；下一步先接 base clip + action TTL，再接卡面队列和 `EmotionBus` 有序队列。
+**第一轮集成（2026-11-28）**：`3d/animation_controller.h` + `3d/anim_state_table.h` + 20 条夹具 + `main.cpp` base/action 门禁已落地；首刀 CI run `46125317184` success，17 卡可见验收通过（`build/stage2-cards/2d-card-visible-qa.json`）。卡队列、`EmotionBus` 多帧有序队列、真实 crossfade、#70 手感验收仍未完成。
 
 ### 阶段 3：资产管线与烘焙
 

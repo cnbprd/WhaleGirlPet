@@ -12,7 +12,7 @@ const char* kTable = R"json(
   "states": [
     {"id":"idle","layer":"base","clip":"idle","face":"open","priority":0,
      "loop":true,"interruptible":true},
-    {"id":"walk","layer":"base","clip":"walk","face":"open","priority":5,
+    {"id":"walk","layer":"base","clip":"walk","face":"open","priority":0,
      "loop":true,"interruptible":true},
     {"id":"emotion_happy","layer":"action","clip":"idle","face":"smile",
      "priority":20,"ttlMs":900,"interruptible":true,"fadeInMs":100,
@@ -50,8 +50,15 @@ void testPriorityAndTtl() {
     check(c.loadJson(kTable, error), "load table", error);
     check(c.start("idle", error), "start idle", error);
 
-    c.request("emotion_happy", "test");
+    c.request("walk", "test");
     auto d = c.update(0.0f);
+    check(d.stateId == "walk", "base request switches clip", d.stateId);
+    c.request("idle", "test");
+    d = c.update(0.0f);
+    check(d.stateId == "idle", "base request latest-wins", d.stateId);
+
+    c.request("emotion_happy", "test");
+    d = c.update(0.0f);
     check(d.stateId == "emotion_happy", "emotion beats idle", d.stateId);
 
     c.request("wave", "test");
@@ -64,6 +71,15 @@ void testPriorityAndTtl() {
 
     d = c.update(2000.0f);
     check(d.stateId == "idle", "wave expiry returns idle", d.stateId);
+
+    check(c.start("walk", error), "start walk", error);
+    d = c.update(0.0f);
+    check(d.stateId == "walk", "started base persists", d.stateId);
+    c.request("wave", "test");
+    d = c.update(0.0f);
+    check(d.stateId == "wave", "wave starts over walk", d.stateId);
+    d = c.update(2000.0f);
+    check(d.stateId == "walk", "wave expiry returns started base", d.stateId);
 }
 
 void testLatestWinsAtSamePriority() {
