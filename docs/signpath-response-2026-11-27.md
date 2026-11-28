@@ -19,6 +19,9 @@
 ## 2026-11-28 已做的可见度动作
 
 - GitHub 仓库描述、主页、16 个 topics、Discussions 已设置。
-- README 首屏已改成“下载优先 + 3D 主线 + Star 理由”，并修正了 `v3.2.0-sprite` 未上传、`v3.1.2` 仍为最新、用户数据在 `%APPDATA%` 等过时表述。
-- 新增 [`visibility-plan.md`](visibility-plan.md)，记录 90 天目标、渠道优先级和重新申请门槛。
-- 仍未做：演示 GIF/视频、外部文章或社区发帖、重新申请。
+- README 首屏已改成“下载优先 + 3D 主线 + Star 理由 + 真实运行 GIF”，并修正了 `v3.2.0-sprite` 未上传、`v3.1.2` 仍为最新、用户数据在 `%APPDATA%` 等过时表述。
+- 新增 [`visibility-plan.md`](visibility-plan.md) 和 [`launch-kit.md`](launch-kit.md)，记录 90 天目标、渠道优先级、发布文案和重新申请门槛。
+- 新增 `docs/demo/whale3d-demo.gif`（真实 3D 窗口运行录屏，17 张卡面轮播）。
+- `LICENSE` 拆成纯 MIT 文本，素材说明移到 `ASSET-NOTICE.md`；GitHub 现在识别为 MIT，而不是 `Other`。
+- Release notes 已补“30 秒上手”，并把 SignPath 状态改为 2026-11-27 拒绝。
+- 仍未做：外部文章或社区发帖、重新申请。
