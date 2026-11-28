@@ -21,7 +21,9 @@ SignPath Foundation 拒绝的理由不是代码质量，而是“公开信任与
 | Release 资产下载 | 3–4 次/个 |
 | 仓库描述/主页/topics | 已补：3D 桌宠、SDL3、OpenGL、VRM、本地 LLM 等 16 个 topics |
 | Discussions | 已开启 |
-| README | 已改成“下载优先 + 3D 主线 + Star 理由” |
+| README | 已改成“下载优先 + 3D 主线 + Star 理由 + 真实运行 GIF” |
+| 演示素材 | `docs/demo/whale3d-demo.gif`（7 帧真实运行录屏）、`social-preview.png` |
+| 许可证 | 纯 MIT 文本；GitHub 已识别为 MIT（此前为 `Other`） |
 | SignPath | 2026-11-27 拒绝；门户无组织 |
 
 ## 90 天目标（可核验）
