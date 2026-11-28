@@ -29,7 +29,7 @@ certutil -hashfile whale3d-whale-girl-v2.zip SHA256
 
 ### 边界
 
-- 安装包**未签名**。SignPath Foundation 申请已提交、仍在审核；SmartScreen 若提示“未知发布者”，先核对同名 `.sha256`。
+- 安装包**未签名**。发布时 SignPath Foundation 申请在审核；该申请后于 2026-11-27 未通过。SmartScreen 若提示“未知发布者”，先核对同名 `.sha256`。
 - v3.1.0 修复包只保证安装链路；渲染能力仍是 3.1.0 的 VRM + 4 条 SpringBone，不含 v3.2 情绪总线和 v3.1.1 的 face cross-fade。
 - 真实 `F:\WhaleGirlPetApp` 的 19 GB 用户数据没有在本轮删除或迁移；升级前仍建议先备份。
 

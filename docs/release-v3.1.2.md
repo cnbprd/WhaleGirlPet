@@ -50,7 +50,7 @@ v3.1.2 Release 的同名资产已替换为上面的新包；从 GitHub 重新下
 
 ## 边界
 
-- 安装包仍未签名，SignPath Foundation 的申请仍在审核。
+- 安装包仍未签名，SignPath Foundation 的申请发布时在审核；该申请后于 2026-11-27 未通过。
 - 本版只改安装器与命名，不改 3D 渲染/动画；ZIP 内的 `whale3d.exe` 与上一版相同。
 - 真实迁移只在本机 `F:\WhaleGirlPetApp` 验证；其他机器的自定义目录/不同盘符未逐一实跑。
 - 升级前用户数据备份仍保留在本地 `build/userdata-before-3d-upgrade`，不在 Release 资产里。
