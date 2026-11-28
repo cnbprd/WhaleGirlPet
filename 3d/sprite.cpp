@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <GL/gl.h>
 
-#include "third_party/json.hpp"
+#include "sprite_manifest.h"
 #include "third_party/stb_image.h"
 
 #include <algorithm>
@@ -13,8 +13,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #ifndef GL_ARRAY_BUFFER
@@ -47,6 +49,30 @@
 #ifndef GL_TRIANGLE_STRIP
 #define GL_TRIANGLE_STRIP 0x0005
 #endif
+#ifndef GL_BLEND_SRC_RGB
+#define GL_BLEND_SRC_RGB 0x80C9
+#endif
+#ifndef GL_BLEND_DST_RGB
+#define GL_BLEND_DST_RGB 0x80C8
+#endif
+#ifndef GL_BLEND_SRC_ALPHA
+#define GL_BLEND_SRC_ALPHA 0x80CB
+#endif
+#ifndef GL_BLEND_DST_ALPHA
+#define GL_BLEND_DST_ALPHA 0x80CA
+#endif
+#ifndef GL_ACTIVE_TEXTURE
+#define GL_ACTIVE_TEXTURE 0x84E0
+#endif
+#ifndef GL_TEXTURE_BINDING_2D
+#define GL_TEXTURE_BINDING_2D 0x8069
+#endif
+#ifndef GL_CURRENT_PROGRAM
+#define GL_CURRENT_PROGRAM 0x8B8D
+#endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#endif
 
 typedef ptrdiff_t GLsizeiptr;
 typedef char GLchar;
@@ -78,6 +104,7 @@ typedef void (APIENTRY* PFNGLUNIFORM1F)(GLint, GLfloat);
 typedef void (APIENTRY* PFNGLUNIFORM4F)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
 typedef void (APIENTRY* PFNGLACTIVETEXTURE)(GLenum);
 typedef void (APIENTRY* PFNGLGENERATEMIPMAP)(GLenum);
+typedef void (APIENTRY* PFNGLBLENDFUNCSEPARATE)(GLenum, GLenum, GLenum, GLenum);
 
 namespace {
 struct Gl {
@@ -109,6 +136,7 @@ struct Gl {
     PFNGLUNIFORM4F uniform4f = nullptr;
     PFNGLACTIVETEXTURE activeTexture = nullptr;
     PFNGLGENERATEMIPMAP generateMipmap = nullptr;
+    PFNGLBLENDFUNCSEPARATE blendFuncSeparate = nullptr;
 
     template <typename T>
     bool loadOne(T& fn, const char* name) {
@@ -144,7 +172,8 @@ struct Gl {
             && loadOne(uniform1f, "glUniform1f")
             && loadOne(uniform4f, "glUniform4f")
             && loadOne(activeTexture, "glActiveTexture")
-            && loadOne(generateMipmap, "glGenerateMipmap");
+            && loadOne(generateMipmap, "glGenerateMipmap")
+            && loadOne(blendFuncSeparate, "glBlendFuncSeparate");
     }
 };
 
@@ -176,14 +205,7 @@ void main() {
 
 struct SpriteLayer::Impl {
     Gl gl;
-    struct Rect {
-        float u0 = 0.0f;
-        float v0 = 0.0f;
-        float u1 = 0.0f;
-        float v1 = 0.0f;
-        int w = 0;
-        int h = 0;
-    };
+    using Rect = sprite_manifest::CardRect;
     std::unordered_map<std::string, Rect> cards;
     GLuint program = 0;
     GLuint vao = 0;
@@ -198,8 +220,9 @@ struct SpriteLayer::Impl {
     float ttl = 0.0f;
     float age = 0.0f;
     PixelRect lastRect;
+    bool ready = false;
 
-    bool active() const { return !current.empty() && age < ttl; }
+    bool active() const { return ready && !current.empty() && age < ttl; }
 
     void clearGl() {
         if (vbo && gl.deleteBuffers) gl.deleteBuffers(1, &vbo);
@@ -207,6 +230,7 @@ struct SpriteLayer::Impl {
         if (program && gl.deleteProgram) gl.deleteProgram(program);
         if (texture) glDeleteTextures(1, &texture);
         vbo = vao = program = texture = 0;
+        ready = false;
     }
 
     GLuint compile(GLenum type, const char* src, std::string& err) {
@@ -289,39 +313,18 @@ struct SpriteLayer::Impl {
             err = "manifest missing: " + manifestPath;
             return false;
         }
-        nlohmann::json j;
-        try {
-            file >> j;
-        } catch (const std::exception& e) {
-            err = std::string("manifest JSON: ") + e.what();
+        cards.clear();
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        const std::string manifestText = buffer.str();
+
+        sprite_manifest::Data data;
+        if (!sprite_manifest::parseJson(manifestText, data, err)) {
             return false;
         }
-        const int sheetW = j.at("sheet_size")[0].get<int>();
-        const int sheetH = j.at("sheet_size")[1].get<int>();
-        for (const auto& entry : j.at("cards")) {
-            const std::string id = entry.at("id").get<std::string>();
-            const auto& r = entry.at("rect");
-            const int x = r[0].get<int>();
-            const int y = r[1].get<int>();
-            const int w = r[2].get<int>();
-            const int h = r[3].get<int>();
-            if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > sheetW || y + h > sheetH) {
-                err = "card outside atlas: " + id;
-                return false;
-            }
-            Rect rect;
-            rect.u0 = static_cast<float>(x) / sheetW;
-            rect.u1 = static_cast<float>(x + w) / sheetW;
-            // stb rows are top-down and the first uploaded row lands at GL
-            // texture v=0; keep v0 as the image top and v1 as the image bottom.
-            rect.v0 = static_cast<float>(y) / sheetH;
-            rect.v1 = static_cast<float>(y + h) / sheetH;
-            rect.w = w;
-            rect.h = h;
-            cards[id] = rect;
-        }
 
-        const std::string atlasPath = assetBase + j.at("sheet").get<std::string>();
+        const std::string atlasPath = assetBase + data.sheet_rel;
         int w = 0, h = 0, n = 0;
         stbi_set_flip_vertically_on_load(0);
         unsigned char* pixels = stbi_load(atlasPath.c_str(), &w, &h, &n, 4);
@@ -329,6 +332,12 @@ struct SpriteLayer::Impl {
             err = "atlas decode failed: " + atlasPath;
             return false;
         }
+        if (!sprite_manifest::validateAtlasSize(data, w, h, err)) {
+            stbi_image_free(pixels);
+            return false;
+        }
+
+        cards = std::move(data.cards);
         glGenTextures(1, &texture);
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -339,10 +348,6 @@ struct SpriteLayer::Impl {
                      GL_UNSIGNED_BYTE, pixels);
         glBindTexture(GL_TEXTURE_2D, 0);
         stbi_image_free(pixels);
-        if (w != sheetW || h != sheetH) {
-            err = "atlas size mismatch";
-            return false;
-        }
         return true;
     }
 };
@@ -356,6 +361,7 @@ SpriteLayer::~SpriteLayer() {
 
 bool SpriteLayer::init(const std::string& assetBase) {
     if (!impl_) return false;
+    impl_->ready = false;
     impl_->error.clear();
     if (!impl_->gl.load()) {
         impl_->error = "missing GL entry point";
@@ -368,8 +374,14 @@ bool SpriteLayer::init(const std::string& assetBase) {
     }
     if (!impl_->loadAtlas(assetBase, impl_->error)) {
         impl_->clearGl();
+        impl_->cards.clear();
+        impl_->current.clear();
+        impl_->ttl = 0.0f;
+        impl_->age = 0.0f;
+        impl_->lastRect = PixelRect{};
         return false;
     }
+    impl_->ready = true;
     return true;
 }
 
@@ -380,10 +392,11 @@ void SpriteLayer::shutdown() {
     impl_->current.clear();
     impl_->ttl = 0.0f;
     impl_->age = 0.0f;
+    impl_->lastRect = PixelRect{};
 }
 
 bool SpriteLayer::showCard(const std::string& cardId, float ttlMs) {
-    if (!impl_ || cardId.empty()) return false;
+    if (!impl_ || !impl_->ready || cardId.empty()) return false;
     auto it = impl_->cards.find(cardId);
     if (it == impl_->cards.end()) return false;
     impl_->current = cardId;
@@ -398,7 +411,7 @@ void SpriteLayer::update(float dtSeconds) {
 }
 
 void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
-    if (!impl_ || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
+    if (!impl_ || !impl_->ready || pixelWidth <= 0 || pixelHeight <= 0 || !impl_->active()) return;
     const auto& rect = impl_->cards[impl_->current];
     const float cardH = std::min(220.0f, pixelHeight * 0.36f);
     const float cardW = cardH * static_cast<float>(rect.w) / static_cast<float>(rect.h);
@@ -417,6 +430,29 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
     const float fadeOut = 0.12f;
     const float alpha = std::min({1.0f, impl_->age / fadeIn,
                                   (impl_->ttl - impl_->age) / fadeOut});
+
+    // Save the states this overlay changes. The caller may have depth testing
+    // off or use a different blend function; restore instead of assuming the
+    // model's state.
+    const GLboolean depthEnabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean blendEnabled = glIsEnabled(GL_BLEND);
+    GLint prevProgram = 0;
+    GLint prevVao = 0;
+    GLint prevTexture = 0;
+    GLint prevActive = GL_TEXTURE0;
+    GLint srcRgb = GL_SRC_ALPHA;
+    GLint dstRgb = GL_ONE_MINUS_SRC_ALPHA;
+    GLint srcAlpha = GL_SRC_ALPHA;
+    GLint dstAlpha = GL_ONE_MINUS_SRC_ALPHA;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexture);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActive);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &srcRgb);
+    glGetIntegerv(GL_BLEND_DST_RGB, &dstRgb);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &srcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &dstAlpha);
 
     impl_->gl.useProgram(impl_->program);
     impl_->gl.uniform4f(impl_->uRect, ndcX, ndcY, ndcW, ndcH);
@@ -439,17 +475,22 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
         traced = true;
     }
     glDisable(GL_DEPTH_TEST);
-    const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     impl_->gl.bindVertexArray(impl_->vao);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    impl_->gl.bindVertexArray(0);
-    if (cullFace) glEnable(GL_CULL_FACE);
+    impl_->gl.bindVertexArray(prevVao);
+    impl_->gl.useProgram(prevProgram);
+    impl_->gl.activeTexture(prevActive);
+    glBindTexture(GL_TEXTURE_2D, prevTexture);
+    if (blendEnabled) glEnable(GL_BLEND);
+    else glDisable(GL_BLEND);
+    impl_->gl.blendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+    if (cullEnabled) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
-    impl_->gl.useProgram(0);
+    if (depthEnabled) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
     if (std::getenv("WHALE3D_SPRITE_TRACE")) {
         const GLenum err = glGetError();
         if (err != GL_NO_ERROR) SDL_Log("Sprite draw GL error: 0x%x", err);
@@ -457,7 +498,7 @@ void SpriteLayer::draw(int pixelWidth, int pixelHeight) {
 }
 
 bool SpriteLayer::visible() const {
-    return impl_ && impl_->active();
+    return impl_ && impl_->ready && impl_->active();
 }
 
 const SpriteLayer::PixelRect& SpriteLayer::lastRect() const {

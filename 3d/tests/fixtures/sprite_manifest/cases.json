@@ -1,0 +1,464 @@
+{
+  "version": 1,
+  "description": "Bad-manifest fixtures for the P1 sprite parser branch. All cases share the production atlas path and a 1024x512 sheet; the future harness must copy the real atlas.png beside each generated manifest.",
+  "base": {
+    "sheet": "assets/2d_bridge/atlas.png",
+    "sheet_size": [
+      1024,
+      512
+    ],
+    "slot_size": 160,
+    "card": {
+      "id": "expression/happy",
+      "group": "expression",
+      "name": "happy",
+      "source": "assets/expressions/happy.png",
+      "rect": [
+        516,
+        4,
+        88,
+        152
+      ],
+      "slot": [
+        480,
+        0,
+        160,
+        160
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "valid_minimal",
+      "expect": {
+        "ok": true
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "group": "expression",
+            "name": "happy",
+            "source": "assets/expressions/happy.png",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ],
+            "slot": [
+              480,
+              0,
+              160,
+              160
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_sheet_size",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "sheet_size_three_values",
+      "expect": {
+        "ok": false,
+        "error": "sheet_size must be two integers"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512,
+          1
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "sheet_size_negative",
+      "expect": {
+        "ok": false,
+        "error": "sheet_size must be positive"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          -512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "sheet_size_non_integer",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          "1024",
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "cards_empty",
+      "expect": {
+        "ok": false,
+        "error": "cards must be a non-empty array"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": []
+      }
+    },
+    {
+      "name": "cards_not_array",
+      "expect": {
+        "ok": false,
+        "error": "cards must be a non-empty array"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": {}
+      }
+    },
+    {
+      "name": "empty_id",
+      "expect": {
+        "ok": false,
+        "error": "empty card id"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate_id",
+      "expect": {
+        "ok": false,
+        "error": "duplicate card id: expression/happy"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          },
+          {
+            "id": "expression/happy",
+            "rect": [
+              0,
+              0,
+              10,
+              10
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "id_non_string",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": 42,
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "rect_three_values",
+      "expect": {
+        "ok": false,
+        "error": "card rect must be four integers: expression/happy"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "rect_non_integer",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              "516",
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "rect_outside_atlas",
+      "expect": {
+        "ok": false,
+        "error": "card outside atlas: expression/happy"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              1020,
+              500,
+              10,
+              20
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_sheet_path",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty_sheet_path",
+      "expect": {
+        "ok": false,
+        "error": "sheet path missing"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "",
+        "sheet_size": [
+          1024,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              516,
+              4,
+              88,
+              152
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "atlas_size_mismatch",
+      "expect": {
+        "ok": false,
+        "error": "atlas size mismatch: actual 1024x512, manifest 512x512"
+      },
+      "manifest": {
+        "version": 1,
+        "sheet": "assets/2d_bridge/atlas.png",
+        "sheet_size": [
+          512,
+          512
+        ],
+        "slot_size": 160,
+        "cards": [
+          {
+            "id": "expression/happy",
+            "rect": [
+              0,
+              0,
+              10,
+              10
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "malformed_json",
+      "expect": {
+        "ok": false,
+        "error_prefix": "manifest parse:"
+      },
+      "raw_manifest": "{\"version\":1,\"sheet_size\":[1024,512],\"cards\":[{\"id\":\"expression/happy\",\"rect\":[516,4,88,152]}]"
+    }
+  ]
+}

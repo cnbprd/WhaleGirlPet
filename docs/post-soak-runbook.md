@@ -197,6 +197,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath `
 4. 再上传便携 ZIP `whale3d-whale-girl-v3.2-sprite.zip`；
 5. 最后上传 `3d\whale3d.exe` 作为单独 exe 资产；
 6. 上传后重新下载至少安装器和 ZIP，核对远端 SHA256 与本地一致。
+7. 发布后如需单独改说明，运行 `gh workflow run release-notes.yml -f tag=v3.2.0-sprite`；该 workflow 只更新目标 tag，不遍历旧 Release。
 
 不要运行 `release-assets.yml`；不要用 `--clobber` 覆盖已有 Release；不要在发布说明里写“24h 长稳通过”，除非 `check_soak_final.py` 已 `exit 0`。
 

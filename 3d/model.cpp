@@ -2252,6 +2252,7 @@ static void updateFace(Model::Impl& m, float timeSeconds, float dt) {
 }
 
 void Model::update(float timeSeconds) {
+    if (!impl_) return;
     Impl& m = *impl_;
     if (!m.loaded) return;
     float dt = 0.016f;
@@ -2290,6 +2291,7 @@ void Model::update(float timeSeconds) {
 }
 
 void Model::draw(const float viewProjection[16]) {
+    if (!impl_) return;
     Impl& m = *impl_;
     if (!m.loaded || !m.program) return;
 
