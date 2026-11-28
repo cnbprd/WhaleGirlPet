@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-CI：run `46135131492` success（build + 20 条动画 + 35 条卡队列 + headless 60）。  
+CI：run `46135131492` success（build + 20 条动画 + 35 条卡队列 + headless 60）；QA 工具提交 `9897d22` 的 CI run `46136266420` success。  
 构建：`3d/whale3d-stage2-crossfade.exe`，1,417,216 B，
 SHA256 `F16D41AE2A141D27C6B8F5156D4133393FC492BC0F4E7A42D179F045958D8F65`。  
 性质：测试构建，不替换生产 `3d/whale3d.exe`。
@@ -31,8 +31,10 @@ SHA256 `F16D41AE2A141D27C6B8F5156D4133393FC492BC0F4E7A42D179F045958D8F65`。
 | 真实点击穿透 | `build/stage2-crossfade-click.json`：`ok:true`，卡面 `-1`、模型 `1`、目标 `clicks 0→1` |
 | 真实拖拽 | `build/stage2-crossfade/drag-test.json`：`ok:true`，窗口 (1420,430)→(1510,475)，delta (90,45) |
 | 90 秒快速 W | `build/stage2-crossfade-soak/crossfade-soak.json`：147 次 fade、无退出，CPU 单核 avg 31.93% / max 35.91% |
-| 10 分钟 W 浸泡 | 进行中；完成后单独记录，不与 90 秒结论混写 |
+| 10 分钟 W 浸泡 | `build/stage2-crossfade-soak-10min/crossfade-soak.json`：600s、298 次 fade、无退出；CPU 单核 avg 32.58% / max 40.61%，中途有 9–17% 低样本，判断为调度/遮挡波动，不当作稳定基准 |
 | 进程 | 测试后无残留 |
+
+10 分钟 W 浸泡只验证 crossfade 高频切换不崩、fade 计数与 CPU 量级，不是帧时间基线；本轮没有同时开 `FrameStats` trace，不能拿它替代 `stage2-queue-idle` 的 10 分钟帧时间结论。
 
 ## 3. 边界
 

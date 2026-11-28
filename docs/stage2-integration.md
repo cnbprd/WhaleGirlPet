@@ -63,5 +63,5 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 
 1. 第二轮 `CardQueue` 已完成，见 `docs/stage2-queue.md`；队列版 idle 10 分钟和同机 A/B 已完成。
 2. 做真实窗口 #70：点击/拖拽已过；聊天入口在 3D shell 不存在，待确认范围。
-3. idle↔walk clip crossfade 已完成，见 `docs/stage2-crossfade.md`；卡面 overlay crossfade 暂不做。
+3. idle↔walk clip crossfade 已完成，见 `docs/stage2-crossfade.md`；同构建 17 卡截图、队列 6/6、真实点击/拖拽、90 秒与 10 分钟 W 浸泡均已完成；卡面 overlay crossfade 暂不做。
 4. 生产包和 Release 资产暂不替换。
