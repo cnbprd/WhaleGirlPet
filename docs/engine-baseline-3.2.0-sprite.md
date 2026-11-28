@@ -1,7 +1,7 @@
 # 3D 引擎基线：v3.2.0-sprite
 
 日期：2026-11-28  
-状态：**阶段 0 基线冻结中；发布已闭环，2D 冻结包 / SignPath / 普通 z 序仍有未决项。**
+状态：**阶段 0 已按 waiver 关闭；发布已闭环，2D UI 发包 / 第三方 z 序 / SignPath 三项转入后续阶段。**
 
 ## 1. 发布基线
 
@@ -75,13 +75,15 @@
 - 2026-11-28 新增非 topmost 跨进程 target 测试：`ok=true`、`target_topmost=false`、`clicks_before=0`、`clicks_after=1`；证据 `docs/ordinary-zorder-result.json`、`docs/ordinary-zorder.log`。
 - 仍未验证：Notepad、Chrome、Explorer 等真实第三方窗口；`findWindowBelow` 对子窗口、管理员权限窗口、UWP/WPF 目标的行为。
 
-## 6. 阶段 0 退出判断
+## 6. 阶段 0 关闭记录
 
-当前**不能宣布阶段 0 完成**。要关闭阶段 0，至少需要：
+日期：2026-11-28
+结论：**关闭，带 3 项条件 waiver；不是全部 pass。**
 
-- 2D 冻结包：已部分通过（包/资产/启动/17 卡解析），但还要 UI 发包或明确 waiver；
-- SignPath：signed 或明确 waiver；
-- 普通 z 序：非 topmost target 已通过；第三方应用或明确 waiver；
-- 本文件提交到 `docs/`，并作为阶段 1 的基线。
+| 未决项 | 处理 | 接手阶段 |
+|---|---|---|
+| 2D 冻结包未通过 UI 真实触发 `action/wave` | 接受 waiver：包内资产、manifest 17 卡解析、启动 8s 已过；UI 发包不在引擎主线 | 阶段 2 的真实窗口手感/2D 联调 |
+| 普通桌面 z 序只过非 topmost 跨进程 target | 接受 waiver：受控 z 序 + 非 topmost target 已过；第三方窗口不阻塞引擎 | 阶段 2 或阶段 4 overlay 收口 |
+| SignPath 外部审核状态未知，资产 `NotSigned` | 接受 waiver：v3.2.0-sprite 以 unsigned 发布；批准后必须整包重建/重签/重传，不能只替换 exe | 阶段 5 签名决策 |
 
-阶段 0 不做引擎代码改动；阶段 1 才进入 `FrameStats`、trace 和 `--headless`。
+阶段 0 没有未记录的 P0 引擎阻塞项。阶段 1 可以在此基线上继续；上述 waiver 不等于“已验证通过”，后续阶段不得把它们当成已闭环能力。

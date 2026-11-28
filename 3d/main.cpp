@@ -48,16 +48,32 @@ static void fileLog(void*, int, SDL_LogPriority, const char* message) {
 
 static void initLog() {
     const char* overridePath = std::getenv("WHALE3D_LOG");
+    const bool append = !(overridePath && *overridePath);
     std::string path = (overridePath && *overridePath) ? overridePath : moduleLogPath();
     if (path.empty()) return;
-    gLogFile = std::fopen(path.c_str(), "w");
+    gLogFile = std::fopen(path.c_str(), append ? "a" : "w");
     if (!gLogFile) return;
+    if (append) {
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        std::fprintf(gLogFile,
+                     "\n=== whale3d session %04u-%02u-%02u %02u:%02u:%02u pid=%lu ===\n",
+                     st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
+                     st.wSecond, static_cast<unsigned long>(GetCurrentProcessId()));
+        std::fflush(gLogFile);
+    }
     SDL_SetLogOutputFunction(fileLog, nullptr);
-    SDL_Log("Log: %s", path.c_str());
+    SDL_Log("Log: %s (append=%d)", path.c_str(), append ? 1 : 0);
 }
 
 static bool hasPrefix(const char* value, const char* prefix) {
     return value && std::strncmp(value, prefix, std::strlen(prefix)) == 0;
+}
+
+static void keepAwake(bool enabled) {
+    SetThreadExecutionState(
+        ES_CONTINUOUS |
+        (enabled ? (ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED) : 0));
 }
 
 // Accept both "--fixed-dt=0.016667" and "--fixed-dt=1/60".
@@ -310,6 +326,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     PerfStats perf(headless);
+    if (std::getenv("WHALE3D_KEEP_AWAKE")) keepAwake(true);
 
     // CI runners have no usable OpenGL driver (windows-latest exposes GDI
     // Generic 1.1). This path still exercises the fixed-dt loop and stats

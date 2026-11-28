@@ -61,7 +61,7 @@ $sources = @(
     $sources `
     "-L$sdlLib" "-L$ozzLibOffline" "-L$ozzLibRuntime" "-L$ozzLibBase" `
     -lSDL3 -lozz_animation_offline_r -lozz_animation_r -lozz_base_r `
-    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32 `
+    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32 -lpsapi `
     -static-libgcc -static-libstdc++ `
     "-Wl,--gc-sections" `
     -o $out

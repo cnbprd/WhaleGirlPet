@@ -5,6 +5,8 @@
 // Enabled by WHALE3D_STAT=1 or WHALE3D_TRACE=<path>.
 
 #include <SDL3/SDL.h>
+#include <windows.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <array>
@@ -15,6 +17,7 @@
 class PerfStats {
 public:
     struct FrameSample {
+        uint64_t frameIndex = 0;
         uint64_t intervalUs = 0;
         uint64_t workUs = 0;
         uint64_t updateUs = 0;
@@ -57,6 +60,10 @@ public:
         if (tracePath && *tracePath) {
             trace_ = std::fopen(tracePath, "a");
         }
+        if (const char* rawHitch = std::getenv("WHALE3D_TRACE_HITCH_MS")) {
+            const int ms = std::atoi(rawHitch);
+            if (ms > 0) hitchTraceUs_ = static_cast<uint64_t>(ms) * 1000ULL;
+        }
     }
 
     ~PerfStats() {
@@ -77,6 +84,17 @@ public:
 
     uint64_t toUs(uint64_t ticks) const {
         return freq_ ? (ticks * 1000000ULL / freq_) : 0;
+    }
+
+    static void memoryMb(double& rssMb, double& privateMb) {
+        PROCESS_MEMORY_COUNTERS_EX pmc{};
+        if (GetProcessMemoryInfo(
+                GetCurrentProcess(),
+                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
+                static_cast<DWORD>(sizeof(pmc)))) {
+            rssMb = static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0);
+            privateMb = static_cast<double>(pmc.PrivateUsage) / (1024.0 * 1024.0);
+        }
     }
 
     void beginFrame() {
@@ -104,6 +122,7 @@ public:
     void endFrame() {
         if (!enabled_) return;
         current_.workUs = toUs(now() - frameStart_);
+        current_.frameIndex = frameSerial_++;
         samples_[sampleHead_] = current_;
         sampleHead_ = (sampleHead_ + 1) % kCapacity;
         sampleCount_ = std::min(sampleCount_ + 1, kCapacity);
@@ -116,6 +135,27 @@ public:
         sumOverlayUs_ += current_.overlayUs;
         sumSwapUs_ += current_.swapUs;
         if (current_.intervalUs > 50000) ++hitches_;
+
+        // Optional event trace: only abnormal frames, so a 10-minute run
+        // stays small enough to inspect by hand.
+        if (trace_ && hitchTraceUs_ > 0 && current_.intervalUs >= hitchTraceUs_) {
+            std::fprintf(
+                trace_,
+                "{\"event\":\"hitch\",\"frame\":%llu,\"interval_ms\":%.2f,"
+                "\"work_ms\":%.2f,\"update_ms\":%.2f,\"render_ms\":%.2f,"
+                "\"readback_ms\":%.2f,\"region_ms\":%.2f,"
+                "\"overlay_ms\":%.2f,\"swap_ms\":%.2f}\n",
+                static_cast<unsigned long long>(current_.frameIndex),
+                static_cast<double>(current_.intervalUs) / 1000.0,
+                static_cast<double>(current_.workUs) / 1000.0,
+                static_cast<double>(current_.updateUs) / 1000.0,
+                static_cast<double>(current_.renderUs) / 1000.0,
+                static_cast<double>(current_.readbackUs) / 1000.0,
+                static_cast<double>(current_.regionUs) / 1000.0,
+                static_cast<double>(current_.overlayUs) / 1000.0,
+                static_cast<double>(current_.swapUs) / 1000.0);
+            std::fflush(trace_);
+        }
     }
 
     // Intended to be called once per frame after endFrame().  Emits a compact
@@ -138,13 +178,17 @@ public:
         const double regionAvg = avgMs(sumRegionUs_);
         const double overlayAvg = avgMs(sumOverlayUs_);
         const double swapAvg = avgMs(sumSwapUs_);
+        double rssMb = 0.0, privateMb = 0.0;
+        memoryMb(rssMb, privateMb);
 
         SDL_Log("stat fps=%.1f interval_p50=%.2fms p95=%.2fms p99=%.2fms "
                 "work=%.2fms hitch=%u update=%.2fms render=%.2fms "
-                "readback=%.2fms region=%.2fms overlay=%.2fms swap=%.2fms",
+                "readback=%.2fms region=%.2fms overlay=%.2fms swap=%.2fms "
+                "rss=%.1fMB private=%.1fMB",
                 fps, intervalP50, intervalP95, intervalP99,
                 avgMs(sumWorkUs_), hitches_,
-                updateAvg, renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg);
+                updateAvg, renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg,
+                rssMb, privateMb);
 
         if (trace_) {
             std::fprintf(trace_,
@@ -152,11 +196,12 @@ public:
                          "\"p50_ms\":%.2f,\"p95_ms\":%.2f,\"p99_ms\":%.2f,"
                          "\"hitch\":%u,\"update_ms\":%.2f,\"render_ms\":%.2f,"
                          "\"readback_ms\":%.2f,\"region_ms\":%.2f,"
-                         "\"overlay_ms\":%.2f,\"swap_ms\":%.2f}\n",
+                         "\"overlay_ms\":%.2f,\"swap_ms\":%.2f,"
+                         "\"rss_mb\":%.1f,\"private_mb\":%.1f}\n",
                          static_cast<unsigned long long>(SDL_GetTicks()),
                          fps, frames_, intervalP50, intervalP95, intervalP99,
                          hitches_, updateAvg, renderAvg, readbackAvg,
-                         regionAvg, overlayAvg, swapAvg);
+                         regionAvg, overlayAvg, swapAvg, rssMb, privateMb);
             std::fflush(trace_);
         }
 
@@ -187,25 +232,30 @@ public:
         const double regionAvg = avgMs(sumRegionUs_);
         const double overlayAvg = avgMs(sumOverlayUs_);
         const double swapAvg = avgMs(sumSwapUs_);
+        double rssMb = 0.0, privateMb = 0.0;
+        memoryMb(rssMb, privateMb);
 
         SDL_Log("summary mode=%s frames=%u fps=%.1f interval_p50=%.2fms "
                 "p95=%.2fms p99=%.2fms work=%.2fms hitch=%u "
                 "update=%.2fms render=%.2fms readback=%.2fms "
-                "region=%.2fms overlay=%.2fms swap=%.2fms",
+                "region=%.2fms overlay=%.2fms swap=%.2fms "
+                "rss=%.1fMB private=%.1fMB",
                 mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
                 intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg,
-                renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg);
+                renderAvg, readbackAvg, regionAvg, overlayAvg, swapAvg,
+                rssMb, privateMb);
 
-        char line[512];
+        char line[768];
         const int n = std::snprintf(
             line, sizeof(line),
             "{\"mode\":\"%s\",\"frames\":%u,\"fps\":%.2f,\"p50_ms\":%.2f,"
             "\"p95_ms\":%.2f,\"p99_ms\":%.2f,\"work_ms\":%.2f,\"hitch\":%u,"
             "\"update_ms\":%.2f,\"render_ms\":%.2f,\"readback_ms\":%.2f,"
-            "\"region_ms\":%.2f,\"overlay_ms\":%.2f,\"swap_ms\":%.2f}",
+            "\"region_ms\":%.2f,\"overlay_ms\":%.2f,\"swap_ms\":%.2f,"
+            "\"rss_mb\":%.1f,\"private_mb\":%.1f}",
             mode ? mode : "-", frames_, fps, intervalP50, intervalP95,
             intervalP99, avgMs(sumWorkUs_), hitches_, updateAvg, renderAvg,
-            readbackAvg, regionAvg, overlayAvg, swapAvg);
+            readbackAvg, regionAvg, overlayAvg, swapAvg, rssMb, privateMb);
         if (n <= 0) return;
 
         if (path && *path) {
@@ -257,6 +307,8 @@ private:
     uint64_t sumSwapUs_ = 0;
     uint32_t frames_ = 0;
     uint32_t hitches_ = 0;
+    uint64_t frameSerial_ = 0;
+    uint64_t hitchTraceUs_ = 0;
     std::array<FrameSample, kCapacity> samples_{};
     size_t sampleHead_ = 0;
     size_t sampleCount_ = 0;
