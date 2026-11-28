@@ -69,6 +69,7 @@
 | staging | `build/3d-installer-payload/3.2.0-sprite` | 含新 exe 和 `assets/2d_bridge` |
 | 构建脚本 | `installer/build_3d_installers.ps1` | sprite 条目已 cherry-pick 到集成分支 |
 | 安装回归 | 临时目录静默安装 exit 0；`whale3d.exe`、`assets/2d_bridge` 哈希匹配；卸载 exit 0 | PASS |
+| smoke 记录 | `docs/installer-smoke-3.2.0-sprite.md` | 已写 |
 
 ## 6. Release 资产
 
