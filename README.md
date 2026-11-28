@@ -5,9 +5,9 @@
 > **项目状态（2026-11-28）**：3D 主线已公开 `v3.2.0-sprite`；2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。路线与边界见 [`DECLARATION.md`](DECLARATION.md) 和 [`docs/3d-engine-roadmap-2026-11-28.md`](docs/3d-engine-roadmap-2026-11-28.md)；公开可见度计划见 [`docs/visibility-plan.md`](docs/visibility-plan.md)。
 
 <p align="center">
-  <img src="assets/skins/blackred.png" width="180" alt="鲸鱼娘角色立绘">
+  <img src="docs/demo/whale3d-demo.gif" width="380" alt="3D 桌宠演示：角色与 2D 卡面">
   <br>
-  <sub>角色立绘（2D 归档素材；3D 主线使用同角色 VRM 模型）</sub>
+  <sub>真实 3D 窗口运行录屏（v3.2.0-sprite）；背景为演示用深色底，非桌面实拍</sub>
 </p>
 
 <p align="center">

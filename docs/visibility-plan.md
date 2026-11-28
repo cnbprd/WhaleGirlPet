@@ -40,7 +40,7 @@ SignPath Foundation 拒绝的理由不是代码质量，而是“公开信任与
 
 - [x] 仓库 description / homepage / topics / discussions
 - [x] README 首屏改成下载入口、3D 主线、Star 理由
-- [ ] 补一张真实应用截图或 10–15 秒 GIF（透明桌面、角色、卡面）
+- [x] 补一张真实应用截图或 10–15 秒 GIF（`docs/demo/whale3d-demo.gif`，真实运行录屏）
 - [ ] 补 Release notes 的“30 秒上手”和已知限制
 - [ ] 检查安装包在干净 Windows 上的首次启动（无 C 盘残留）
 - [ ] 在仓库置顶一个“想要什么功能”的 Discussion
