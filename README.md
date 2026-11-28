@@ -1,46 +1,62 @@
 # 鲸鱼娘桌宠 · WhaleGirlPet
 
-> 一只住在 Windows 桌面上的 DeepSeek 鲸鱼娘（社区昵称「大肥鱼」），会走路、会打工、会跟你说话。
+> 住在 Windows 桌面上的 3D 鲸鱼娘。透明、置顶、可点击穿透；会走、会打工、会聊天。
 
-> **路线声明（2026-11-26）**：2D 主线已放弃，主线转向 3D。自 v3.0.28 起，新功能和新包只走 3D C++/SDL3/OpenGL 壳；v3.1.0 已落地最小 VRM 1.0 + 4 条两骨 SpringBone，v3.1.1 修复 Windows 安装/升级链路。2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。全文见 [`DECLARATION.md`](DECLARATION.md)。
+> **项目状态（2026-11-28）**：3D 主线已公开 `v3.2.0-sprite`；2D 源码、素材和历史 Release 保留作归档/回滚，不再作为后续发布目标。路线与边界见 [`DECLARATION.md`](DECLARATION.md) 和 [`docs/3d-engine-roadmap-2026-11-28.md`](docs/3d-engine-roadmap-2026-11-28.md)；公开可见度计划见 [`docs/visibility-plan.md`](docs/visibility-plan.md)。
 
 <p align="center">
-  <img src="assets/ui/pet.ico" alt="WhaleGirlPet" width="96" />
+  <img src="assets/skins/blackred.png" width="180" alt="鲸鱼娘角色立绘">
+  <br>
+  <sub>角色立绘（2D 归档素材；3D 主线使用同角色 VRM 模型）</sub>
 </p>
 
 <p align="center">
-  <strong>3D 桌面壳主线 · C++/SDL3/OpenGL · 2D PySide6 历史归档</strong>
+  <strong>3D 桌面壳主线 · C++/SDL3/OpenGL · 本地大模型/语音 · 2D PySide6 历史归档</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white" alt="Python"></a>
-  <a href="https://pypi.org/project/PySide6/"><img src="https://img.shields.io/badge/PySide6-6.x-41CD52?style=flat&logo=qt&logoColor=white" alt="PySide6"></a>
-  <a href="https://github.com/cnbprd/WhaleGirlPet/releases"><img src="https://img.shields.io/github/v/release/cnbprd/WhaleGirlPet?style=flat&logo=github&color=6e40c9" alt="Release"></a>
+  <a href="https://github.com/cnbprd/WhaleGirlPet/releases/latest"><img src="https://img.shields.io/github/v/release/cnbprd/WhaleGirlPet?style=flat&logo=github&color=6e40c9" alt="Latest Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-D22128?style=flat" alt="License"></a>
   <a href="https://github.com/cnbprd/WhaleGirlPet/stargazers"><img src="https://img.shields.io/github/stars/cnbprd/WhaleGirlPet?style=flat&logo=github" alt="Stars"></a>
+  <a href="https://github.com/cnbprd/WhaleGirlPet/discussions"><img src="https://img.shields.io/badge/Discussions-open-2f6f4f?style=flat" alt="Discussions"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cnbprd/WhaleGirlPet/releases/latest"><strong>下载最新版</strong></a>
+  ·
+  <a href="docs/3d-engine-roadmap-2026-11-28.md">路线图</a>
+  ·
+  <a href="docs/3d-transition.md">3D 技术记录</a>
 </p>
 
 ---
 
 ## 这是什么
 
-这不是「会说话的桌面挂件」，而是一个**把养成、工作流、语音、桌面维护缝在一起的小型桌面应用**。
+一个**本地优先**的 Windows 桌面搭子：不是只会漂浮的动图，而是把 3D 角色、桌面任务、语音、记忆和提醒缝在一起的小应用。
 
-大多数桌宠解决的是「屏幕上多一个会动的图」。本项目解决的是另一个问题：
+- **透明 3D 壳**：C++/SDL3/OpenGL，窗口透明、置顶、拖拽，卡面区域外的点击可穿透。
+- **不是云服务**：账号、聊天、记忆、TTS 缓存默认跟安装文件放在一起；安装目录不可写才回退 `%APPDATA%`，可离线。
+- **早期但可跑**：3D 渲染、VRM、SpringBone、17 张卡面、情绪 UDP 总线、无头回归都已落地；认知层还在从 2D 迁移。
 
-> **一个人一天里被打断几十次，能不能让一个不烦人的东西，替你把琐事接住？**
+> 如果这个“桌面搭子”方向对你有用，点一个 Star 就是最直接的投票；也欢迎在 Discussions 里提场景和 bug。
 
-所以它的定位很明确：
+## 下载
 
-- **不是** 满屏弹窗的骚扰器：默认静音模式，闲聊只出气泡不出声，真正有事才开口。
-- **不是** 纯观赏摆件：打工任务、定时任务、喝水久坐提醒、垃圾清理、桌面整理都在真做事。
-- **不是** 云服务产品：本地跑，账号档案存在 `%APPDATA%\WhaleGirlPet`，可离线。
+最新公开版：[`v3.2.0-sprite`](https://github.com/cnbprd/WhaleGirlPet/releases/tag/v3.2.0-sprite)（2026-11-28 发布）
 
-仓库只放源码与文档；可执行安装包走 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases)。
+| 文件 | 用途 |
+|---|---|
+| `WhaleGirlPet-Setup-3.2.0-sprite.exe` | Windows 安装包；默认装到 `F:\WhaleGirlPetApp`（无 F 盘则回退），目录页可改 |
+| `whale3d-whale-girl-v3.2-sprite.zip` | 便携包；解压后运行 `whale3d.exe` |
+| `whale3d.exe` | 单独 exe，适合已经装过 3.1.2 的用户替换 |
+| `*.sha256` | 安装包校验值；当前未签名，SmartScreen 可能提示“未知发布者” |
 
-## 当前 3D 主线（v3.2.0-sprite 本地候选，未上传；v3.2.0-dev 预发布，v3.1.2 稳定）
+安装包和 exe 仍为 `NotSigned`：项目没有代码签名证书，SignPath Foundation 申请已于 2026-11-27 被拒。先核对 `.sha256` 再决定是否运行；不要用自签名冒充正式发布。
 
-这一版把“身体”先接上了，认知层还没有搬进来：
+## 当前 3D 主线
+
+`v3.2.0-sprite` 是当前公开版。它把“身体”先接上了，认知层还没有完全搬进来：
 
 | 能力 | 状态 |
 |---|---|
@@ -82,29 +98,21 @@
 
 ### 方式一：3D 核心包（当前主线）
 
-前往 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases) 下载。`v3.2.0-sprite` 是本地测试候选，**尚未上传 Release**；当前预发布仍是 `v3.2.0-dev`，`v3.1.2` 仍是最新稳定版：
+最新 `v3.2.0-sprite` 已上传 Release，直接看上方 [下载](#下载)。`v3.2.0-dev` 是上一轮预发布，`v3.1.2` 是更早的稳定版；历史资产都在 [Releases](https://github.com/cnbprd/WhaleGirlPet/releases)。
 
 | 文件 | 说明 |
 |---|---|
-| `whale3d-whale-girl-v3.2-dev.zip` | 当前 3.2 测试便携包，解压即用；exe 版本资源 3.2.0.0，含 `SDL3.dll` + `assets/models/whale_girl.vrm`；VRM + 4 条两骨 SpringBone + 180/420 ms 姿态平滑 |
-| `WhaleGirlPet-Setup-3.2.0-dev.exe` | 当前 3.2 测试安装包；无需管理员权限，目录页可改安装位置；已做临时目录全新安装/启动/卸载和 3.1.2→3.2.0 临时升级回归，未动现有 3.1.2 安装 |
-| `whale3d-whale-girl-v3.zip` | 稳定版 3.1.2 核心包；exe 1,323,520 B，不含 3.2 的姿态平滑 |
-| `WhaleGirlPet-Setup-3.1.2.exe` | 稳定版安装包；无需管理员权限，目录页可改安装位置。默认目录按顺序：已有 3D 安装的 `InstallLocation` → 旧版 2D 3.0.27 目录 → `F:\WhaleGirlPetApp` → `%LOCALAPPDATA%\WhaleGirlPet3D`。检测到旧版 2D 时由安装器直接迁移（保留用户数据，删除旧程序/旧卸载项）。v3.0.28 / v3.1.0 / v3.1.1 / v3.1.2 共用同一安装位置，后装覆盖升级 |
-
-本地 `v3.2.0-sprite` 候选（未上传 Release，仅本机验收）：
-
-- 便携包：`3d\whale3d-whale-girl-v3.2-sprite.zip`，3,187,948 B，含 `assets/2d_bridge`。
-- 安装器：`dist\3d\WhaleGirlPet-Setup-3.2.0-sprite.exe`，4,791,434 B；完整校验值和发布前 gate 见 `docs/release-3.2.0-sprite.md`。
+| `WhaleGirlPet-Setup-3.2.0-sprite.exe` | 当前公开安装包；无需管理员权限，目录页可改安装位置 |
+| `whale3d-whale-girl-v3.2-sprite.zip` | 当前公开便携包，解压即用 |
+| `v3.2.0-dev` / `v3.1.2` | 历史候选/稳定版，保留用于回滚和对照 |
 
 安装包当前未签名；SmartScreen 若提示“未知发布者”，请先对照同名 `.sha256` 校验，再选择“更多信息 → 仍要运行”。受信任代码签名方案和接入条件见 [`docs/code-signing.md`](docs/code-signing.md)。
 
 ### Code signing policy
 
-**Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).**
+Status (2026-11-27): the SignPath Foundation application was reviewed and **not approved**. SignPath cited insufficient public adoption/visibility signals (GitHub stars, forks, contributors, external references) and invited a reapplication after the project gains broader recognition. The current Release artifacts remain unsigned and Windows may show “Unknown publisher”; details in [`docs/code-signing.md`](docs/code-signing.md) and [`docs/signpath-response-2026-11-27.md`](docs/signpath-response-2026-11-27.md).
 
-Status (2026-11-26): the SignPath Foundation application has been submitted and is pending review. Until it is approved and signing is executed, the current Release artifacts remain unsigned and Windows may show “Unknown publisher”.
-
-Signing scope is the Windows artifacts: `whale3d.exe` and `WhaleGirlPet-Setup-<version>.exe`. Authors / reviewers / approver: [cnbprd](https://github.com/cnbprd) (repository owner); all team members use MFA for GitHub and SignPath. Full policy: [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md). Privacy statement: [`PRIVACY.md`](PRIVACY.md).
+We do not use a self-signed certificate as a substitute for a trusted signature. If a trusted certificate is obtained, the signing scope will be the Windows artifacts: `whale3d.exe` and `WhaleGirlPet-Setup-<version>.exe`. Authors / reviewers / approver: [cnbprd](https://github.com/cnbprd) (repository owner); all team members use MFA for GitHub and the signing service. Full policy: [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md). Privacy statement: [`PRIVACY.md`](PRIVACY.md).
 
 2D 安装包是历史归档，不再作为新版本发布目标；下表只用于旧 Release 说明：
 
@@ -175,7 +183,7 @@ WhaleGirlPet/
 
 ## 配置
 
-配置与数据都在 `%APPDATA%\WhaleGirlPet\`：
+配置与数据默认在安装目录（与 `whale3d.exe` / `WhaleGirlPet.exe` 同级）；安装目录不可写时回退 `%APPDATA%\WhaleGirlPet\`。旧版指针 `data_root.txt` 仍兼容。
 
 | 路径 | 内容 |
 |---|---|
@@ -220,7 +228,7 @@ WhaleGirlPet/
 
 ## 更新日志
 
-见 [`CHANGELOG.md`](CHANGELOG.md)。线上稳定版本 **v3.1.2**；本地候选 **v3.2.0-sprite 未上传**。
+见 [`CHANGELOG.md`](CHANGELOG.md)。当前公开版本 **v3.2.0-sprite**；上一轮预发布 v3.2.0-dev，更早稳定版 v3.1.2。
 
 ---
 
@@ -230,7 +238,7 @@ WhaleGirlPet/
 2. 提交信息建议 [Conventional Commits](https://www.conventionalcommits.org/)
 3. 发 PR，附上复现步骤或截图
 
-提交前请确认没有把 `dist/`、`build/`、`runtime/`、`.venv/`、`%APPDATA%` 下的配置与密钥带进来。
+提交前请确认没有把 `dist/`、`build/`、`runtime/`、`.venv/`、安装目录下的账号/配置/密钥带进来。
 
 ---
 
