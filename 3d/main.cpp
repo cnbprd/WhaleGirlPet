@@ -109,6 +109,135 @@ static Mat4 lookAt(const float eye[3], const float center[3], const float up[3])
     return r;
 }
 
+// The 3D window keeps its window region on the model pixels only.  The
+// sprite card lives in a separate, transparent, topmost OpenGL window so the
+// card can stay visible without becoming a hit-test target of the main
+// window.  The overlay is clipped to the card rect and forwards clicks to
+// the first window underneath it.
+static WNDPROC gOverlayOldProc = nullptr;
+static HWND gOverlayHwnd = nullptr;
+static HWND gOverlayMouseTarget = nullptr;
+
+static HWND findWindowBelow(HWND overlay, POINT screenPoint) {
+    HWND candidate = GetWindow(overlay, GW_HWNDNEXT);
+    while (candidate) {
+        if (candidate != overlay && IsWindowVisible(candidate) &&
+            !IsIconic(candidate)) {
+            POINT clientPoint = screenPoint;
+            if (ScreenToClient(candidate, &clientPoint)) {
+                RECT clientRect{};
+                if (GetClientRect(candidate, &clientRect) &&
+                    PtInRect(&clientRect, clientPoint)) {
+                    HRGN region = CreateRectRgn(0, 0, 0, 0);
+                    int regionType = GetWindowRgn(candidate, region);
+                    const bool inRegion =
+                        regionType == ERROR ||
+                        (regionType != NULLREGION &&
+                         PtInRegion(region, clientPoint.x, clientPoint.y));
+                    DeleteObject(region);
+                    if (inRegion) {
+                        DWORD_PTR hit = 0;
+                        const LRESULT sent = SendMessageTimeoutW(
+                            candidate, WM_NCHITTEST, 0,
+                            MAKELPARAM(screenPoint.x, screenPoint.y),
+                            SMTO_ABORTIFHUNG, 50, &hit);
+                        if (sent &&
+                            hit != static_cast<DWORD_PTR>(HTTRANSPARENT) &&
+                            hit != static_cast<DWORD_PTR>(HTNOWHERE)) {
+                            return candidate;
+                        }
+                    }
+                }
+            }
+        }
+        candidate = GetWindow(candidate, GW_HWNDNEXT);
+    }
+    return nullptr;
+}
+
+static void forwardMouseToBelow(HWND overlay, UINT msg, WPARAM wParam) {
+    POINT screenPoint{};
+    GetCursorPos(&screenPoint);
+    if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN ||
+        msg == WM_MBUTTONDOWN) {
+        gOverlayMouseTarget = findWindowBelow(overlay, screenPoint);
+    }
+    HWND target = gOverlayMouseTarget;
+    if (!target) target = findWindowBelow(overlay, screenPoint);
+    if (!target) return;
+    POINT clientPoint = screenPoint;
+    if (!ScreenToClient(target, &clientPoint)) return;
+    PostMessageW(target, msg, wParam,
+                 MAKELPARAM(clientPoint.x, clientPoint.y));
+    if (msg == WM_LBUTTONUP || msg == WM_RBUTTONUP ||
+        msg == WM_MBUTTONUP) {
+        gOverlayMouseTarget = nullptr;
+    }
+}
+
+static LRESULT CALLBACK overlayInputProc(HWND hwnd, UINT msg,
+                                         WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
+    case WM_NCHITTEST:
+        // The overlay is clipped to the card; all points inside its region
+        // are a card hit.  The main window never sees this point because it
+        // excludes the card from its own region.
+        return HTCLIENT;
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+        forwardMouseToBelow(hwnd, msg, wParam);
+        return 0;
+    default:
+        break;
+    }
+    if (gOverlayOldProc) {
+        return CallWindowProcW(gOverlayOldProc, hwnd, msg, wParam, lParam);
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+static void configureOverlayWindow(SDL_Window* window) {
+    if (!window) return;
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    HWND hwnd = static_cast<HWND>(SDL_GetPointerProperty(
+        props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+    if (!hwnd) {
+        SDL_Log("Sprite overlay: HWND unavailable; clicks may not pass through");
+        return;
+    }
+    gOverlayHwnd = hwnd;
+    LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE,
+                      exStyle | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+    if (!gOverlayOldProc) {
+        gOverlayOldProc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(hwnd, GWLP_WNDPROC,
+                              reinterpret_cast<LONG_PTR>(overlayInputProc)));
+    }
+    SDL_Log("Sprite overlay: exstyle 0x%llx -> 0x%llx",
+            static_cast<unsigned long long>(exStyle),
+            static_cast<unsigned long long>(
+                GetWindowLongPtrW(hwnd, GWL_EXSTYLE)));
+}
+
+static void setOverlayCardRegion(const SpriteLayer::PixelRect& rect) {
+    if (!gOverlayHwnd) return;
+    HRGN region = CreateRectRgn(rect.x, rect.y,
+                                rect.x + rect.width,
+                                rect.y + rect.height);
+    if (!region) return;
+    if (!SetWindowRgn(gOverlayHwnd, region, TRUE)) {
+        DeleteObject(region);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc >= 2 && std::strcmp(argv[1], "--relaunch") == 0) {
         return runRelaunchHelper(argc, argv);
@@ -269,23 +398,68 @@ int main(int argc, char** argv) {
             if (parentManifest.good()) spriteBase = parentBase;
         }
     }
-    const bool spriteReady = sprite.init(spriteBase);
-    if (spriteReady) {
-        SDL_Log("Sprite layer: ready (%sassets/2d_bridge)", spriteBase.c_str());
-    } else {
-        SDL_Log("Sprite layer unavailable: %s", sprite.error().c_str());
-    }
-    if (spriteReady) {
-        if (const char* card = std::getenv("WHALE3D_CARD")) {
-            float ttlMs = 5000.0f;
-            if (const char* rawTtl = std::getenv("WHALE3D_CARD_TTL")) {
-                const float parsed = static_cast<float>(std::atof(rawTtl));
-                if (parsed >= 200.0f && parsed <= 10000.0f) ttlMs = parsed;
-            }
-            if (sprite.showCard(card, ttlMs)) {
-                SDL_Log("Sprite forced: %s ttl=%.0fms", card, ttlMs);
+    SDL_Window* overlayWin = nullptr;
+    SDL_GLContext overlayCtx = nullptr;
+    bool spriteOverlay = false;
+    bool spriteReady = false;
+    {
+        // A separate topmost OpenGL window owns the card.  The main window's
+        // region contains only model pixels, so a click on the card reaches
+        // the desktop/window below instead of being eaten by HTTRANSPARENT.
+        SDL_WindowFlags overlayFlags = static_cast<SDL_WindowFlags>(
+            SDL_WINDOW_OPENGL | SDL_WINDOW_TRANSPARENT | SDL_WINDOW_BORDERLESS |
+            SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_UTILITY | SDL_WINDOW_HIDDEN |
+            SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_NOT_FOCUSABLE);
+        int mainX = 0, mainY = 0;
+        SDL_GetWindowPosition(win, &mainX, &mainY);
+        overlayWin = SDL_CreateWindow("鲸鱼娘卡面", winW, winH, overlayFlags);
+        if (overlayWin) {
+            SDL_SetWindowPosition(overlayWin, mainX, mainY);
+            SDL_SetWindowAlwaysOnTop(overlayWin, true);
+            configureOverlayWindow(overlayWin);
+            overlayCtx = SDL_GL_CreateContext(overlayWin);
+            if (overlayCtx) {
+                SDL_GL_MakeCurrent(overlayWin, overlayCtx);
+                SDL_GL_SetSwapInterval(0);
+                spriteReady = sprite.init(spriteBase);
+                if (spriteReady) {
+                    spriteOverlay = true;
+                    SDL_Log("Sprite layer: ready (overlay %sassets/2d_bridge)",
+                            spriteBase.c_str());
+                } else {
+                    SDL_Log("Sprite overlay init failed: %s", sprite.error().c_str());
+                    sprite.shutdown();
+                }
+                SDL_GL_MakeCurrent(win, ctx);
             } else {
-                SDL_Log("Sprite card rejected: %s", card);
+                SDL_Log("Sprite overlay GL context failed: %s", SDL_GetError());
+            }
+        } else {
+            SDL_Log("Sprite overlay window failed: %s", SDL_GetError());
+        }
+        if (!spriteReady) {
+            SDL_GL_MakeCurrent(win, ctx);
+            spriteReady = sprite.init(spriteBase);
+            if (spriteReady) {
+                SDL_Log("Sprite layer: ready (main %sassets/2d_bridge)",
+                        spriteBase.c_str());
+            } else {
+                SDL_Log("Sprite layer unavailable: %s", sprite.error().c_str());
+            }
+        }
+
+        if (spriteReady) {
+            if (const char* card = std::getenv("WHALE3D_CARD")) {
+                float ttlMs = 5000.0f;
+                if (const char* rawTtl = std::getenv("WHALE3D_CARD_TTL")) {
+                    const float parsed = static_cast<float>(std::atof(rawTtl));
+                    if (parsed >= 200.0f && parsed <= 10000.0f) ttlMs = parsed;
+                }
+                if (sprite.showCard(card, ttlMs)) {
+                    SDL_Log("Sprite forced: %s ttl=%.0fms", card, ttlMs);
+                } else {
+                    SDL_Log("Sprite card rejected: %s", card);
+                }
             }
         }
     }
@@ -305,6 +479,10 @@ int main(int argc, char** argv) {
     int winStartX = 0, winStartY = 0;
     int lastWinX = 0, lastWinY = 0;
     SDL_GetWindowPosition(win, &lastWinX, &lastWinY);
+    bool overlayShown = false;
+    int overlayX = 0, overlayY = 0;
+    int overlayCardX = -1, overlayCardY = -1;
+    int overlayCardW = -1, overlayCardH = -1;
     Uint64 start = SDL_GetTicks();
     Uint64 lastLog = start;
     int frames = 0;
@@ -437,9 +615,9 @@ int main(int argc, char** argv) {
             hitMaskLogged = true;
         }
 
-        // Decoration is drawn after the hit-mask read: it is visible, but
-        // `WM_NCHITTEST` still resolves against the model-only mask.
-        sprite.draw(pw, ph);
+        // The overlay owns the card when available.  Keep the fallback path
+        // for machines where a second transparent GL window cannot be created.
+        if (!spriteOverlay) sprite.draw(pw, ph);
         const SpriteLayer::PixelRect cardRect =
             sprite.visible() ? sprite.lastRect() : SpriteLayer::PixelRect{};
         if (std::getenv("WHALE3D_SPRITE_TRACE") && cardRect.width > 0 && cardRect.height > 0) {
@@ -451,13 +629,64 @@ int main(int argc, char** argv) {
         }
         static int regionFrame = 0;
         if (regionFrame++ % 6 == 0) {
-            ui.updateWindowRegion(hitMask.data(), hitW, hitH,
-                                  cardRect.x, cardRect.y,
-                                  cardRect.x + cardRect.width,
-                                  cardRect.y + cardRect.height);
+            if (spriteOverlay) {
+                // Card pixels are intentionally excluded from the main
+                // window region; the overlay window draws them and is
+                // click-through.
+                ui.updateWindowRegion(hitMask.data(), hitW, hitH, 0, 0, 0, 0);
+            } else {
+                ui.updateWindowRegion(hitMask.data(), hitW, hitH,
+                                      cardRect.x, cardRect.y,
+                                      cardRect.x + cardRect.width,
+                                      cardRect.y + cardRect.height);
+            }
+        }
+        if (spriteOverlay && cardRect.width > 0 &&
+            (cardRect.x != overlayCardX || cardRect.y != overlayCardY ||
+             cardRect.width != overlayCardW || cardRect.height != overlayCardH)) {
+            setOverlayCardRegion(cardRect);
+            overlayCardX = cardRect.x;
+            overlayCardY = cardRect.y;
+            overlayCardW = cardRect.width;
+            overlayCardH = cardRect.height;
         }
 
         SDL_GL_SwapWindow(win);
+
+        if (spriteOverlay && overlayWin && overlayCtx) {
+            const bool mainHidden =
+                (SDL_GetWindowFlags(win) & SDL_WINDOW_HIDDEN) != 0;
+            const bool wantOverlay = !mainHidden && sprite.visible();
+            if (wantOverlay) {
+                if (!overlayShown) {
+                    SDL_SetWindowPosition(overlayWin, winX, winY);
+                    SDL_SetWindowAlwaysOnTop(overlayWin, true);
+                    SDL_ShowWindow(overlayWin);
+                    configureOverlayWindow(overlayWin);
+                    overlayShown = true;
+                    overlayX = winX;
+                    overlayY = winY;
+                } else if (overlayX != winX || overlayY != winY) {
+                    SDL_SetWindowPosition(overlayWin, winX, winY);
+                    overlayX = winX;
+                    overlayY = winY;
+                }
+                SDL_GL_MakeCurrent(overlayWin, overlayCtx);
+                int ow = 0, oh = 0;
+                SDL_GetWindowSizeInPixels(overlayWin, &ow, &oh);
+                glViewport(0, 0, ow, oh);
+                glDisable(GL_DEPTH_TEST);
+                glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                sprite.draw(ow, oh);
+                SDL_GL_SwapWindow(overlayWin);
+                SDL_GL_MakeCurrent(win, ctx);
+                glEnable(GL_DEPTH_TEST);
+            } else if (overlayShown) {
+                SDL_HideWindow(overlayWin);
+                overlayShown = false;
+            }
+        }
 
         ++frames;
         Uint64 now = SDL_GetTicks();
@@ -480,7 +709,14 @@ int main(int argc, char** argv) {
         if (elapsed < target) SDL_Delay(static_cast<Uint32>(target - elapsed));
     }
 
+    if (spriteOverlay && overlayWin && overlayCtx) {
+        SDL_GL_MakeCurrent(overlayWin, overlayCtx);
+    } else {
+        SDL_GL_MakeCurrent(win, ctx);
+    }
     sprite.shutdown();
+    if (overlayCtx) SDL_GL_DestroyContext(overlayCtx);
+    if (overlayWin) SDL_DestroyWindow(overlayWin);
     ui.shutdown();
     emotionBus.stop();
     model.shutdown();
