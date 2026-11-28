@@ -173,9 +173,11 @@ public:
     // depend on one wall-clock second having elapsed.
     void writeSummary(const char* mode, const char* path) const {
         if (!enabled_ || frames_ == 0 || freq_ == 0) return;
-        const double fps = static_cast<double>(frames_) * 1000000.0 /
-                           static_cast<double>(std::max<uint64_t>(
-                               toUs(now() - lastLog_), 1));
+        const uint64_t elapsedUs = std::max<uint64_t>(toUs(now() - lastLog_), 1);
+        const double fps = elapsedUs >= 1000
+            ? static_cast<double>(frames_) * 1000000.0 /
+              static_cast<double>(elapsedUs)
+            : 0.0;
         const double intervalP50 = percentileMs(0.50, true);
         const double intervalP95 = percentileMs(0.95, true);
         const double intervalP99 = percentileMs(0.99, true);

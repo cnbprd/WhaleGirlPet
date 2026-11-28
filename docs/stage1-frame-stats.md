@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-状态：**FrameStats、1Hz trace、`--headless` 60/600 帧 smoke 已完成；`initLog` 分 session 和 CI 接入尚未完成。**
+状态：**FrameStats、1Hz trace、`--headless` 60/600 帧 smoke、CI no-GL smoke 已完成；`initLog` 分 session 尚未完成。**
 
 ## 1. 已实现
 
@@ -58,6 +58,7 @@
 
 ```text
 --headless
+--no-render
 --frames=N
 --fixed-dt=1/60
 --summary=<path>
@@ -72,16 +73,23 @@
 
 `fps` 是 headless 实际跑帧速度（60 帧约 104 FPS，600 帧约 575 FPS），不是目标刷新率；固定 dt 的模拟时间仍是 `frames × 1/60`。
 
-脚本：`3d/tools/test_headless_smoke.py`，已跑 60 和 600 帧，均 PASS。证据在 `build/headless-smoke/`。
+### CI 限制
+
+GitHub `windows-latest` 只有 `GDI Generic` / OpenGL 1.1，无法创建本引擎需要的 3.3 core context（`glGenVertexArrays` 缺失）。因此 CI 用 `--headless --no-render`：
+
+- 只验证固定 dt 循环、summary/trace schema、exit 0，不验证像素；
+- summary `mode=headless-cpu`，`fps=0`（循环太快，不足 1ms，不做虚假估算）；
+- 真实 GPU 的 60/600 帧 render 验证仍由本机结果负责。
+
+脚本：`3d/tools/test_headless_smoke.py`，本机已跑 60/600 帧 render 路径和 60 帧 no-render 路径，均 PASS。证据在 `build/headless-smoke/`。
 
 ## 4. 未完成
 
 - 逐帧 trace/环形缓冲尚未落盘；当前是 1Hz 聚合 trace。
 - `initLog()` 每次覆盖日志的问题尚未修。
-- GitHub Actions 尚未接入 headless smoke。
 
 ## 5. 下一步
 
 1. 处理 `initLog()` 覆盖问题：按启动时间分文件或追加 session 头。
-2. 把 `3d/tools/test_headless_smoke.py` 接进 `3d-build.yml`，至少跑 60 帧。
+2. 再把 `--headless` 的 render 路径接到一台有 GPU 的 Windows runner（或接受 CI 只做 no-GL smoke 的 waiver）。
 3. 再评估是否需要逐帧 trace；没有明确定位需求前不先加。

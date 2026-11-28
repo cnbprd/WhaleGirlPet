@@ -35,6 +35,7 @@ def main() -> None:
     parser.add_argument("--exe", default=str(Path("3d/whale3d-headless.exe")))
     parser.add_argument("--frames", type=int, default=60)
     parser.add_argument("--fixed-dt", default="1/60")
+    parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--out-dir", default=str(Path("build/headless-smoke")))
     args = parser.parse_args()
 
@@ -58,10 +59,12 @@ def main() -> None:
     cmd = [
         str(exe),
         "--headless",
+        "--no-render" if args.no_render else "",
         f"--frames={args.frames}",
         f"--fixed-dt={args.fixed_dt}",
         f"--summary={summary_path}",
     ]
+    cmd = [part for part in cmd if part]
     print("RUN:", " ".join(cmd))
     proc = subprocess.run(
         cmd,
@@ -76,7 +79,7 @@ def main() -> None:
         fail(f"exit={proc.returncode}", log_text[-4000:])
 
     match = re.search(
-        r"headless done frames=(\d+) gl_error=0x([0-9a-fA-F]+) center_alpha=(\d+)",
+        r"headless done frames=(\d+) gl_error=0x([0-9a-fA-F]+) center_alpha=(\d+) render=(\d)",
         log_text,
     )
     if not match:
@@ -84,18 +87,26 @@ def main() -> None:
     done_frames = int(match.group(1))
     gl_error = int(match.group(2), 16)
     center_alpha = int(match.group(3))
+    did_render = int(match.group(4))
     if done_frames != args.frames:
         fail(f"done frames={done_frames}, expected {args.frames}", log_text[-4000:])
     if gl_error != 0:
         fail(f"GL error 0x{gl_error:x}", log_text[-4000:])
-    if center_alpha <= 0:
-        fail(f"center_alpha={center_alpha}, model not rendered", log_text[-4000:])
+    if args.no_render:
+        if did_render != 0:
+            fail("expected no-render path", log_text[-4000:])
+    else:
+        if did_render != 1:
+            fail("expected render path", log_text[-4000:])
+        if center_alpha <= 0:
+            fail(f"center_alpha={center_alpha}, model not rendered", log_text[-4000:])
 
     if not summary_path.is_file():
         fail(f"missing summary: {summary_path}", log_text[-4000:])
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    if summary.get("mode") != "headless":
-        fail(f"summary mode={summary.get('mode')!r}")
+    expected_mode = "headless-cpu" if args.no_render else "headless"
+    if summary.get("mode") != expected_mode:
+        fail(f"summary mode={summary.get('mode')!r}, expected {expected_mode!r}")
     if summary.get("frames") != args.frames:
         fail(f"summary frames={summary.get('frames')}, expected {args.frames}")
     for key in ("fps", "p50_ms", "p95_ms", "p99_ms", "work_ms", "hitch"):
@@ -110,7 +121,7 @@ def main() -> None:
     if not trace_lines:
         fail("empty trace")
     parsed = [json.loads(line) for line in trace_lines]
-    if not any(item.get("mode") == "headless" for item in parsed):
+    if not any(item.get("mode") in ("headless", "headless-cpu") for item in parsed):
         fail("trace has no headless summary")
 
     print(

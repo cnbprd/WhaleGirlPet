@@ -91,7 +91,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python .\3d\tools\test_headless_smoke.py --exe .\3d\whale3d.exe --frames 60
+          python .\3d\tools\test_headless_smoke.py --exe .\3d\whale3d.exe --frames 60 --no-render
           if ($LASTEXITCODE -ne 0) { throw "headless smoke failed ($LASTEXITCODE)" }
 
       - name: Package portable ZIP

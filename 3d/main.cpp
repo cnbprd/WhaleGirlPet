@@ -260,6 +260,7 @@ int main(int argc, char** argv) {
     }
 
     bool headless = false;
+    bool noRender = false;
     int headlessFrames = 60;
     double fixedDt = 1.0 / 60.0;
     std::string modelArg;
@@ -268,6 +269,8 @@ int main(int argc, char** argv) {
         const char* arg = argv[i];
         if (std::strcmp(arg, "--headless") == 0) {
             headless = true;
+        } else if (std::strcmp(arg, "--no-render") == 0) {
+            noRender = true;
         } else if (hasPrefix(arg, "--frames=")) {
             const int parsed = std::atoi(arg + std::strlen("--frames="));
             if (parsed > 0) headlessFrames = parsed;
@@ -280,6 +283,8 @@ int main(int argc, char** argv) {
             modelArg = arg;
         }
     }
+
+    if (noRender) headless = true;
 
     // One desktop pet per user session. Without this guard a second direct
     // launch can create another window/tray icon and race the UDP emotion
@@ -299,12 +304,29 @@ int main(int argc, char** argv) {
     }
 
     initLog();
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(noRender ? 0 : SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         if (instanceMutex) CloseHandle(instanceMutex);
         return 1;
     }
     PerfStats perf(headless);
+
+    // CI runners have no usable OpenGL driver (windows-latest exposes GDI
+    // Generic 1.1). This path still exercises the fixed-dt loop and stats
+    // contract; the GPU render path is covered by the local 60/600-frame run.
+    if (noRender) {
+        for (int i = 0; i < headlessFrames; ++i) {
+            perf.beginFrame();
+            perf.endFrame();
+        }
+        perf.writeSummary("headless-cpu",
+                          summaryPath.empty() ? nullptr : summaryPath.c_str());
+        SDL_Log("headless done frames=%d gl_error=0x0 center_alpha=0 render=0 summary=%s",
+                headlessFrames, summaryPath.empty() ? "-" : summaryPath.c_str());
+        SDL_Quit();
+        if (instanceMutex) CloseHandle(instanceMutex);
+        return 0;
+    }
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -463,7 +485,7 @@ int main(int argc, char** argv) {
         const int cy = ph / 2;
         const unsigned char centerAlpha =
             pixels[(static_cast<size_t>(ph - 1 - cy) * pw + cx) * 4 + 3];
-        SDL_Log("headless done frames=%d gl_error=0x%x center_alpha=%u summary=%s",
+        SDL_Log("headless done frames=%d gl_error=0x%x center_alpha=%u render=1 summary=%s",
                 rendered, static_cast<unsigned>(lastError), centerAlpha,
                 summaryPath.empty() ? "-" : summaryPath.c_str());
 
