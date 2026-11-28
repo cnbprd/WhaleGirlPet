@@ -199,6 +199,71 @@ class Verifier:
         self.add("卡面 rect 越界", not bad_rects, "; ".join(bad_rects[:4]) or "ok")
         self.add("卡面 slot 越界", not bad_slots, "; ".join(bad_slots[:4]) or "ok")
 
+    def check_content(self, zf: zipfile.ZipFile, spec: dict) -> None:
+        name = spec.get("path", "content.json")
+        try:
+            data = zf.read(name)
+        except KeyError:
+            self.add("package content 存在", False, f"missing {name}")
+            return
+        try:
+            content = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self.add("package content JSON", False, str(exc))
+            return
+        self.add("package content JSON", True, "parsed")
+        self.add(
+            "package content schema",
+            content.get("schema") == spec["schema"],
+            str(content.get("schema")),
+        )
+
+        files = content.get("files")
+        if not isinstance(files, list):
+            self.add("package content files", False, "not a list")
+            return
+        self.add(
+            "package content file 数量",
+            len(files) == spec["file_count"],
+            str(len(files)),
+        )
+        seen = set()
+        bad_paths = []
+        bad_hashes = []
+        for item in files:
+            path = str(item.get("path", "")) if isinstance(item, dict) else ""
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                bad_paths.append(path)
+                continue
+            if path in seen:
+                bad_paths.append(f"duplicate:{path}")
+                continue
+            seen.add(path)
+            try:
+                payload = zf.read(path)
+            except KeyError:
+                bad_hashes.append(f"{path}:missing")
+                continue
+            if len(payload) != item.get("bytes") or hashlib.sha256(payload).hexdigest().upper() != item.get("sha256"):
+                bad_hashes.append(path)
+        self.add("package content 路径", not bad_paths, "; ".join(bad_paths[:4]) or "ok")
+        self.add("package content 文件 hash", not bad_hashes, "; ".join(bad_hashes[:4]) or "ok")
+
+        cards = content.get("cards", {})
+        ids = cards.get("ids", [])
+        required = spec["required_ids"]
+        self.add(
+            "package content 卡面 id",
+            set(ids) == set(required),
+            f"missing={sorted(set(required) - set(ids))}, extra={sorted(set(ids) - set(required))}",
+        )
+        if cards.get("atlas") not in seen or cards.get("manifest") not in seen:
+            self.add("package content 卡面路径", False, "atlas/manifest 不在 files")
+        if content.get("model", {}).get("path") not in seen:
+            self.add("package content 模型路径", False, "model 不在 files")
+        if content.get("cook_schema") != spec.get("cook_schema"):
+            self.add("package content cook_schema", False, str(content.get("cook_schema")))
+
     def check_staging(self, spec: dict) -> None:
         base = self.resolve(spec["path"])
         if not base.is_dir():
@@ -241,6 +306,8 @@ class Verifier:
                     self.check_atlas(zf, expected["atlas"])
                 if expected.get("card_manifest"):
                     self.check_card_manifest(zf, expected["card_manifest"])
+                if expected.get("content"):
+                    self.check_content(zf, expected["content"])
             finally:
                 zf.close()
 

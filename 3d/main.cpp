@@ -9,6 +9,7 @@
 #include "shell_ui.h"
 #include "emotion_bus.h"
 #include "sprite.h"
+#include "content_manifest.h"
 #include "perf_stats.h"
 #include "animation_controller.h"
 #include "anim_state_table.h"
@@ -362,6 +363,25 @@ int main(int argc, char** argv) {
         if (instanceMutex) CloseHandle(instanceMutex);
         return 1;
     }
+    std::string base = "";
+    if (const char* raw = SDL_GetBasePath()) {
+        // SDL3 caches this string internally and frees it in SDL_QuitFilesystem;
+        // calling SDL_free here corrupts the heap and crashes SDL_Quit on exit.
+        base = raw;
+    }
+    bool contentFound = false;
+    std::string contentError;
+    if (!content_manifest::validate(base, contentFound, contentError)) {
+        SDL_Log("Content manifest: FAIL (%s)", contentError.c_str());
+        SDL_Quit();
+        if (instanceMutex) CloseHandle(instanceMutex);
+        return 1;
+    }
+    if (contentFound) {
+        SDL_Log("Content manifest: verified package hashes");
+    } else {
+        SDL_Log("Content manifest: absent; legacy asset paths");
+    }
     PerfStats perf(headless);
     if (std::getenv("WHALE3D_KEEP_AWAKE")) keepAwake(true);
 
@@ -435,12 +455,6 @@ int main(int argc, char** argv) {
     SDL_Log("GL renderer: %s", renderer ? reinterpret_cast<const char*>(renderer) : "?");
     SDL_Log("GL version : %s", version ? reinterpret_cast<const char*>(version) : "?");
 
-    std::string base = "";
-    if (const char* raw = SDL_GetBasePath()) {
-        // SDL3 caches this string internally and frees it in SDL_QuitFilesystem;
-        // calling SDL_free here corrupts the heap and crashes SDL_Quit on exit.
-        base = raw;
-    }
     std::string modelPath = modelArg.empty() ? base + "assets/models/whale_girl.vrm" : modelArg;
     Model model;
     if (!model.load(modelPath)) {

@@ -2,8 +2,8 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-CI：run `46137873849` success（Pillow + cook + 8 类负向夹具 + content verify）。  
-状态：**基线工具、负向夹具、content 校验和 CI ZIP 包内 content 校验已通过；安装器读取 content 清单、运行时启动校验尚未完成，阶段 3 未收口。**
+CI：`46137873849` success（Pillow + cook + 8 类负向夹具 + content verify）；`46138563544` success（package content + stage/ZIP verify，ZIP SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`）。
+状态：**基线工具、负向夹具、content 校验、CI ZIP 包内校验、release verifier 的 content 段和运行时启动校验已通过；安装器 payload 已包含 content，待用新 CI 包复跑安装器/17 卡，阶段 3 暂未正式收口。**
 
 ## 1. 工具
 
@@ -35,15 +35,19 @@ CI：run `46137873849` success（Pillow + cook + 8 类负向夹具 + content ver
 | manifest | 17 cards，SHA256 `EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D` |
 | content.json | SHA256 `009A8AB750E218556EFFBCCD99E0C9744F48940E5A56CA500FB97C1B2137CE61` |
 | content 校验 | `3d/tools/verify_content.py` 通过：3 个 cooked 文件、所有 source hash 一致；篡改 model hash 的副本被拒绝 |
-| package content | 本地合成 stage：3 文件 hash 一致；`verify_package_content.py --stage` 和 `--zip` 均 `ok:true` |
+| package content | 本地合成 stage 和真实 CI ZIP：`verify_package_content.py` 均 `ok:true`、3 文件 hash 一致 |
+| CI ZIP | `46138563544` 产出 `whale3d-whale-girl-v3.2.0-ci.zip`，3,206,085 B，SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`；包内 `content.json` 校验通过 |
+| release verifier | `verify_release_assets.py` 的 `content` 段对 CI ZIP 通过（9 checks）；把 model 的 bytes 改成 123 的另一份 ZIP 被拒绝 |
+| runtime content | 新构建在带 `content.json` 的 stage 中 `--headless --no-render` 和真实 headless 均输出 `Content manifest: verified package hashes`；改 model 一字节后 `--no-render` 退出 1，日志为 `content file mismatch` |
 | 确定性 | 同输入、同 `build/content` 连续两次 cook，content hash 不变 |
 | 报告 | `docs/asset-cook-report.json`，`ok:true`、errors 0、warnings 0 |
 | 负向夹具 | 8 类坏输入全部拒绝：坏 rect、重复 id、缺 source、坏 slot、坏 atlas 尺寸、坏 humanoid node、坏 accessor count、坏 spring joint；CI `46137873849` 已跑 |
 
 ## 3. 已知边界
 
-- `content.json` 目前只是 cook/package 产物；运行时仍直接读 VRM/manifest，没有启动校验。
-- ZIP 打包已接入 `content.json` 与 `verify_package_content.py`；`verify_release_assets.py`、安装器脚本本身还没有读 content 清单。
+- `content.json` 已由运行时启动路径校验；校验失败直接退出，缺失时按 legacy/dev 路径继续。
+- ZIP 打包已接入 `content.json` 与 `verify_package_content.py`；`verify_release_assets.py` 已支持可选 `content` 段；安装器本身不解析 content，只负责把 content 随 payload 安装。
+- 运行时校验用 Windows BCrypt SHA256；只校验 package content 里的 3 个文件，不做 GLB/VRM 结构重校验。
 - UV 方向没有做独立像素级方向校验；只验证 atlas/source 的 alpha 对齐。
 - `walk` 是 `model.cpp` 里的程序化 clip，不在 VRM 动画列表里；cook 只记录 Idle。
 - 没有做坏 accessor buffer 越界、坏材质纹理越界等全部边界；当前覆盖的是本轮夹具列出的 8 类。
@@ -51,7 +55,6 @@ CI：run `46137873849` success（Pillow + cook + 8 类负向夹具 + content ver
 
 ## 4. 下一步
 
-1. 给 `verify_release_assets.py` 加 `content` 段：从 ZIP 读 package content，校验文件 hash/17 卡 id；不改已发布 3.2 的期望清单。
-2. 安装器 staging 构建后检查 `content.json` 与 payload 文件 hash 一致。
-3. 若要运行时启动校验，再在 `model.cpp`/启动路径加只读检查，单独跑无头回归。
-4. 再评估是否值得做自定义 `content.bin`；没有实测加载/内存收益就不做。
+1. 用新 CI 包重跑安装器静默安装 + 安装目录 content 校验 + 17 卡目检，拿到最终包/安装器 hash。
+2. 再评估是否值得做自定义 `content.bin`；没有实测加载/内存收益就不做。
+3. 阶段 3 收口后，阶段 4 再动渲染 pass 边界；不改运行时的内容加载语义。

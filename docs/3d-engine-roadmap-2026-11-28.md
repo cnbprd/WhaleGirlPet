@@ -114,7 +114,7 @@
 - 发布包与安装器使用 content 清单；现有 17 卡和模型加载无回归。
 - 产出 `docs/asset-cook.md`、`docs/asset-cook-report.json`。
 
-**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。CI `46137873849` 已跑 cook + 负向夹具 + content verify。`package_content.py`/`verify_package_content.py` 已把 package-layout content 接入 CI ZIP；安装器读取、运行时校验和 `verify_release_assets.py` 接入尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
+**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。CI `46137873849` 已跑 cook + 负向夹具 + content verify；CI `46138563544` 已把 package content 接进 ZIP，实际包内 3 文件 hash、17 卡 id 校验通过，ZIP SHA256 `41DD283337CC3D0C7A2A061C86B06D0418B340CCDFFC7BEAF952385A55B2BC4F`。`verify_release_assets.py` 可选 `content` 段已对 CI ZIP 通过，篡改副本被拒绝。安装器读取、运行时校验尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
 
 ### 阶段 4：渲染 pass 边界与 inspector
 

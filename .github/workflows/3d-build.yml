@@ -149,6 +149,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "package content generation failed ($LASTEXITCODE)" }
           python .\3d\tools\verify_package_content.py --stage $stage --report .\build\package-content-verify.json
           if ($LASTEXITCODE -ne 0) { throw "package content stage verify failed ($LASTEXITCODE)" }
+          $proc = Start-Process -FilePath (Join-Path $stage 'whale3d.exe') -WorkingDirectory $stage -ArgumentList '--headless','--frames=60','--no-render','--summary=ci-content-check.json' -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "package content runtime check failed ($($proc.ExitCode))" }
+          $runtimeLog = Get-Content (Join-Path $stage 'whale3d.log') -Raw
+          if ($runtimeLog -notmatch 'Content manifest: verified package hashes') { throw 'package content runtime did not verify hashes' }
+          Remove-Item -LiteralPath (Join-Path $stage 'whale3d.log'),(Join-Path $stage 'ci-content-check.json') -ErrorAction SilentlyContinue
           $zipName = "whale3d-whale-girl-v$env:LABEL-ci.zip"
           $zip = Join-Path $PWD $zipName
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal

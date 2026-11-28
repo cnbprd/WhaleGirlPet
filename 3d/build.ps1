@@ -52,6 +52,7 @@ $sources = @(
     (Join-Path $PSScriptRoot 'emotion_bus.cpp'),
     (Join-Path $PSScriptRoot 'sprite.cpp'),
     (Join-Path $PSScriptRoot 'sprite_manifest.cpp'),
+    (Join-Path $PSScriptRoot 'content_manifest.cpp'),
     $resourceObj
 )
 & $gxx.FullName -std=c++17 -Os -s -Wall -Wextra -mwindows `
@@ -61,7 +62,7 @@ $sources = @(
     $sources `
     "-L$sdlLib" "-L$ozzLibOffline" "-L$ozzLibRuntime" "-L$ozzLibBase" `
     -lSDL3 -lozz_animation_offline_r -lozz_animation_r -lozz_base_r `
-    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32 -lpsapi `
+    -lopengl32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lws2_32 -lpsapi -lbcrypt `
     -static-libgcc -static-libstdc++ `
     "-Wl,--gc-sections" `
     -o $out
