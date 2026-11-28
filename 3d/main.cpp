@@ -9,6 +9,7 @@
 #include "shell_ui.h"
 #include "emotion_bus.h"
 #include "sprite.h"
+#include "perf_stats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -261,6 +262,7 @@ int main(int argc, char** argv) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;
     }
+    PerfStats perf;
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -492,6 +494,12 @@ int main(int argc, char** argv) {
     float lastT = 0.0f;
 
     while (running && !ui.quitRequested()) {
+        static bool perfWarmed = false;
+        if (!perfWarmed && SDL_GetTicks() - start >= 5000) {
+            perf.resetSamples();
+            perfWarmed = true;
+        }
+        perf.beginFrame();
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_EVENT_QUIT) {
@@ -585,8 +593,11 @@ int main(int argc, char** argv) {
         float dt = std::clamp(t - lastT, 0.0f, 0.1f);
         lastT = t;
         Uint64 updateStart = SDL_GetPerformanceCounter();
-        model.update(t);
-        sprite.update(dt);
+        {
+            PerfStats::Timer timer(perf, perf.current().updateUs);
+            model.update(t);
+            sprite.update(dt);
+        }
         updateTicks += SDL_GetPerformanceCounter() - updateStart;
         ++updateFrames;
 
@@ -597,7 +608,10 @@ int main(int argc, char** argv) {
         glViewport(0, 0, pw, ph);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        model.draw(viewProj.m);
+        {
+            PerfStats::Timer timer(perf, perf.current().renderUs);
+            model.draw(viewProj.m);
+        }
 
         if (hitW != pw || hitH != ph) {
             hitW = pw;
@@ -605,7 +619,10 @@ int main(int argc, char** argv) {
             hitMask.assign(static_cast<size_t>(hitW) * hitH * 4, 0);
         }
         glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, hitMask.data());
+        {
+            PerfStats::Timer timer(perf, perf.current().readbackUs);
+            glReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, hitMask.data());
+        }
         static bool hitMaskLogged = false;
         if (!hitMaskLogged && hitW > 0 && hitH > 0) {
             const int cx = hitW / 2;
@@ -629,6 +646,7 @@ int main(int argc, char** argv) {
         }
         static int regionFrame = 0;
         if (regionFrame++ % 6 == 0) {
+            PerfStats::Timer timer(perf, perf.current().regionUs);
             if (spriteOverlay) {
                 // Card pixels are intentionally excluded from the main
                 // window region; the overlay window draws them and is
@@ -644,6 +662,7 @@ int main(int argc, char** argv) {
         if (spriteOverlay && cardRect.width > 0 &&
             (cardRect.x != overlayCardX || cardRect.y != overlayCardY ||
              cardRect.width != overlayCardW || cardRect.height != overlayCardH)) {
+            PerfStats::Timer timer(perf, perf.current().regionUs);
             setOverlayCardRegion(cardRect);
             overlayCardX = cardRect.x;
             overlayCardY = cardRect.y;
@@ -651,7 +670,10 @@ int main(int argc, char** argv) {
             overlayCardH = cardRect.height;
         }
 
-        SDL_GL_SwapWindow(win);
+        {
+            PerfStats::Timer timer(perf, perf.current().swapUs);
+            SDL_GL_SwapWindow(win);
+        }
 
         if (spriteOverlay && overlayWin && overlayCtx) {
             const bool mainHidden =
@@ -678,8 +700,11 @@ int main(int argc, char** argv) {
                 glDisable(GL_DEPTH_TEST);
                 glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
-                sprite.draw(ow, oh);
-                SDL_GL_SwapWindow(overlayWin);
+                {
+                    PerfStats::Timer timer(perf, perf.current().overlayUs);
+                    sprite.draw(ow, oh);
+                    SDL_GL_SwapWindow(overlayWin);
+                }
                 SDL_GL_MakeCurrent(win, ctx);
                 glEnable(GL_DEPTH_TEST);
             } else if (overlayShown) {
@@ -689,6 +714,8 @@ int main(int argc, char** argv) {
         }
 
         ++frames;
+        perf.endFrame();
+        perf.maybeLog();
         Uint64 now = SDL_GetTicks();
         if (now - lastLog >= 1000) {
             float fps = static_cast<float>(frames) * 1000.0f / static_cast<float>(now - lastLog);
