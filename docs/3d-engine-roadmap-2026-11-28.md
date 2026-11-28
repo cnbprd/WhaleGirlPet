@@ -1,6 +1,6 @@
 # 3D 引擎分阶段计划（2026-11-28）
 
-状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已完成 base/action 门禁 + 卡面队列 + EmotionBus 多帧；#70 已覆盖点击/拖拽，聊天待确认验收范围。**
+状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已完成 base/action 门禁 + 卡面队列 + EmotionBus 多帧；#70 已覆盖点击/拖拽，聊天待确认验收范围；idle p99/CPU 待同条件 A/B。**
 基线版本：`v3.2.0-sprite` 已公开发布，tag `v3.2.0-sprite` → `a2ef92c`。
 原则：学 UE 的**工业化方法**，不学 UE 的**功能体量**；每阶段有独立分支、证据和退出条件，不并行重构。
 
@@ -92,7 +92,7 @@
 
 **第一轮集成（2026-11-28）**：`3d/animation_controller.h` + `3d/anim_state_table.h` + 20 条夹具 + `main.cpp` base/action 门禁已落地；集成 CI run `46128539544` success，17 卡可见验收通过（`build/stage2-cards/2d-card-visible-qa.json`）；10 分钟浸泡 FPS avg 27.78 / p50 34.92ms / p99 47.02ms，无 crash、RSS 无增长。
 
-**第二轮队列（2026-11-28）**：`3d/card_queue.h` 35 条夹具 + `EmotionBus::pollAll` 已接入；真实窗口验证同批 2 帧、动作期间 queued、动作结束补显 `expression/happy`、多张 FIFO（curious→pat）；17 卡 17/17；队列版压力浸泡 60/60 补显、0 丢弃、CPU 26.35%、无 crash；真实点击穿透 + 拖拽通过（窗口位移 90/45）。#70 聊天未验（3D shell 无聊天入口），真实 crossfade、队列版 idle 基线仍未完成。
+**第二轮队列（2026-11-28）**：`3d/card_queue.h` 35 条夹具 + `EmotionBus::pollAll` 已接入；真实窗口验证同批 2 帧、动作期间 queued、动作结束补显 `expression/happy`、多张 FIFO（curious→pat）；17 卡 17/17；队列版压力浸泡 60/60 补显、0 丢弃、CPU 26.35%、无 crash；真实点击穿透 + 拖拽通过（窗口位移 90/45）。idle 10 分钟：FPS 27.95 / p50 34.62ms / p99 48.36ms，接近平均基线但 p99 +3.18ms；CPU 33.27%，比阶段 1 的 26.30% 高 6.97pp，但压力浸泡 CPU 反而只有 26.35%，说明窗口/合成状态影响大，需同条件 A/B 才能定性。#70 聊天未验（3D shell 无聊天入口），真实 crossfade 暂缓；p99/CPU 待 A/B。
 
 ### 阶段 3：资产管线与烘焙
 

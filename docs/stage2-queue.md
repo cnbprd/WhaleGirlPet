@@ -57,7 +57,24 @@ headless 证据：`build/headless-smoke/headless-*-queue-summary.json`。
 
 结论：60 次动作+排队表情全部补显，0 丢弃，无 crash，RSS/private 无持续增长；CPU 与阶段 1 keep-awake 基本持平。FPS 21.58 和 hitch 1691 是桌面合成/overlay 的 swap 限制（swap ≈ 11ms）在 50ms hitch 阈值下的结果，不能当作 GPU 帧时间回归；本轮没有做 idle 队列版基线，不能替代阶段 1 的 27.86 FPS 基线。
 
-### 3.1 真实窗口点击与拖拽
+### 3.1 Idle 10 分钟基线
+
+`build/stage2-queue-idle.ps1`，队列构建正常窗口，`WHALE3D_KEEP_AWAKE=1`，60 个 10 秒 CPU 采样，trace 1Hz。摘要 `build/stage2-queue-idle-summary.json`。
+
+| 指标 | 队列 idle | 阶段 1 基线 | 差 |
+|---|---:|---:|---:|
+| FPS avg | 27.95 | 27.86 | +0.09 |
+| interval p50 avg | 34.62ms | 34.78ms | -0.16ms |
+| p95 avg | 39.33ms | 39.18ms | +0.15ms |
+| p99 avg | 48.36ms | 45.18ms | +3.18ms |
+| hitch 总数 | 153 | 190 | -37 |
+| CPU 单核 avg（稳态 58） | 33.27% | 26.30% | +6.97pp |
+| RSS 稳态 | 71.02–73.44MB | 69.75–70.58MB | +1.3–2.9MB |
+| private | 112.7–113.6MB | 112.7–114.1MB | 持平 |
+
+结论：平均 FPS、p50、hitch 与阶段 1 基线基本一致；**p99 高 3.18ms（+7%），CPU 高 6.97 个百分点**。但压力浸泡的 CPU 26.35% 反而低于本轮 idle 33.27%，FPS 也 21.58 vs 27.95，说明窗口/桌面合成状态对 CPU 和帧时间影响很大。本轮 idle 与阶段 1 不是同一会话，不能把 6.97pp 全归因于状态机；要严格门禁，需要同一桌面状态下的 A/B 复测。
+
+### 3.2 真实窗口点击与拖拽
 
 - 点击穿透：`check_click_through.py --click`，卡片命中 `HTTRANSPARENT (-1)`，模型区 `HTCLIENT (1)`，Tk 目标实际收到 1 次点击。结果 `build/stage2-queue/click-through-result.json`。
 - 拖拽：真实鼠标 down → 10 步移动 → up，窗口从 (1420,430) 移到 (1510,475)，位移 (90,45)；目标 (100,50)，误差来自起点/系统缩放取整。结果 `build/stage2-queue/drag-test.json`。
@@ -68,14 +85,13 @@ headless 证据：`build/headless-smoke/headless-*-queue-summary.json`。
 - `maxWaitMs` 固定 5000ms；超过 5 秒还没轮到的卡会丢，日志 `anim card dropped`。
 - 队列 FIFO 只保证同优先级；高优先级动作仍可插队。
 - 没有真正 crossfade；卡面仍是硬切 + sprite 自身 0.12s alpha。
-- 队列版 10 分钟已跑，但是动作/表情压力场景，不是 idle 基线；swap 限制使 FPS 约 21.6。
+- 队列版 10 分钟已跑：idle 基线平均/p50 接近阶段 1，但 p99 +3.18ms、CPU +6.97pp；压力场景 swap 限制使 FPS 约 21.6。
 - 生产 `3d/whale3d.exe`、Release 资产、阶段 0/1 waiver 均未改。
 - #70 已覆盖真实点击穿透和拖拽；3D shell 无聊天入口，聊天未验，所以 #70 仍不能关闭。
 - 没有真正 crossfade，`ShellUi::setFace` 仍直接调用。
 
 ## 5. 下一步
 
-1. 队列版 idle 10 分钟基线（与阶段 1 27.86 FPS 同条件）后再定阶段 2 帧时间结论。
-2. 补多张低优先级卡连续排队（happy→shy）实测。
-3. #70 剩余聊天触发；3D shell 当前无聊天入口，需要确认验收范围或接回 2D/聊天面板。
-4. 真实 crossfade 暂不先做。
+1. 决定是否接受 idle p99 48.36ms / CPU 33.27% 的回归；不接受就先做 idle 路径优化，再复跑 10 分钟。
+2. #70 剩余聊天触发；3D shell 当前无聊天入口，需要确认验收范围或接回 2D/聊天面板。
+3. 真实 crossfade 暂不先做；先等 action/expression 的真正动画资产。

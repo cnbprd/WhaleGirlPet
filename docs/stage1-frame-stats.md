@@ -117,6 +117,6 @@ GitHub `windows-latest` 只有 `GDI Generic` / OpenGL 1.1，无法创建本引�
 ## 5. 退出记录与下一步
 
 1. **阶段 1 条件退出**：CPU 10 分钟实测完成；60/600 帧、本机 GPU render、CI no-GL smoke、10 分钟帧时间基线均通过。唯一未闭合项是 GPU CI runner，按 waiver 记录。
-2. **阶段 2 两轮集成已落地**：`AnimationController` + 20 条夹具 + `CardQueue` 35 条夹具 + `main.cpp` base/action 门禁 + `EmotionBus::pollAll`；17 卡可见验收通过；真实点击穿透和拖拽已过。真实 crossfade 和 #70 聊天未验，详见 `docs/anim-state-machine.md`、`docs/stage2-integration.md`、`docs/stage2-queue.md`。
-3. **下一步**：队列版 idle 10 分钟基线；#70 剩余聊天触发（3D shell 无聊天入口，待确认范围）；crossfade 暂缓。
+2. **阶段 2 两轮集成已落地**：`AnimationController` + 20 条夹具 + `CardQueue` 35 条夹具 + `main.cpp` base/action 门禁 + `EmotionBus::pollAll`；17 卡可见验收通过；真实点击穿透和拖拽已过。idle 10 分钟 FPS 27.95 / p50 34.62ms / p99 48.36ms，接近平均基线；但 CPU 33.27% 比 26.30% 高 6.97pp，p99 高 3.18ms。压力浸泡 CPU 26.35% 反而更低，说明窗口/合成状态影响大，需要同条件 A/B 才能定性；真实 crossfade 和 #70 聊天未验。详见 `docs/stage2-queue.md`。
+3. **下一步**：先决定是否接受 idle p99/CPU 回归；#70 剩余聊天触发（3D shell 无聊天入口，待确认范围）；crossfade 暂缓。
 4. 旧任务 #70 的真实窗口手感验收仍然保留，作为阶段 2 退出条件，不因状态机单测通过而提前关闭。
