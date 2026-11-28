@@ -45,6 +45,40 @@
     "atlas": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958",
     "all_three_match_release": true
   },
+  "legacy_c_install": {
+    "path": "C:/Users/yangmengke/AppData/Local/WhaleGirlPet3D",
+    "files": 12,
+    "bytes": 11893581,
+    "exe_bytes": 1315840,
+    "exe_sha256": "1290AC3A9E304465A00636DF67FBFB4C2BCFF6F5628FDCA792DE7E18DEE40E57",
+    "uninstaller_version": "3.1.0",
+    "uninstall_registry_key_present": false,
+    "content_json_present": false,
+    "created": "2026-11-26",
+    "untouched_by_isolated_test": true
+  },
+  "isolated_test_appid": {
+    "app_id": "WhaleGirlPet3D-Test-Stage5",
+    "old_installer": {
+      "path": "dist/3d/WhaleGirlPet-Setup-3.2.0-stage3-test.exe",
+      "bytes": 4812578,
+      "sha256": "4AC458171DFCCA2CBE4A0F6D5B2E5E99A4FCCBE8BDAC5BA32381CC8C1529040B"
+    },
+    "new_installer": {
+      "path": "dist/3d/WhaleGirlPet-Setup-3.3.0-stage4-test.exe",
+      "bytes": 4814808,
+      "sha256": "DFE9619AE9691C9529D58DB516DBBA0BAF2B145C74EAFE800662F2A8BABA7F80"
+    },
+    "install_exit": 0,
+    "upgrade_exit": 0,
+    "upgraded_exe_sha256": "E792667E212822C44352781223728DBE07FC3F0652AC6250ECCD3D078931EB93",
+    "content_verify": "ok=True errors=0 files=3",
+    "headless_exit": 0,
+    "content_manifest": "verified package hashes",
+    "uninstall_exit": 0,
+    "test_key_created_and_removed": true,
+    "production_key_untouched": true
+  },
   "uninstall": {
     "exit": 0,
     "leftover": ["whale3d.log"],

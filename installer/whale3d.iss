@@ -3,10 +3,15 @@
 ; 手动编译前先把对应 zip 解压到 build\3d-installer-payload\<版本>，然后：
 ;   tools\inno\ISCC.exe /DAppVersion=3.2.0 /DBuildSuffix=-dev "/DPayloadDir=<绝对路径>" installer\whale3d.iss
 ; 3.0.28 / 3.1.0 / 3.1.1 / 3.1.2 / 3.2.0-dev 使用同一个 AppId 与安装目录，后装覆盖升级。
+; 测试构建必须传 /DAppId=WhaleGirlPet3D-Test-<name>，避免与真实安装共用卸载键和覆盖目录。
+; 生产构建不传 AppId，保持 WhaleGirlPet3D。
 ; 如果检测到旧版 2D 3.0.27，默认升级到它所在目录，并由安装器内 migrate_legacy.ps1 直接迁移；旧卸载器有 bug，不再调用。
 
 #ifndef AppVersion
   #define AppVersion "3.1.2"
+#endif
+#ifndef AppId
+  #define AppId "WhaleGirlPet3D"
 #endif
 #ifndef PayloadDir
   #define PayloadDir "..\3d\_installer\3.1.2"
@@ -16,7 +21,7 @@
 #endif
 
 [Setup]
-AppId=WhaleGirlPet3D
+AppId={#AppId}
 AppName=鲸鱼娘
 AppVersion={#AppVersion}
 AppVerName=鲸鱼娘 {#AppVersion}
@@ -104,11 +109,11 @@ var
 begin
   Result := '';
   if RegQueryStringValue(HKCU,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\WhaleGirlPet3D_is1',
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1',
     'InstallLocation', Loc) and DirExists(Loc) then
     Result := RemoveBackslashUnlessRoot(Loc)
   else if RegQueryStringValue(HKCU,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\WhaleGirlPet3D_is1',
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1',
     'UninstallString', Cmd) then
   begin
     Cmd := RemoveQuotes(Cmd);
@@ -154,7 +159,7 @@ begin
     else if DirExists('F:\') then
       Result := 'F:\WhaleGirlPetApp'
     else
-      Result := ExpandConstant('{localappdata}\WhaleGirlPet3D');
+      Result := ExpandConstant('{localappdata}\{#AppId}');
   end;
 end;
 

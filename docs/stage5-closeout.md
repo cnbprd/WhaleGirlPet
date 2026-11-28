@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-结论：**阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。内容包升级链路实测通过；签名仍为 `NotSigned`，SignPath 外部状态未知；不引入第二个渲染后端。未发公开 Release，生产 exe 未替换。**
+结论：**阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。内容包升级链路实测通过；测试安装器已加 `AppId` 隔离；签名仍为 `NotSigned`，SignPath 外部状态未知；不引入第二个渲染后端。未发公开 Release，生产 exe 未替换。**
 
 ## 1. 内容包升级测试
 
@@ -23,6 +23,19 @@
 5. 新安装器另做一次全新安装到 `build/stage5-fresh-app`，exit 0；exe 1,463,296 B / `E792667E...`；`verify_package_content.py` 返回 `ok=True errors=0 files=3`；headless 60 帧 exit 0，日志 `Content manifest: verified package hashes`；卸载 exit 0，运行日志归档到 `build/stage5-fresh-run.log` 后清理。
 
 证据：`build/stage5-install-old.log`、`build/stage5-upgrade-new.log`、`build/stage5-upgrade-run.log`、`build/stage5-install-fresh.log`、`build/stage5-fresh-run.log`。
+
+### 1.1 C 盘旧安装与测试隔离
+
+排查发现 `C:\Users\yangmengke\AppData\Local\WhaleGirlPet3D` 有一份 2026-11-26 留下的旧安装：12 个文件、11,893,581 B，`whale3d.exe` 1,315,840 B，SHA256 `1290AC3A9E304465A00636DF67FBFB4C2BCFF6F5628FDCA792DE7E18DEE40E57`；`unins000.exe` 资源版本 3.1.0；没有 `content.json`，也没有 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\WhaleGirlPet3D_is1` 卸载键。它是旧的、已失去卸载注册的按用户安装，不是阶段 5 测试目录；阶段 5 的安装都显式落在 `F:\WhaleGirlPet\build\stage5-*`，测试结束后已清理。隔离测试前后该 C 盘 exe 的 hash 未变。
+
+测试隔离修正：`installer/whale3d.iss` 增加 `#ifndef AppId`，`AppId={#AppId}`；`GetExisting3DDir` 的卸载键从硬编码 `WhaleGirlPet3D_is1` 改为 `{#AppId}_is1`，默认目录也从硬编码 `WhaleGirlPet3D` 改为 `{#AppId}`。生产构建不传 `AppId`，仍为 `WhaleGirlPet3D`；测试构建传 `WhaleGirlPet3D-Test-Stage5`。用该测试 AppId 重打并实测：
+
+- 旧测试安装器 4,812,578 B，SHA256 `4AC458171DFCCA2CBE4A0F6D5B2E5E99A4FCCBE8BDAC5BA32381CC8C1529040B`；
+- 新测试安装器 4,814,808 B，SHA256 `DFE9619AE9691C9529D58DB516DBBA0BAF2B145C74EAFE800662F2A8BABA7F80`；
+- 安装/覆盖升级/卸载 exit 0；升级后 exe `E792667E...`，`verify_package_content.py` 通过，headless 输出 verified package hashes 且 exit 0；
+- 测试键 `WhaleGirlPet3D-Test-Stage5_is1` 安装时出现、卸载后消失；生产键 `WhaleGirlPet3D_is1` 全程不存在。
+
+C 盘旧安装仍保留，未删除；`C:\Users\yangmengke\AppData\Roaming\WhaleGirlPet` 下还有账号、聊天记录、记忆库、TTS 缓存等用户数据，是否清理需要单独确认。
 
 ## 2. 资产 hash 与公开 Release
 
@@ -68,5 +81,9 @@
 - `F:\WhaleGirlPet\build\stage5-upgrade-run.log`
 - `F:\WhaleGirlPet\build\stage5-install-fresh.log`
 - `F:\WhaleGirlPet\build\stage5-fresh-run.log`
+- `F:\WhaleGirlPet\build\stage5-iso-install-old.log`
+- `F:\WhaleGirlPet\build\stage5-iso-install-new.log`
+- `F:\WhaleGirlPet\build\stage5-iso-run.log`
+- `F:\WhaleGirlPet\dist\3d\WhaleGirlPet-Setup-3.3.0-stage4-test.exe`
 - `F:\WhaleGirlPet\build\stage5-release-payload\`
 - `F:\WhaleGirlPet\docs\3d-engine-roadmap-2026-11-28.md`
