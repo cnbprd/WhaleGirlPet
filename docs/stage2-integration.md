@@ -32,7 +32,22 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 | headless 600 render | exit 0；p50 0.85ms / p99 2.31ms / work 0.96ms | `build/headless-smoke/headless-600-render-summary.json` |
 | headless 60/600 no-render | exit 0 | `headless-60-norender-summary.json`、`headless-600-norender-summary.json` |
 
-正常窗口 stats：FPS 28.8，p50 34.1ms，RSS 70.6–71.1 MB，private 113.3–113.7 MB；动作/overlay 段曾掉到 20.9 FPS，随后恢复 28.7。
+### 10 分钟浸泡
+
+命令：`build/stage2-soak.ps1`，正常窗口，`WHALE3D_KEEP_AWAKE=1`，600 秒；日志 `build/stage2-soak.log`，trace `build/stage2-soak-trace.jsonl`，CPU/RSS `build/stage2-soak.csv`。
+
+| 指标 | 本轮 | 阶段 1 基线 |
+|---|---:|---:|
+| FPS avg | 27.78 | 27.86 |
+| interval p50 avg | 34.92ms | 34.78ms |
+| p95 avg | 39.73ms | 39.18ms |
+| p99 avg | 47.02ms | 45.18ms |
+| hitch 总数 | 134 | 190 |
+| RSS | 70.2–72.9MB | 70.1–73.0MB |
+| private | 112.0–113.1MB | 112.2–113.3MB |
+| CPU（单核） | avg 33.13%，30.11–37.32% | A 29.61%，B 26.30% |
+
+结论：600 秒无 crash，RSS/private 无持续增长；平均 FPS 和 p50 与阶段 1 基本持平，p99 比基线高 1.84ms（4.1%），hitch 更少。CPU 比阶段 1 高约 3.5 个百分点（33.13% vs 29.61%），属于控制器每帧 `advance` 和状态日志的增量，暂记为阶段 2 观察项，不作为通过门槛。FPS min 14.7 是启动段单样本，未持续。
 
 ## 3. 已知边界
 
@@ -41,7 +56,7 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 - **动作状态 `interruptible=true`**：同优先级新动作可以替换旧动作，保证 17 卡 QA 和真实使用里 dance→wave 不被锁死；低优先级表情仍不能抢占。
 - **没有真正 crossfade 采样**：只输出 `fadeInMs/fadeOutMs` 和状态决策，`Model` 采样仍硬切。
 - **ShellUi 设置里的 `setFace` 仍是直接调用**；本轮只同步 `setClip`。
-- 10 分钟集成浸泡正在跑，结果补在本文件末尾。
+- 10 分钟集成浸泡已完成，见上表；p99 略高于阶段 1 基线，CPU 高约 3.5 个百分点。
 
 ## 4. 下一步
 

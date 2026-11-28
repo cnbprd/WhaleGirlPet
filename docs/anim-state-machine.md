@@ -135,5 +135,5 @@
 | headless 600 render | exit 0，p50 0.85ms / p99 2.31ms / work 0.96ms |
 | normal stats | FPS 28.8，RSS 70.6–71.1MB，private 113.3–113.7MB；动作晚段曾掉到 20.9 FPS，随后恢复 28.7 |
 
-仍未完成：卡队列、`EmotionBus` 多帧有序队列、真正 crossfade 采样、真实窗口手感 #70、10 分钟集成浸泡（正在跑）。
+仍未完成：卡队列、`EmotionBus` 多帧有序队列、真正 crossfade 采样、真实窗口手感 #70。10 分钟集成浸泡已完成：FPS avg 27.78（基线 27.86）、p50 34.92ms（34.78）、p99 47.02ms（45.18）、hitch 134（190）、RSS 70.2–72.9MB，无 crash；详见 `docs/stage2-integration.md`。
 
