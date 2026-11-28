@@ -1337,10 +1337,17 @@ class ControlPanel(QWidget):
 
     def _reset_store(self):
         try:
-            p = os.path.join(paths.default_data_dir(), "data_root.txt")
-            if os.path.exists(p):
-                os.remove(p)
-            self.lbl_store_msg.setText("已改回默认位置，重启后生效。")
+            roots = [paths.default_data_dir(), paths.legacy_data_dir()]
+            removed = 0
+            for root in roots:
+                p = os.path.join(root, "data_root.txt")
+                if os.path.exists(p):
+                    os.remove(p)
+                    removed += 1
+            if removed:
+                self.lbl_store_msg.setText("已清除储存位置指针，重启后按默认位置读取。")
+            else:
+                self.lbl_store_msg.setText("没有找到储存位置指针，当前已经按默认位置读取。")
         except OSError as e:
             self.lbl_store_msg.setText(f"改回失败：{e}")
 

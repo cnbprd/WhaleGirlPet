@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """本地多档案账号：每个账号一个独立目录，养成 / 情绪 / 记忆 / 知识库全部在本机。
 
-目录结构（%APPDATA%\\WhaleGirlPet\\）：
+目录结构（安装版默认在 exe 同目录；不可写时回退 %APPDATA%\\WhaleGirlPet\\）：
   accounts.json              账号列表 + 当前账号
   accounts/<slug>/config.json  该账号的配置与存档
   accounts/<slug>/memory.db    该账号的记忆库（SQLite）

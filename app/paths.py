@@ -26,34 +26,109 @@ def asset_path(rel: str) -> str:
     return resource_path(os.path.join("assets", rel))
 
 
-def default_data_dir() -> str:
-    """出厂默认数据目录（%APPDATA%\\WhaleGirlPet），也是储存位置指针文件的所在地。"""
+def legacy_data_dir() -> str:
+    """旧版默认数据目录（%APPDATA%\\WhaleGirlPet），仅用于兼容旧指针/旧数据。"""
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    d = os.path.join(base, "WhaleGirlPet")
+    return os.path.join(base, "WhaleGirlPet")
+
+
+def _app_dir() -> str:
+    """安装版返回 exe 所在目录；源码运行返回仓库根目录。"""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _writable_dir(d: str) -> bool:
+    """实际写一个探针文件，避免 Program Files 等只读目录误判为可写。"""
+    try:
+        os.makedirs(d, exist_ok=True)
+        probe = os.path.join(d, ".whale_write_test")
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write("")
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
+_DEFAULT_DATA_DIR = ""
+
+
+def default_data_dir() -> str:
+    """出厂默认数据目录：安装版与 exe 同目录，数据跟着安装文件走。
+
+    安装目录不可写时回退到旧版 %APPDATA%\\WhaleGirlPet。源码运行时仍用旧目录，
+    避免把账号/聊天记录写进仓库。该目录也是 data_root.txt 指针文件的所在地。
+    """
+    global _DEFAULT_DATA_DIR
+    if _DEFAULT_DATA_DIR:
+        return _DEFAULT_DATA_DIR
+    if getattr(sys, "frozen", False):
+        d = _app_dir()
+        if not _writable_dir(d):
+            d = legacy_data_dir()
+    else:
+        d = legacy_data_dir()
     try:
         os.makedirs(d, exist_ok=True)
     except OSError:
         pass
+    _DEFAULT_DATA_DIR = d
     return d
 
 
-def data_dir() -> str:
-    """当前数据目录；若用户改过储存位置，读默认目录下的 data_root.txt 指向新位置。"""
-    root_file = os.path.join(default_data_dir(), "data_root.txt")
-    d = ""
+def _read_data_root(root: str) -> str:
+    root_file = os.path.join(root, "data_root.txt")
     try:
         if os.path.exists(root_file):
             with open(root_file, encoding="utf-8") as f:
-                d = f.read().strip()
-    except OSError:
-        d = ""
-    if not d or not os.path.isdir(d):
-        d = default_data_dir()
-    try:
-        os.makedirs(d, exist_ok=True)
+                return f.read().strip()
     except OSError:
         pass
-    return d
+    return ""
+
+
+def _has_user_data(d: str) -> bool:
+    """判断目录里是否已经有账号/聊天/记忆/语音等用户数据。"""
+    if not d or not os.path.isdir(d):
+        return False
+    for name in ("accounts.json", "config.json", "memory.db", "knowledge.db",
+                 "accounts", "tts_cache", "voices"):
+        if os.path.exists(os.path.join(d, name)):
+            return True
+    return False
+
+
+def data_dir() -> str:
+    """当前数据目录。
+
+    优先读默认目录（安装版是 exe 同目录）里的 data_root.txt；旧版
+    %APPDATA%\\WhaleGirlPet 里的指针也继续认，保证老用户的迁移位置不丢。
+    新默认目录还没有数据、旧目录有时，先继续用旧目录，等用户迁移。
+    """
+    default = default_data_dir()
+    roots = [default]
+    legacy = legacy_data_dir()
+    if os.path.normcase(os.path.abspath(legacy)) != os.path.normcase(os.path.abspath(default)):
+        roots.append(legacy)
+    for root in roots:
+        d = _read_data_root(root)
+        if d and os.path.isdir(d):
+            try:
+                os.makedirs(d, exist_ok=True)
+            except OSError:
+                pass
+            return d
+    if _has_user_data(default):
+        return default
+    if _has_user_data(legacy):
+        return legacy
+    try:
+        os.makedirs(default, exist_ok=True)
+    except OSError:
+        pass
+    return default
 
 
 def accounts_file() -> str:

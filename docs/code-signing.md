@@ -20,6 +20,17 @@
 - 审核不保证通过：仓库创建于 2026-11-24，当前 stars/forks/watchers 都是 0，SignPath 对可执行程序的“可验证声誉”有要求；申请表选了 GitHub Actions，仓库现已补上 `.github/workflows/3d-build.yml`，让申请表与实际构建方式对齐。
 - 在收到批准前，安装包和 exe **仍然是未签名状态**；不能用“已申请”代替签名结果。
 
+### 2026-11-28 门户复查
+
+登录 `app.signpath.io` 后，门户显示：
+
+- `Currently there is no organization created for you to log in to.`
+- `Choose an organization` 页面显示 `You are not part of any organization yet.`
+
+也就是说，申请提交时所用的登录账号目前**没有 SignPath 组织、没有项目、没有签名请求**；门户不提供“申请审核中/被拒绝”的状态字段。申请走的是 HubSpot 表单，审核结果只会通过邮件通知，不会自动回写门户。提交至今只有 2 天，不能仅凭时间推断会通过。
+
+登录用户名就是申请仓库的提交邮箱；也可以用登录页的“通过 Microsoft 登录”直接进入，不必单独记用户名。如果这个邮箱不是申请时填的邮箱，需要到申请邮箱里查 SignPath 的回复。
+
 ## 为什么不能靠改安装脚本解决
 
 SmartScreen 校验的是 Authenticode 签名及其证书链，不读取安装脚本里的说明文字。没有受信任证书时：

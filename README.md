@@ -102,7 +102,7 @@
 
 **Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).**
 
-Status (2026-11-26): the SignPath Foundation application has been submitted and is pending review. Until it is approved and signing is executed, the current Release artifacts remain unsigned and Windows may show “Unknown publisher”.
+Status (2026-11-28): the SignPath Foundation application was submitted on 2026-11-26. A portal check today found no organization/project provisioned on the applicant account, and the portal does not expose an application-review status; treat it as pending until an approval email arrives. Until it is approved and signing is executed, the current Release artifacts remain unsigned and Windows may show “Unknown publisher”.
 
 Signing scope is the Windows artifacts: `whale3d.exe` and `WhaleGirlPet-Setup-<version>.exe`. Authors / reviewers / approver: [cnbprd](https://github.com/cnbprd) (repository owner); all team members use MFA for GitHub and SignPath. Full policy: [`CODE_SIGNING_POLICY.md`](CODE_SIGNING_POLICY.md). Privacy statement: [`PRIVACY.md`](PRIVACY.md).
 
