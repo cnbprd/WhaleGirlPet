@@ -1,0 +1,112 @@
+{
+  "current": "build\\stage4-cards",
+  "golden": "build\\stage2-crossfade-cards",
+  "checks": [
+    {
+      "name": "client_420x620",
+      "ok": true,
+      "detail": "current=420x620 golden=420x620"
+    },
+    {
+      "name": "17_cards",
+      "ok": true,
+      "detail": "current=17 golden=17"
+    },
+    {
+      "name": "card_rects_exact",
+      "ok": true,
+      "detail": "all exact"
+    },
+    {
+      "name": "card_crop_sizes_exact",
+      "ok": true,
+      "detail": "all exact"
+    },
+    {
+      "name": "card_crop_diff_bounded",
+      "ok": true,
+      "detail": "max_mean_abs_diff=8.589"
+    },
+    {
+      "name": "transparent_corner_not_opaque_black",
+      "ok": true,
+      "detail": "{\"top_left\": 83.19, \"top_right\": 53.0, \"bottom_left\": 59.92, \"bottom_right\": 53.0}"
+    },
+    {
+      "name": "click_through",
+      "ok": true,
+      "detail": "card=-1 model=1 received=True"
+    }
+  ],
+  "card_diffs": [
+    {
+      "card": "action/balloon",
+      "mean_abs_diff": 2.355
+    },
+    {
+      "card": "action/change",
+      "mean_abs_diff": 4.754
+    },
+    {
+      "card": "action/dance",
+      "mean_abs_diff": 2.138
+    },
+    {
+      "card": "action/fireworks",
+      "mean_abs_diff": 3.006
+    },
+    {
+      "card": "action/lion",
+      "mean_abs_diff": 6.778
+    },
+    {
+      "card": "action/type",
+      "mean_abs_diff": 4.603
+    },
+    {
+      "card": "action/wave",
+      "mean_abs_diff": 2.26
+    },
+    {
+      "card": "expression/angry",
+      "mean_abs_diff": 3.604
+    },
+    {
+      "card": "expression/curious",
+      "mean_abs_diff": 3.964
+    },
+    {
+      "card": "expression/eat",
+      "mean_abs_diff": 5.537
+    },
+    {
+      "card": "expression/happy",
+      "mean_abs_diff": 4.869
+    },
+    {
+      "card": "expression/idle",
+      "mean_abs_diff": 4.955
+    },
+    {
+      "card": "expression/pat",
+      "mean_abs_diff": 1.819
+    },
+    {
+      "card": "expression/shy",
+      "mean_abs_diff": 2.533
+    },
+    {
+      "card": "expression/sleep",
+      "mean_abs_diff": 8.589
+    },
+    {
+      "card": "expression/sleepy",
+      "mean_abs_diff": 2.139
+    },
+    {
+      "card": "expression/walk",
+      "mean_abs_diff": 2.653
+    }
+  ],
+  "ok": true
+}

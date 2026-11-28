@@ -53,6 +53,7 @@ $sources = @(
     (Join-Path $PSScriptRoot 'sprite.cpp'),
     (Join-Path $PSScriptRoot 'sprite_manifest.cpp'),
     (Join-Path $PSScriptRoot 'content_manifest.cpp'),
+    (Join-Path $PSScriptRoot 'inspect_overlay.cpp'),
     $resourceObj
 )
 & $gxx.FullName -std=c++17 -Os -s -Wall -Wextra -mwindows `

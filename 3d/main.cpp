@@ -10,6 +10,8 @@
 #include "emotion_bus.h"
 #include "sprite.h"
 #include "content_manifest.h"
+#include "renderer.h"
+#include "inspect_overlay.h"
 #include "perf_stats.h"
 #include "animation_controller.h"
 #include "anim_state_table.h"
@@ -188,6 +190,13 @@ static WNDPROC gOverlayOldProc = nullptr;
 static HWND gOverlayHwnd = nullptr;
 static HWND gOverlayMouseTarget = nullptr;
 
+static HWND nativeWindowHandle(SDL_Window* window) {
+    if (!window) return nullptr;
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    return static_cast<HWND>(
+        SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr));
+}
+
 static HWND findWindowBelow(HWND overlay, POINT screenPoint) {
     HWND candidate = GetWindow(overlay, GW_HWNDNEXT);
     while (candidate) {
@@ -315,7 +324,9 @@ int main(int argc, char** argv) {
 
     bool headless = false;
     bool noRender = false;
+    bool inspect = false;
     int headlessFrames = 60;
+    double durationSeconds = 0.0;
     double fixedDt = 1.0 / 60.0;
     std::string modelArg;
     std::string summaryPath;
@@ -325,9 +336,13 @@ int main(int argc, char** argv) {
             headless = true;
         } else if (std::strcmp(arg, "--no-render") == 0) {
             noRender = true;
+        } else if (std::strcmp(arg, "--inspect") == 0) {
+            inspect = true;
         } else if (hasPrefix(arg, "--frames=")) {
             const int parsed = std::atoi(arg + std::strlen("--frames="));
             if (parsed > 0) headlessFrames = parsed;
+        } else if (hasPrefix(arg, "--duration=")) {
+            durationSeconds = parseSeconds(arg + std::strlen("--duration="));
         } else if (hasPrefix(arg, "--fixed-dt=")) {
             const double parsed = parseSeconds(arg + std::strlen("--fixed-dt="));
             if (parsed > 0.0 && parsed <= 0.1) fixedDt = parsed;
@@ -383,6 +398,7 @@ int main(int argc, char** argv) {
         SDL_Log("Content manifest: absent; legacy asset paths");
     }
     PerfStats perf(headless);
+    GLRenderer passRenderer;
     if (std::getenv("WHALE3D_KEEP_AWAKE")) keepAwake(true);
 
     // CI runners have no usable OpenGL driver (windows-latest exposes GDI
@@ -606,6 +622,17 @@ int main(int argc, char** argv) {
     if (!ui.init(win, &model, base + "assets/ui/pet.ico", base)) {
         SDL_Log("Tray/settings unavailable; continuing without ShellUi");
     }
+    InspectOverlay inspectOverlay;
+    bool inspectReady = false;
+    if (inspect) {
+        HWND mainHwnd = nativeWindowHandle(win);
+        if (mainHwnd && inspectOverlay.init(mainHwnd)) {
+            inspectReady = true;
+            SDL_Log("Inspector: --inspect overlay ready");
+        } else {
+            SDL_Log("Inspector: --inspect overlay unavailable");
+        }
+    }
     ui.setHitTest([&](int clientX, int clientY) {
         int ww = 0, wh = 0;
         SDL_GetWindowSize(win, &ww, &wh);
@@ -773,19 +800,26 @@ int main(int argc, char** argv) {
     int overlayCardW = -1, overlayCardH = -1;
     Uint64 start = SDL_GetTicks();
     Uint64 lastLog = start;
+    Uint64 lastInspect = 0;
     int frames = 0;
+    float displayFps = 0.0f;
     Uint64 perfFreq = SDL_GetPerformanceFrequency();
     Uint64 updateTicks = 0;
     int updateFrames = 0;
     float lastT = 0.0f;
 
     while (running && !ui.quitRequested()) {
+        if (durationSeconds > 0.0 &&
+            static_cast<double>(SDL_GetTicks() - start) >= durationSeconds * 1000.0) {
+            break;
+        }
         static bool perfWarmed = false;
         if (!perfWarmed && SDL_GetTicks() - start >= 5000) {
             perf.resetSamples();
             perfWarmed = true;
         }
         perf.beginFrame();
+        passRenderer.beginFrame();
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_EVENT_QUIT) {
@@ -960,8 +994,10 @@ int main(int argc, char** argv) {
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         {
+            passRenderer.beginPass(RenderPass::Model);
             PerfStats::Timer timer(perf, perf.current().renderUs);
             model.draw(viewProj.m);
+            passRenderer.endPass();
         }
 
         if (hitW != pw || hitH != ph) {
@@ -971,8 +1007,10 @@ int main(int argc, char** argv) {
         }
         glReadBuffer(GL_BACK);
         {
+            passRenderer.beginPass(RenderPass::HitMask);
             PerfStats::Timer timer(perf, perf.current().readbackUs);
             glReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, hitMask.data());
+            passRenderer.endPass();
         }
         static bool hitMaskLogged = false;
         if (!hitMaskLogged && hitW > 0 && hitH > 0) {
@@ -985,7 +1023,11 @@ int main(int argc, char** argv) {
 
         // The overlay owns the card when available.  Keep the fallback path
         // for machines where a second transparent GL window cannot be created.
-        if (!spriteOverlay) sprite.draw(pw, ph);
+        if (!spriteOverlay) {
+            passRenderer.beginPass(RenderPass::Sprite);
+            sprite.draw(pw, ph);
+            passRenderer.endPass();
+        }
         const SpriteLayer::PixelRect cardRect =
             sprite.visible() ? sprite.lastRect() : SpriteLayer::PixelRect{};
         if (std::getenv("WHALE3D_SPRITE_TRACE") && cardRect.width > 0 && cardRect.height > 0) {
@@ -995,6 +1037,7 @@ int main(int argc, char** argv) {
                         cardRect.x, cardRect.y, cardRect.width, cardRect.height);
             }
         }
+        passRenderer.beginPass(RenderPass::Region);
         static int regionFrame = 0;
         if (regionFrame++ % 6 == 0) {
             PerfStats::Timer timer(perf, perf.current().regionUs);
@@ -1020,6 +1063,7 @@ int main(int argc, char** argv) {
             overlayCardW = cardRect.width;
             overlayCardH = cardRect.height;
         }
+        passRenderer.endPass();
 
         {
             PerfStats::Timer timer(perf, perf.current().swapUs);
@@ -1052,9 +1096,11 @@ int main(int argc, char** argv) {
                 glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 {
+                    passRenderer.beginPass(RenderPass::Sprite);
                     PerfStats::Timer timer(perf, perf.current().overlayUs);
                     sprite.draw(ow, oh);
                     SDL_GL_SwapWindow(overlayWin);
+                    passRenderer.endPass();
                 }
                 SDL_GL_MakeCurrent(win, ctx);
                 glEnable(GL_DEPTH_TEST);
@@ -1065,6 +1111,7 @@ int main(int argc, char** argv) {
         }
 
         ++frames;
+        passRenderer.endFrame();
         perf.endFrame();
         perf.maybeLog();
         Uint64 now = SDL_GetTicks();
@@ -1073,13 +1120,35 @@ int main(int argc, char** argv) {
             double updateUs = updateFrames > 0
                 ? (double)updateTicks * 1e6 / (double)perfFreq / (double)updateFrames
                 : 0.0;
-            SDL_Log("fps=%.1f triangles=%d update_us=%.2f animator=%s clip=%s face=%s",
+            displayFps = fps;
+            SDL_Log("fps=%.1f triangles=%d update_us=%.2f animator=%s clip=%s face=%s %s",
                     fps, model.triangleCount(), updateUs, model.animatorName(),
-                    model.clipName(), model.faceName());
+                    model.clipName(), model.faceName(), passRenderer.describe().c_str());
             frames = 0;
             updateFrames = 0;
             updateTicks = 0;
             lastLog = now;
+        }
+        if (inspectReady && now - lastInspect >= 500) {
+            double rssMb = 0.0, privateMb = 0.0;
+            PerfStats::memoryMb(rssMb, privateMb);
+            char info[640];
+            std::snprintf(info, sizeof(info),
+                          "whale3d inspect  fps=%.1f\n"
+                          "state=%s clip=%s face=%s\n"
+                          "card=%s emotion=%s@%.2f\n"
+                          "passes %s\n"
+                          "rss=%.1fMB private=%.1fMB\n"
+                          "asset=%s",
+                          displayFps,
+                          animationReady ? animation.activeId().c_str() : "-",
+                          model.clipName(), model.faceName(),
+                          sprite.card().empty() ? "-" : sprite.card().c_str(),
+                          model.emotionName(), model.emotionIntensity(),
+                          passRenderer.describeCompact().c_str(),
+                          rssMb, privateMb, model.sourcePath().c_str());
+            inspectOverlay.update(info);
+            lastInspect = now;
         }
 
         Uint64 target = 33;
@@ -1092,6 +1161,7 @@ int main(int argc, char** argv) {
     } else {
         SDL_GL_MakeCurrent(win, ctx);
     }
+    inspectOverlay.shutdown();
     sprite.shutdown();
     if (overlayCtx) SDL_GL_DestroyContext(overlayCtx);
     if (overlayWin) SDL_DestroyWindow(overlayWin);

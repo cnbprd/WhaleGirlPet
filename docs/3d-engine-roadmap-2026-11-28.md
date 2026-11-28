@@ -134,6 +134,8 @@
 - 主窗/卡面/点击区截图无回归；FPS 不低于阶段 1 基线。
 - 产出 `docs/renderer-passes.md`。
 
+**收口记录（2026-11-28）**：阶段 4 按“pass 边界 + inspector + golden”条件退出。`renderer.h` 提供 `IRenderer/GLRenderer/NullRenderer`，主循环显式包围 `model -> hitmask -> sprite -> region`，fps 日志输出各 pass 平均耗时；`--inspect` 侧栏显示 state/clip/card/emotion/pass/FPS/RSS/资产路径；`--duration=N` 支持有界可见测试。240 秒可见运行 231 个采样、平均 FPS 27.98（阶段 1 基线 21.79），17/17 卡 rect 与阶段 2 完全一致、golden 检查 `ok=true`，真实点击 `card=-1/model=1/received=true`，拖拽 `ok=true`，headless 60 帧与 package content 校验退出 0。边界：`GLRenderer` 不管理 GL 资源生命周期；实际顺序为 `model -> hitmask -> sprite -> region`，hit mask 必须在 sprite 之前；`ShellUi` 仍是原生 Win32，没有 GL UI pass；inspector 是不透明调试侧栏；240 秒不是 10 分钟；生产 exe/Release 未替换。详见 `docs/renderer-passes.md`。
+
 ### 阶段 5：内容包、签名与可选后端
 
 **目标**：只在有明确收益时继续，不为了“像 UE”而膨胀。
