@@ -1,6 +1,6 @@
 # v3.2.0-sprite 发布证据索引
 
-状态：**发布候选已推送并创建 draft Release，尚未公开发布。** 本页只做路径索引，不替代证据本身。
+状态：**已公开发布**（`https://github.com/cnbprd/WhaleGirlPet/releases/tag/v3.2.0-sprite`）。本页只做路径索引，不替代证据本身。
 
 ## 0. 24h 浸泡
 
@@ -92,8 +92,8 @@
 | CI / Release 审计 | `docs/ci-release-static-audit.md` | `release-notes.yml` push 风险仍记录 |
 | CI artifact 命名修复 | 提交 `94d4fdd`，已随集成分支合入 `main` 并 push 到 `origin/main` | CI `Build 3D (Windows)` run 46117963651 成功 |
 | CI release-notes 修复 | 提交 `56ba124`，已随集成分支合入 `main` 并 push 到 `origin/main` | 已改为手动单 tag 触发，workflow 未运行 |
-| GitHub Release | `v3.2.0-sprite` | **draft 已创建、4 个资产已上传；未公开** |
-| Git tag | `v3.2.0-sprite` → `a2ef92c` | 已推送；draft 发布时使用 |
+| GitHub Release | `v3.2.0-sprite` | **已公开发布，4 个资产已上传** |
+| Git tag | `v3.2.0-sprite` → `a2ef92c` | 已推送；Release 已关联 |
 
 ## 发布前硬门槛
 
@@ -108,4 +108,4 @@
 - [ ] `release-notes.yml` 触发条件已确认，不被误触改写旧 Release
 - [ ] 代码签名（`NotSigned`，SignPath 审核状态未知）
 - [x] 创建 `v3.2.0-sprite` draft Release 并上传资产
-- [ ] 将 draft Release 公开发布
+- [x] 将 draft Release 公开发布

@@ -87,7 +87,7 @@
 | 3.2.0-sprite 资产 | 本地构建、`verify_release_assets.py` 38 项 PASS 后手动上传 |
 | tag | `v3.2.0-sprite`，不要复用 `v3.2.0-dev` |
 | Release notes | `docs/releases/v3.2.0-sprite.md` 已就绪；工作流已改为单 tag 手动触发，旧 push 遍历逻辑已合入本地 `main` |
-| 远程状态 | `main` 已 push 到 `origin/main`；tag `v3.2.0-sprite` 已推送并指向 `a2ef92c`；draft Release 已创建，尚未公开 |
+| 远程状态 | `main` 已 push 到 `origin/main`；tag `v3.2.0-sprite` 已推送并指向 `a2ef92c`；Release 已公开发布 |
 
 ## 证据文件
 

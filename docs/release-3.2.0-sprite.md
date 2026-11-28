@@ -1,6 +1,6 @@
 # Release 草稿：鲸鱼娘桌宠 3.2.0-sprite
 
-状态：**发布候选已推送并创建 draft Release，尚未公开发布。** 对应现有 `v3.2.0-dev` 之后的 sprite 版本；tag `v3.2.0-sprite` 指向 `a2ef92c`，draft 资产已上传并核对；不要覆盖旧 Release。
+状态：**已公开发布**（tag `v3.2.0-sprite` → `a2ef92c`）。对应现有 `v3.2.0-dev` 之后的 sprite 版本；4 个 Release 资产已上传并核对；不要覆盖旧 Release。
 
 ## 一句话
 
