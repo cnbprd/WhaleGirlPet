@@ -9,7 +9,7 @@
 - 引擎：手写 OpenGL 3.3 + SDL3 + ozz；单模型 2,076 三角形，窗口 420×620，28–29 FPS，private 约 98MB，单核 CPU 31–36%（来源：`3d/README.md` 本机测量表）。
 - 结构：`Model` 同时管 GLB/VRM 解析、GL 资源、ozz 采样、表情、gaze/lean、spring；`main.cpp` 管窗口、overlay、托盘、输入；`EmotionBus::poll` 只返回本次 poll 的最后一帧。
 - 发布：`v3.2.0-sprite` 已公开，4 个资产已上传并下载核对；安装器和 exe 仍为 `NotSigned`。
-- 未闭环：2D PyInstaller 冻结包、SignPath 审核、普通桌面 z 序点击复核。
+- 未闭环：2D PyInstaller 冻结包、SignPath 已拒绝（需重新申请或换证书）、普通桌面 z 序点击复核。
 
 ## 1. 阶段总览
 
@@ -34,7 +34,7 @@
 
 1. 记录已发布基线：tag、commit、4 个资产大小/SHA256、Release URL、CI run。
 2. 2D PyInstaller 冻结包：构建一次，启动并确认能读到 `assets/2d_bridge` 的 17 卡；若本版不支持，写明确 waiver，不把“没验”留成隐形债。
-3. SignPath：只查审核状态；批准则走签名流程，签名后重新构建/重新上传资产，不能只替换 exe；未批准则记录 `NotSigned` waiver，不买付费 OV。
+3. SignPath：2026-11-27 已收到 Foundation 拒绝邮件（公开可见度不足）。当前保持 `NotSigned` waiver；继续免费签名需先积累公开可见度再重新申请，或改用付费 SignPath/Azure/OV。获证后必须重新构建/重新上传资产，不能只替换 exe。
 4. 普通桌面 z 序：用 Notepad/Chrome/Explorer 等真实目标复核卡面点击转发；区分“受控 z 序通过”和“普通桌面通过”。
 5. 写 `docs/engine-baseline-3.2.0-sprite.md`，冻结引擎基线指标和已知限制。
 
@@ -143,7 +143,7 @@
 工作项：
 
 1. 内容包：把验证后的 assets 打成带 hash 的 `content` 包，安装器/ZIP 只认清单；需要增量更新时再做 patch。
-2. 签名：SignPath 批准后重新构建/签名/上传；未批准保持 waiver。
+2. 签名：SignPath Foundation 已拒绝；继续免费路径需先积累公开可见度再重新申请，或改用付费 SignPath/Azure/OV。未获证书前保持 `NotSigned` waiver。
 3. 后端：只有出现跨平台或 D3D12/Vulkan 明确需求时，才评估第二个 `IRenderer` 后端。
 4. 旧计划 #71 开机动画：作为表现层 backlog，不阻塞引擎主线；若要接，放在阶段 2 之后单独做。
 
@@ -152,7 +152,7 @@
 - 内容包安装/卸载/升级通过；资产 hash 与 Release 一致。
 - 签名状态明确；后端决策有书面理由。
 
-**收口记录（2026-11-28）**：阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。用阶段 3 安装器 `WhaleGirlPet-Setup-3.2.0-ci.exe`（4,812,568 B，`2950B884...`）安装旧候选后，再安装阶段 4 候选安装器 `WhaleGirlPet-Setup-3.3.0-stage4.exe`（4,814,785 B，`BA734D2E...`）；升级 exit 0，`whale3d.exe` 从 1,457,664 B 替换为 1,463,296 B / `E792667E...`，`verify_package_content.py` 返回 `ok=True errors=0 files=3`，headless 60 帧输出 `Content manifest: verified package hashes` 且 exit 0；卸载 exit 0；同一新安装器另做一次全新安装、headless 和卸载也 exit 0。阶段 4 包内 model/manifest/atlas 三个资产 hash 与公开 `v3.2.0-sprite` Release ZIP 内同路径文件完全一致。签名仍为 `NotSigned`：本机 0 张代码签名证书、无 `signtool.exe`，SignPath 外部审核状态未知，维持阶段 0 waiver。后端决策：当前无跨平台/D3D12/Vulkan 明确需求，保留 `IRenderer + NullRenderer`，不引入第二后端；#71 开机动画仍在 backlog。边界：安装器版本 `3.3.0` 而 exe 版本资源仍是 `3.2.0.0`，这是内部候选；未发公开 Release，安装器仍不预检 content，升级只测同 AppId 覆盖，不测降级；测试安装器已加 `AppId` 隔离，避免与真实安装共用卸载键。详见 `docs/stage5-closeout.md`。
+**收口记录（2026-11-28）**：阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。用阶段 3 安装器 `WhaleGirlPet-Setup-3.2.0-ci.exe`（4,812,568 B，`2950B884...`）安装旧候选后，再安装阶段 4 候选安装器 `WhaleGirlPet-Setup-3.3.0-stage4.exe`（4,814,785 B，`BA734D2E...`）；升级 exit 0，`whale3d.exe` 从 1,457,664 B 替换为 1,463,296 B / `E792667E...`，`verify_package_content.py` 返回 `ok=True errors=0 files=3`，headless 60 帧输出 `Content manifest: verified package hashes` 且 exit 0；卸载 exit 0；同一新安装器另做一次全新安装、headless 和卸载也 exit 0。阶段 4 包内 model/manifest/atlas 三个资产 hash 与公开 `v3.2.0-sprite` Release ZIP 内同路径文件完全一致。签名仍为 `NotSigned`：本机 0 张代码签名证书、无 `signtool.exe`，SignPath Foundation 已于 2026-11-27 拒绝，维持阶段 0 waiver。后端决策：当前无跨平台/D3D12/Vulkan 明确需求，保留 `IRenderer + NullRenderer`，不引入第二后端；#71 开机动画仍在 backlog。边界：安装器版本 `3.3.0` 而 exe 版本资源仍是 `3.2.0.0`，这是内部候选；未发公开 Release，安装器仍不预检 content，升级只测同 AppId 覆盖，不测降级；测试安装器已加 `AppId` 隔离，避免与真实安装共用卸载键。详见 `docs/stage5-closeout.md`。
 
 ## 3. 与之前计划的合并
 

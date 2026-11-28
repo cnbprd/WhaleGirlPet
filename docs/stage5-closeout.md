@@ -2,7 +2,7 @@
 
 日期：2026-11-28  
 分支：`feat/v3.3-observe`  
-结论：**阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。内容包升级链路实测通过；测试安装器已加 `AppId` 隔离；签名仍为 `NotSigned`，SignPath 外部状态未知；不引入第二个渲染后端。未发公开 Release，生产 exe 未替换。**
+结论：**阶段 5 按“内容包安装/升级/卸载 + 签名 waiver + 后端 no-go”收口。内容包升级链路实测通过；测试安装器已加 `AppId` 隔离；签名仍为 `NotSigned`，SignPath Foundation 已于 2026-11-27 拒绝；不引入第二个渲染后端。未发公开 Release，生产 exe 未替换。**
 
 ## 1. 内容包升级测试
 
@@ -56,7 +56,7 @@ C 盘旧安装仍保留，未删除；`C:\Users\yangmengke\AppData\Roaming\Whale
 - `Cert:\CurrentUser\My` 代码签名证书 0 张；`Cert:\LocalMachine\My` 0 张。
 - `signtool.exe` 不在 PATH。
 - 新安装器和阶段 4 exe 的 Authenticode 状态均为 `NotSigned`。
-- SignPath Foundation 外部审核状态未知；未批准前维持阶段 0 的 unsigned waiver，不买付费 OV，也不只替换 exe 假装签名。
+- SignPath Foundation 已于 2026-11-27 邮件拒绝（公开可见度不足）；维持阶段 0 的 unsigned waiver，不买付费 OV，也不只替换 exe 假装签名。要继续免费签名需先积累公开可见度再重新申请。
 
 ## 4. 后端决策
 

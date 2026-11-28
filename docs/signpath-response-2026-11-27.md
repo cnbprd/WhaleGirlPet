@@ -1,0 +1,17 @@
+# SignPath Foundation 申请回复
+
+时间：2026-11-27 15:18（本机 Outlook 显示时间）
+
+- 发件人：`Phillip Deng from SignPath <oss-support@signpath.org>`
+- 主题：`Your SignPath Foundation application`
+- 结论：**未通过**（`we're unable to approve your application at this time`）
+- 理由：项目还没有足够的公开信任与可见度信号。SignPath 列举的评估项包括 GitHub stars/forks/contributors、外部文章、独立引用或讨论（Reddit、Stack Overflow、YouTube 等）、机构背书，以及持续活动和社区互动。
+- 后续：SignPath 鼓励继续开发，等获得更广泛认可后重新申请；也可以改用付费订阅（`https://docs.signpath.io/change-subscription`）。
+- 同一邮件线程中引用了我方 2026-11-26 16:09 +0100 的申请提交，以及 SignPath 的“已收到申请，几天内回复”自动回执。
+
+## 对项目的影响
+
+- SignPath 门户里该账号没有组织/项目，和“未通过”一致，不是“仍在审核”。
+- 当前 `whale3d.exe` 和安装器仍为 `NotSigned`；不能把 Foundation 申请写成“已批准”或“审核中”。
+- 若继续走免费签名：先积累公开可见度，再重新申请。
+- 若不想等：走付费 SignPath、Azure Artifact Signing 或 OV 证书；不要在公开 Release 里用自签名冒充正式签名。

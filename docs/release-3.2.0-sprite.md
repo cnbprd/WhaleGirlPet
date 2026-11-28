@@ -28,7 +28,7 @@
 ## 发布前剩余
 
 1. 创建 `v3.2.0-sprite` GitHub Release，上传 exe / ZIP / 安装器 / `.sha256`。
-2. 代码签名：当前 `NotSigned`，SignPath Foundation 审核状态未知；不使用付费 OV。
+2. 代码签名：当前 `NotSigned`，SignPath Foundation 已于 2026-11-27 拒绝（公开可见度不足）；不使用付费 OV。
 3. 2D PyInstaller 冻结包未在本轮重新打包，不作为本版 3D sprite 发布门禁。
 
 ## 已知限制
@@ -49,5 +49,5 @@
 - 24h 浸泡、17 卡可见、真实点击、安装器安装/卸载和资产校验均通过
 - 便携包与安装器均内置 assets/2d_bridge
 
-注意：安装包当前未签名，SignPath 审核状态未知。
+注意：安装包当前未签名，SignPath Foundation 已拒绝，签名仍未解决。
 ```

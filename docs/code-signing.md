@@ -11,14 +11,16 @@
 
 ## SignPath Foundation 申请状态
 
-**2026-11-26 已提交申请**，走的是开源免费托管签名路径。
+**2026-11-26 已提交，2026-11-27 收到审核回复：未通过。**
 
 - 提交入口：`https://signpath.org/apply`（HubSpot 表单）。
 - 项目：`WhaleGirlPet`；仓库 `https://github.com/cnbprd/WhaleGirlPet`；MIT；分类 `Gaming`；维护者类型 `Individual maintainer(s)`；构建系统 `GitHub Actions`。
-- 提交后页面显示 `Form submitted / Thank you, we'll be in touch soon.`；**没有返回申请编号**，也没有单独的邮件回执号。
+- 提交后页面显示 `Form submitted / Thank you, we'll be in touch soon.`；没有返回申请编号，也没有单独的邮件回执号。
 - 确认截图：`docs/_signpath_application_submitted.png`。
-- 审核不保证通过：仓库创建于 2026-11-24，当前 stars/forks/watchers 都是 0，SignPath 对可执行程序的“可验证声誉”有要求；申请表选了 GitHub Actions，仓库现已补上 `.github/workflows/3d-build.yml`，让申请表与实际构建方式对齐。
-- 在收到批准前，安装包和 exe **仍然是未签名状态**；不能用“已申请”代替签名结果。
+- 2026-11-27 15:18，SignPath 的 `Phillip Deng <oss-support@signpath.org>` 回复：`we're unable to approve your application at this time`。
+- 拒绝理由：项目还没有足够的公开信任与可见度信号；对方列举的评估项包括 GitHub stars/forks/contributors、外部文章、独立引用或讨论（Reddit、Stack Overflow、YouTube 等）、机构背书，以及持续活动和社区互动。
+- 对方鼓励继续开发，等获得更广泛认可后重新申请；也可以改用付费订阅（`https://docs.signpath.io/change-subscription`）。
+- 在获得其他有效证书前，安装包和 exe **仍然是未签名状态**；不能把 Foundation 申请写成“已批准”或“审核中”。
 
 ### 2026-11-28 门户复查
 
@@ -27,9 +29,9 @@
 - `Currently there is no organization created for you to log in to.`
 - `Choose an organization` 页面显示 `You are not part of any organization yet.`
 
-也就是说，申请提交时所用的登录账号目前**没有 SignPath 组织、没有项目、没有签名请求**；门户不提供“申请审核中/被拒绝”的状态字段。申请走的是 HubSpot 表单，审核结果只会通过邮件通知，不会自动回写门户。提交至今只有 2 天，不能仅凭时间推断会通过。
+这与“未通过”一致：该账号下没有 SignPath 组织、没有项目、没有签名请求。申请走的是 HubSpot 表单，审核结果只通过邮件通知，不会回写门户。
 
-登录用户名就是申请仓库的提交邮箱；也可以用登录页的“通过 Microsoft 登录”直接进入，不必单独记用户名。如果这个邮箱不是申请时填的邮箱，需要到申请邮箱里查 SignPath 的回复。
+登录用户名就是申请仓库的提交邮箱；也可以用登录页的“通过 Microsoft 登录”直接进入，不必单独记用户名。完整回复摘要见 `docs/signpath-response-2026-11-27.md`。
 
 ## 为什么不能靠改安装脚本解决
 

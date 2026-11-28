@@ -50,7 +50,7 @@
 | 安装器安装/卸载 | PASS | `docs/installer-smoke-3.2.0-sprite.md` |
 | 资产 verifier | PASS 38/38 | `docs/release-asset-verify.md` |
 | 2D 冻结包 | **部分通过** | 包内 atlas/manifest 存在；`load_cards` 17；未验 UI 发包 |
-| 代码签名 | **NotSigned / 外部审核未知** | 0 张代码签名证书；无 `signtool.exe` |
+| 代码签名 | **NotSigned / SignPath Foundation 已拒绝** | 0 张代码签名证书；无 `signtool.exe` |
 
 ## 5. 阶段 0 未决项
 
@@ -67,7 +67,7 @@
 - `Cert:\CurrentUser\My` 和 `Cert:\LocalMachine\My` 均无代码签名证书。
 - `signtool.exe` 不在本机 PATH。
 - `3d/whale3d.exe` 和安装器均 `NotSigned`。
-- SignPath Foundation 审核状态需要外部确认；批准后必须重新构建/签名/上传，不能只替换 exe。未批准则记录 waiver，不买付费 OV。
+- SignPath Foundation 已于 2026-11-27 邮件拒绝（公开可见度不足）；不能按“等待批准”处理。继续免费签名只能先积累公开可见度再重新申请；否则改用付费 SignPath、Azure Artifact Signing 或 OV 证书。未获证书前，资产保持 `NotSigned`。
 
 ### 5.3 普通桌面 z 序
 
@@ -84,6 +84,6 @@
 |---|---|---|
 | 2D 冻结包未通过 UI 真实触发 `action/wave` | 接受 waiver：包内资产、manifest 17 卡解析、启动 8s 已过；UI 发包不在引擎主线 | 阶段 2 的真实窗口手感/2D 联调 |
 | 普通桌面 z 序只过非 topmost 跨进程 target | 接受 waiver：受控 z 序 + 非 topmost target 已过；第三方窗口不阻塞引擎 | 阶段 2 或阶段 4 overlay 收口 |
-| SignPath 外部审核状态未知，资产 `NotSigned` | 接受 waiver：v3.2.0-sprite 以 unsigned 发布；批准后必须整包重建/重签/重传，不能只替换 exe | 阶段 5 签名决策 |
+| SignPath Foundation 已拒绝，资产 `NotSigned` | 接受 waiver：v3.2.0-sprite 以 unsigned 发布；获得其他证书后必须整包重建/重签/重传，不能只替换 exe | 阶段 5 签名决策 |
 
 阶段 0 没有未记录的 P0 引擎阻塞项。阶段 1 可以在此基线上继续；上述 waiver 不等于“已验证通过”，后续阶段不得把它们当成已闭环能力。

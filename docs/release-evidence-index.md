@@ -106,6 +106,6 @@
 - [x] Release verifier 重跑 38 项 PASS
 - [x] 文件大小 / SHA256 与 Release notes、期望清单一致
 - [ ] `release-notes.yml` 触发条件已确认，不被误触改写旧 Release
-- [ ] 代码签名（`NotSigned`，SignPath 审核状态未知）
+- [ ] 代码签名（`NotSigned`，SignPath Foundation 已于 2026-11-27 拒绝）
 - [x] 创建 `v3.2.0-sprite` draft Release 并上传资产
 - [x] 将 draft Release 公开发布
