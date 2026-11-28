@@ -24,6 +24,8 @@
 <p align="center">
   <a href="https://github.com/cnbprd/WhaleGirlPet/releases/latest"><strong>下载最新版</strong></a>
   ·
+  <a href="https://cnbprd.github.io/WhaleGirlPet/">在线预览</a>
+  ·
   <a href="docs/3d-engine-roadmap-2026-11-28.md">路线图</a>
   ·
   <a href="docs/3d-transition.md">3D 技术记录</a>
@@ -39,7 +41,7 @@
 - **不是云服务**：账号、聊天、记忆、TTS 缓存默认跟安装文件放在一起；安装目录不可写才回退 `%APPDATA%`，可离线。
 - **早期但可跑**：3D 渲染、VRM、SpringBone、17 张卡面、情绪 UDP 总线、无头回归都已落地；认知层还在从 2D 迁移。
 
-> 如果这个“桌面搭子”方向对你有用，点一个 Star 就是最直接的投票；也欢迎在 Discussions 里提场景和 bug。
+> 如果这个“桌面搭子”方向对你有用，点一个 Star 就是最直接的投票；也欢迎在 [反馈帖](https://github.com/cnbprd/WhaleGirlPet/discussions/1) 里提场景和 bug。
 
 ## 下载
 
