@@ -87,6 +87,17 @@ jobs:
           "label=$label" >> $env:GITHUB_OUTPUT
           Write-Output "subsystem=$subsystem product=$($vi.ProductName) version=$($vi.ProductVersion) label=$label"
 
+      - name: Animation controller unit tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gxx = Get-ChildItem -LiteralPath (Join-Path $PWD 'ci-tools\w64devkit') -Recurse -Filter 'g++.exe' | Select-Object -First 1
+          if (-not $gxx) { throw 'g++.exe not found for animation test' }
+          & $gxx.FullName -std=c++17 -O2 -Wall -Wextra -I (Join-Path $PWD '3d') (Join-Path $PWD '3d\tests\test_animation_controller.cpp') -o (Join-Path $PWD 'animation-controller-test.exe')
+          if ($LASTEXITCODE -ne 0) { throw "animation controller compile failed ($LASTEXITCODE)" }
+          & (Join-Path $PWD 'animation-controller-test.exe')
+          if ($LASTEXITCODE -ne 0) { throw "animation controller tests failed ($LASTEXITCODE)" }
+
       - name: Headless 60-frame smoke
         shell: pwsh
         run: |
