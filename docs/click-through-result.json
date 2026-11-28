@@ -31,5 +31,7 @@
     "received": true
   },
   "mode": "click",
-  "exe": "F:\\WhaleGirlPet\\build\\installer-smoke-main-3.2.0-sprite\\whale3d.exe"
+  "exe": "F:\\WhaleGirlPet\\3d\\whale3d.exe",
+  "exe_sha256": "74E685696E6CC398FD9F8AC0420578FD16512921F1654157C7F81B632EF1F893",
+  "tested_install": "F:\\WhaleGirlPet\\build\\installer-smoke-main-3.2.0-sprite"
 }
