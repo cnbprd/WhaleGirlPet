@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 // v3.2 step 1: a tiny localhost UDP transport for high-level emotion
 // parameters. It deliberately carries data only; the Python/LLM side owns
@@ -46,6 +47,9 @@ public:
     // Non-blocking. Returns true when at least one valid datagram arrived;
     // `out` is the last valid frame from this poll.
     bool poll(Frame& out);
+    // Drain every valid datagram received in this poll. This preserves
+    // same-batch packets that the old poll() collapsed into its last frame.
+    bool pollAll(std::vector<Frame>& out);
     int receivedCount() const;
 
 private:

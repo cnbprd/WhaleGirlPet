@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <utility>
 
 namespace {
 constexpr int kMaxPacket = 512;
@@ -86,6 +87,54 @@ void readPose(const std::string& raw, const char* key,
     y = std::clamp(y, -1.0f, 1.0f);
     weight = std::clamp(weight, 0.0f, 1.0f);
 }
+
+bool parseFrame(const std::string& raw, EmotionBus::Frame& out) {
+    std::string emotion;
+    if (!jsonString(raw, "emotion", emotion)) return false;
+
+    float intensity = 1.0f;
+    jsonNumber(raw, "intensity", intensity);
+    if (!std::isfinite(intensity)) intensity = 1.0f;
+    intensity = std::clamp(intensity, 0.0f, 1.0f);
+
+    float attackMs = 180.0f;
+    float releaseMs = 420.0f;
+    jsonNumber(raw, "attack_ms", attackMs);
+    jsonNumber(raw, "release_ms", releaseMs);
+    if (!std::isfinite(attackMs) || attackMs < 40.0f) attackMs = 40.0f;
+    if (attackMs > 2000.0f) attackMs = 2000.0f;
+    if (!std::isfinite(releaseMs) || releaseMs < 40.0f) releaseMs = 40.0f;
+    if (releaseMs > 2000.0f) releaseMs = 2000.0f;
+
+    float gazeX = 0.0f, gazeY = 0.0f, gazeWeight = 0.0f;
+    float leanX = 0.0f, leanY = 0.0f, leanWeight = 0.0f;
+    readPose(raw, "gaze", gazeX, gazeY, gazeWeight);
+    readPose(raw, "lean", leanX, leanY, leanWeight);
+
+    std::string card;
+    jsonString(raw, "card", card);
+    float cardTtlMs = 0.0f;
+    jsonNumber(raw, "card_ttl_ms", cardTtlMs);
+    if (!std::isfinite(cardTtlMs) || cardTtlMs < 0.0f) cardTtlMs = 0.0f;
+    if (cardTtlMs > 10000.0f) cardTtlMs = 10000.0f;
+
+    out.emotion = emotion;
+    out.intensity = intensity;
+    out.attackMs = attackMs;
+    out.releaseMs = releaseMs;
+    out.gazeX = gazeX;
+    out.gazeY = gazeY;
+    out.gazeWeight = gazeWeight;
+    out.leanX = leanX;
+    out.leanY = leanY;
+    out.leanWeight = leanWeight;
+    out.card = card;
+    out.cardTtlMs = cardTtlMs;
+    out.raw = raw;
+    out.source.clear();
+    jsonString(raw, "source", out.source);
+    return true;
+}
 }  // namespace
 
 EmotionBus::EmotionBus() = default;
@@ -154,11 +203,11 @@ int EmotionBus::receivedCount() const {
     return received_;
 }
 
-bool EmotionBus::poll(Frame& out) {
+bool EmotionBus::pollAll(std::vector<Frame>& out) {
+    out.clear();
     if (!running()) return false;
 
     SOCKET sock = static_cast<SOCKET>(socket_);
-    bool got = false;
     for (;;) {
         char buffer[kMaxPacket + 1]{};
         sockaddr_in from{};
@@ -172,54 +221,19 @@ bool EmotionBus::poll(Frame& out) {
         }
         if (n <= 0) continue;
 
-        std::string raw(buffer, static_cast<size_t>(n));
-        std::string emotion;
-        if (!jsonString(raw, "emotion", emotion)) continue;
-
-        float intensity = 1.0f;
-        jsonNumber(raw, "intensity", intensity);
-        if (!std::isfinite(intensity)) intensity = 1.0f;
-        if (intensity < 0.0f) intensity = 0.0f;
-        if (intensity > 1.0f) intensity = 1.0f;
-
-        float attackMs = 180.0f;
-        float releaseMs = 420.0f;
-        jsonNumber(raw, "attack_ms", attackMs);
-        jsonNumber(raw, "release_ms", releaseMs);
-        if (!std::isfinite(attackMs) || attackMs < 40.0f) attackMs = 40.0f;
-        if (attackMs > 2000.0f) attackMs = 2000.0f;
-        if (!std::isfinite(releaseMs) || releaseMs < 40.0f) releaseMs = 40.0f;
-        if (releaseMs > 2000.0f) releaseMs = 2000.0f;
-
-        float gazeX = 0.0f, gazeY = 0.0f, gazeWeight = 0.0f;
-        float leanX = 0.0f, leanY = 0.0f, leanWeight = 0.0f;
-        readPose(raw, "gaze", gazeX, gazeY, gazeWeight);
-        readPose(raw, "lean", leanX, leanY, leanWeight);
-
-        std::string card;
-        jsonString(raw, "card", card);
-        float cardTtlMs = 0.0f;
-        jsonNumber(raw, "card_ttl_ms", cardTtlMs);
-        if (!std::isfinite(cardTtlMs) || cardTtlMs < 0.0f) cardTtlMs = 0.0f;
-        if (cardTtlMs > 10000.0f) cardTtlMs = 10000.0f;
-
-        out.emotion = emotion;
-        out.intensity = intensity;
-        out.attackMs = attackMs;
-        out.releaseMs = releaseMs;
-        out.gazeX = gazeX;
-        out.gazeY = gazeY;
-        out.gazeWeight = gazeWeight;
-        out.leanX = leanX;
-        out.leanY = leanY;
-        out.leanWeight = leanWeight;
-        out.card = card;
-        out.cardTtlMs = cardTtlMs;
-        out.raw = raw;
-        out.source.clear();
-        jsonString(raw, "source", out.source);
+        Frame frame;
+        if (!parseFrame(std::string(buffer, static_cast<size_t>(n)), frame)) {
+            continue;
+        }
         ++received_;
-        got = true;
+        out.push_back(std::move(frame));
     }
-    return got;
+    return !out.empty();
+}
+
+bool EmotionBus::poll(Frame& out) {
+    std::vector<Frame> frames;
+    if (!pollAll(frames)) return false;
+    out = std::move(frames.back());
+    return true;
 }

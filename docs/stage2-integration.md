@@ -5,7 +5,8 @@
 CI：run `46128539544` success（20 条动画夹具 + headless 60 no-render）。  
 构建：`3d/whale3d-stage2-integration.exe`，1,410,048 B，
 SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。  
-性质：**测试构建，不替换生产 `3d/whale3d.exe`。**
+性质：**测试构建，不替换生产 `3d/whale3d.exe`。**  
+后续：卡队列与 `EmotionBus::pollAll` 已在本文件之后接入，见 `docs/stage2-queue.md`；本文保留第一轮证据。
 
 ## 1. 接入范围
 
@@ -51,8 +52,8 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 
 ## 3. 已知边界
 
-- **卡队列未实现**：低优先级卡在动作期间只更新 pending，动作结束不会补显示；等于丢弃。
-- **EmotionBus 未改多帧队列**：同一 poll 仍只取最后一帧。
+- **第一轮卡队列未实现**：低优先级卡在动作期间只更新 pending，动作结束不会补显示；第二轮已改为 `CardQueue` 补显。
+- **第一轮 EmotionBus 未改多帧队列**：同一 poll 仍只取最后一帧；第二轮已改为 `pollAll`。
 - **动作状态 `interruptible=true`**：同优先级新动作可以替换旧动作，保证 17 卡 QA 和真实使用里 dance→wave 不被锁死；低优先级表情仍不能抢占。
 - **没有真正 crossfade 采样**：只输出 `fadeInMs/fadeOutMs` 和状态决策，`Model` 采样仍硬切。
 - **ShellUi 设置里的 `setFace` 仍是直接调用**；本轮只同步 `setClip`。
@@ -60,7 +61,7 @@ SHA256 `8CE361E495B341CD94C1B3C324EFF4ED03B8930E1692345D84EDF0BA9626BE29`。
 
 ## 4. 下一步
 
-1. 做 `CardQueue`：低优先级卡不丢，动作结束后 pop；17 卡 QA 保持通过。
-2. 做 `EmotionBus` 多帧有序队列：同批不丢，source priority + seq。
-3. 接真实窗口 #70：点击/拖拽/动作/聊天触发全部走一次。
-4. 通过后再谈 `Model` 内部 crossfade，不先重写采样器。
+1. 第二轮 `CardQueue` 已完成，见 `docs/stage2-queue.md`；下一项是队列版 10 分钟浸泡。
+2. 做真实窗口 #70：点击/拖拽/动作/聊天触发全部走一次。
+3. 通过后再谈 `Model` 内部 crossfade，不先重写采样器。
+4. 生产包和 Release 资产暂不替换。

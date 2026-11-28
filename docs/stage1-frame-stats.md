@@ -117,6 +117,6 @@ GitHub `windows-latest` 只有 `GDI Generic` / OpenGL 1.1，无法创建本引�
 ## 5. 退出记录与下一步
 
 1. **阶段 1 条件退出**：CPU 10 分钟实测完成；60/600 帧、本机 GPU render、CI no-GL smoke、10 分钟帧时间基线均通过。唯一未闭合项是 GPU CI runner，按 waiver 记录。
-2. **阶段 2 第一轮集成已落地**：`AnimationController` + 20 条夹具 + `main.cpp` base/action 门禁；17 卡可见验收通过。卡队列和 `EmotionBus` 有序队列仍未做；详见 `docs/anim-state-machine.md`、`docs/stage2-integration.md`。
-3. **下一步**：把 `main.cpp` 的 `setClip` / `setFace` / `showCard` 三处直接调用收编到控制器；先做 base clip + action TTL，再接卡面队列和 `EmotionBus` 有序队列。
+2. **阶段 2 两轮集成已落地**：`AnimationController` + 20 条夹具 + `CardQueue` 27 条夹具 + `main.cpp` base/action 门禁 + `EmotionBus::pollAll`；17 卡可见验收通过。真实 crossfade 和 #70 手感验收仍未做；详见 `docs/anim-state-machine.md`、`docs/stage2-integration.md`、`docs/stage2-queue.md`。
+3. **下一步**：队列版 10 分钟浸泡，再进 #70 真实窗口点击/拖拽/动作/聊天验收。
 4. 旧任务 #70 的真实窗口手感验收仍然保留，作为阶段 2 退出条件，不因状态机单测通过而提前关闭。

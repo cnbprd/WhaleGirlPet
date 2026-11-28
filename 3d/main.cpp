@@ -12,6 +12,7 @@
 #include "perf_stats.h"
 #include "animation_controller.h"
 #include "anim_state_table.h"
+#include "card_queue.h"
 
 #include <algorithm>
 #include <cmath>
@@ -42,6 +43,20 @@ static void applyBaseClipDecision(const AnimationController::Decision& decision,
     } else {
         SDL_Log("anim base rejected: %s", decision.clip.c_str());
     }
+}
+
+static bool isBaseAnimationState(const std::string& id) {
+    return id == "idle" || id == "walk";
+}
+
+static bool requestCardState(AnimationController& animation,
+                             const std::string& state,
+                             const std::string& source,
+                             float ttlMs,
+                             std::string& error) {
+    if (!animation.request(state, source, -1, ttlMs, &error)) return false;
+    const auto decision = animation.update(0.0f);
+    return decision.stateId == state;
 }
 
 static std::string moduleLogPath() {
@@ -555,6 +570,9 @@ int main(int argc, char** argv) {
                 animationError.c_str());
     }
     std::string lastModelClip = model.clipName();
+    CardQueue cardQueue;
+    int lastCardDropped = 0;
+    std::vector<EmotionBus::Frame> emotionFrames;
 
     EmotionBus emotionBus;
     int emotionPort = 47832;
@@ -666,6 +684,60 @@ int main(int argc, char** argv) {
         }
     }
 
+    auto handleEmotionCard = [&](const EmotionBus::Frame& emotion) {
+        if (!spriteReady || emotion.card.empty() || emotion.cardTtlMs <= 0.0f) {
+            return;
+        }
+        const std::string state = animationStateForCard(emotion.card);
+        if (!animationReady || !animation.hasState(state)) {
+            if (sprite.showCard(emotion.card, emotion.cardTtlMs)) {
+                SDL_Log("Sprite card: %s ttl=%.0fms (unmapped)",
+                        emotion.card.c_str(), emotion.cardTtlMs);
+            } else {
+                SDL_Log("Sprite card rejected: %s", emotion.card.c_str());
+            }
+            return;
+        }
+
+        const int requestPriority = animation.priorityFor(state);
+        const std::string active = animation.activeId();
+        const int activePriority = animation.priorityFor(active);
+        const bool activeIsBase = active.empty() || isBaseAnimationState(active);
+        // Same priority is allowed to replace the active item (the controller
+        // already enforces interruptible semantics); only strictly lower
+        // priority is held for the queue.
+        const bool canPreempt = active.empty() || activeIsBase ||
+                                requestPriority >= activePriority;
+        if (canPreempt) {
+            std::string error;
+            if (requestCardState(animation, state, "emotion", emotion.cardTtlMs, error)) {
+                if (sprite.showCard(emotion.card, emotion.cardTtlMs)) {
+                    SDL_Log("Sprite card: %s ttl=%.0fms", emotion.card.c_str(),
+                            emotion.cardTtlMs);
+                    return;
+                }
+                SDL_Log("Sprite card rejected: %s", emotion.card.c_str());
+                return;
+            }
+            SDL_Log("anim card request failed: %s (%s)", state.c_str(), error.c_str());
+        }
+
+        CardQueue::Request request;
+        request.cardId = emotion.card;
+        request.stateId = state;
+        request.source = emotion.source.empty() ? "emotion" : emotion.source;
+        request.priority = requestPriority;
+        request.displayTtlMs = emotion.cardTtlMs;
+        request.maxWaitMs = 5000.0f;
+        if (cardQueue.push(request)) {
+            SDL_Log("anim card queued: card=%s state=%s requested_priority=%d "
+                    "active=%s active_priority=%d wait_ms=%.0f queued=%d",
+                    emotion.card.c_str(), state.c_str(), requestPriority,
+                    animation.activeId().c_str(), activePriority,
+                    request.maxWaitMs, cardQueue.size());
+        }
+    };
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -759,56 +831,30 @@ int main(int argc, char** argv) {
             }
         }
 
-        EmotionBus::Frame emotion;
-        if (emotionBus.poll(emotion)) {
-            if (model.applyEmotion(emotion.emotion, emotion.intensity,
-                                   emotion.attackMs, emotion.releaseMs)) {
-                model.applyGazeLean(emotion.gazeX, emotion.gazeY, emotion.gazeWeight,
-                                    emotion.leanX, emotion.leanY, emotion.leanWeight);
-                SDL_Log("Emotion: %s intensity=%.2f attack=%.0fms release=%.0fms "
-                        "gaze=(%.2f,%.2f)@%.2f lean=(%.2f,%.2f)@%.2f source=%s face=%s "
-                        "card=%s card_ttl=%.0fms",
-                        emotion.emotion.c_str(), emotion.intensity,
-                        emotion.attackMs, emotion.releaseMs,
-                        emotion.gazeX, emotion.gazeY, emotion.gazeWeight,
-                        emotion.leanX, emotion.leanY, emotion.leanWeight,
-                        emotion.source.empty() ? "unknown" : emotion.source.c_str(),
-                        model.faceName(), emotion.card.empty() ? "-" : emotion.card.c_str(),
-                        emotion.cardTtlMs);
-            } else {
-                SDL_Log("Emotion ignored: %s (raw %.80s)", emotion.emotion.c_str(),
-                        emotion.raw.c_str());
+        if (emotionBus.pollAll(emotionFrames)) {
+            if (emotionFrames.size() > 1) {
+                SDL_Log("Emotion batch: %d frames", static_cast<int>(emotionFrames.size()));
             }
-            if (spriteReady && !emotion.card.empty() && emotion.cardTtlMs > 0.0f) {
-                bool allowCard = true;
-                if (animationReady) {
-                    const std::string cardState = animationStateForCard(emotion.card);
-                    if (animation.hasState(cardState)) {
-                        std::string error;
-                        if (animation.request(cardState, "emotion", -1,
-                                              emotion.cardTtlMs, &error)) {
-                            const auto decision = animation.update(0.0f);
-                            applyBaseClipDecision(decision, model);
-                            allowCard = decision.stateId == cardState;
-                            if (!allowCard) {
-                                SDL_Log("anim card deferred: card=%s requested=%s active=%s",
-                                        emotion.card.c_str(), cardState.c_str(),
-                                        decision.stateId.c_str());
-                            }
-                        } else {
-                            allowCard = false;
-                            SDL_Log("anim card request failed: %s", error.c_str());
-                        }
-                    } else {
-                        SDL_Log("anim card unmapped: %s; direct show", emotion.card.c_str());
-                    }
-                }
-                if (allowCard && sprite.showCard(emotion.card, emotion.cardTtlMs)) {
-                    SDL_Log("Sprite card: %s ttl=%.0fms", emotion.card.c_str(),
+            for (const auto& emotion : emotionFrames) {
+                if (model.applyEmotion(emotion.emotion, emotion.intensity,
+                                       emotion.attackMs, emotion.releaseMs)) {
+                    model.applyGazeLean(emotion.gazeX, emotion.gazeY, emotion.gazeWeight,
+                                        emotion.leanX, emotion.leanY, emotion.leanWeight);
+                    SDL_Log("Emotion: %s intensity=%.2f attack=%.0fms release=%.0fms "
+                            "gaze=(%.2f,%.2f)@%.2f lean=(%.2f,%.2f)@%.2f source=%s face=%s "
+                            "card=%s card_ttl=%.0fms",
+                            emotion.emotion.c_str(), emotion.intensity,
+                            emotion.attackMs, emotion.releaseMs,
+                            emotion.gazeX, emotion.gazeY, emotion.gazeWeight,
+                            emotion.leanX, emotion.leanY, emotion.leanWeight,
+                            emotion.source.empty() ? "unknown" : emotion.source.c_str(),
+                            model.faceName(), emotion.card.empty() ? "-" : emotion.card.c_str(),
                             emotion.cardTtlMs);
-                } else if (allowCard) {
-                    SDL_Log("Sprite card rejected: %s", emotion.card.c_str());
+                } else {
+                    SDL_Log("Emotion ignored: %s (raw %.80s)", emotion.emotion.c_str(),
+                            emotion.raw.c_str());
                 }
+                handleEmotionCard(emotion);
             }
         }
 
@@ -847,6 +893,39 @@ int main(int argc, char** argv) {
             }
             applyBaseClipDecision(decision, model);
             lastModelClip = model.clipName();
+
+            cardQueue.tick(dt * 1000.0f);
+            if (cardQueue.dropped() > lastCardDropped) {
+                SDL_Log("anim card dropped: total=%d queued=%d",
+                        cardQueue.dropped(), cardQueue.size());
+                lastCardDropped = cardQueue.dropped();
+            }
+            if (!cardQueue.empty()) {
+                const std::string activeState = animation.activeId();
+                const int activePriority = animation.priorityFor(activeState);
+                const bool activeIsBase = activeState.empty() ||
+                                          isBaseAnimationState(activeState);
+                CardQueue::Request queued;
+                if (cardQueue.popReady(activePriority, activeIsBase, queued)) {
+                    std::string error;
+                    if (requestCardState(animation, queued.stateId, "queue",
+                                         queued.displayTtlMs, error)) {
+                        if (spriteReady &&
+                            sprite.showCard(queued.cardId, queued.displayTtlMs)) {
+                            SDL_Log("Sprite card queued: %s state=%s ttl=%.0fms "
+                                    "active=%s queued_left=%d",
+                                    queued.cardId.c_str(), queued.stateId.c_str(),
+                                    queued.displayTtlMs, animation.activeId().c_str(),
+                                    cardQueue.size());
+                        } else {
+                            SDL_Log("Sprite queued card rejected: %s", queued.cardId.c_str());
+                        }
+                    } else {
+                        SDL_Log("anim queued card failed: %s (%s)",
+                                queued.stateId.c_str(), error.c_str());
+                    }
+                }
+            }
         }
         Uint64 updateStart = SDL_GetPerformanceCounter();
         {

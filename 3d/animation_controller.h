@@ -235,7 +235,6 @@ public:
             result.changed = wasActive ? (previous != activeId_) : true;
             result.fadeInMs = current->fadeInMs;
             result.fadeOutMs = current->fadeOutMs;
-            result.fadeOutMs = current->fadeOutMs;
         }
         last_ = result;
         return result;
@@ -266,6 +265,14 @@ public:
     const Decision& current() const { return last_; }
     bool active() const { return !activeId_.empty(); }
     bool hasState(const std::string& id) const { return find(id) != nullptr; }
+    int priorityFor(const std::string& id) const {
+        const State* state = find(id);
+        return state ? state->priority : -1;
+    }
+    float ttlFor(const std::string& id) const {
+        const State* state = find(id);
+        return state ? state->ttlMs : 0.0f;
+    }
     const std::string& activeId() const { return activeId_; }
     const std::string& defaultId() const { return defaultId_; }
     int pendingCount() const { return static_cast<int>(pending_.size()); }
