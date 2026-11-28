@@ -27,6 +27,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Asset cook and fixture tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check pillow
+          if ($LASTEXITCODE -ne 0) { throw "Pillow install failed ($LASTEXITCODE)" }
+          python .\3d\tools\cook_assets.py --out .\build\content --report .\build\asset-cook-report.json
+          if ($LASTEXITCODE -ne 0) { throw "asset cook failed ($LASTEXITCODE)" }
+          python .\3d\tests\test_cook_assets.py
+          if ($LASTEXITCODE -ne 0) { throw "cook negative fixtures failed ($LASTEXITCODE)" }
+          python .\3d\tools\verify_content.py --content .\build\content\content.json --report .\build\content-verify.json
+          if ($LASTEXITCODE -ne 0) { throw "content verify failed ($LASTEXITCODE)" }
+
       - name: Download w64devkit 2.11.0
         shell: pwsh
         run: |
