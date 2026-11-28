@@ -1,6 +1,6 @@
 # 3D 引擎分阶段计划（2026-11-28）
 
-状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已完成 base/action 门禁 + 卡面队列 + EmotionBus 多帧 + idle/walk 真采样 crossfade；#70 已覆盖点击/拖拽，聊天待确认验收范围；idle CPU A/B +1.75pp 已判定可接受。**
+状态：**执行中；阶段 0 已按 waiver 关闭，阶段 1 已按 GPU CI runner waiver 条件退出，阶段 2 已按 3D 引擎范围条件退出（聊天项不属 3D core，#70 仍独立待办），阶段 3 资产 cook 已开始；#70 已覆盖点击/拖拽/动作，聊天待定；idle CPU A/B +1.75pp 已判定可接受。**
 基线版本：`v3.2.0-sprite` 已公开发布，tag `v3.2.0-sprite` → `a2ef92c`。
 原则：学 UE 的**工业化方法**，不学 UE 的**功能体量**；每阶段有独立分支、证据和退出条件，不并行重构。
 
@@ -92,7 +92,9 @@
 
 **第一轮集成（2026-11-28）**：`3d/animation_controller.h` + `3d/anim_state_table.h` + 20 条夹具 + `main.cpp` base/action 门禁已落地；集成 CI run `46128539544` success，17 卡可见验收通过（`build/stage2-cards/2d-card-visible-qa.json`）；10 分钟浸泡 FPS avg 27.78 / p50 34.92ms / p99 47.02ms，无 crash、RSS 无增长。
 
-**第二轮队列（2026-11-28）**：`3d/card_queue.h` 35 条夹具 + `EmotionBus::pollAll` 已接入；真实窗口验证同批 2 帧、动作期间 queued、动作结束补显 `expression/happy`、多张 FIFO（curious→pat）；17 卡 17/17；队列版压力浸泡 60/60 补显、0 丢弃、CPU 26.35%、无 crash；真实点击穿透 + 拖拽通过（窗口位移 90/45）。idle 10 分钟：FPS 27.95 / p50 34.62ms / p99 48.36ms，接近平均基线但 p99 +3.18ms；CPU 33.27%，比阶段 1 的 26.30% 高 6.97pp，但压力浸泡 CPU 反而只有 26.35%，说明窗口/合成状态影响大。同机 A/B 后：stage1-stats 31.52% vs queue 33.27%，CPU 只 +1.75pp；队列 FPS/p50/p99 更好，但 swap 7.05 vs 0.11ms 路径不同，帧时间不能直接下结论。#70 聊天未验（3D shell 无聊天入口）。idle↔walk 真采样 crossfade 已在 `whale3d-stage2-crossfade.exe` 落地（双采样 Lerp/NLerp，180ms，W 切换日志通过）；同构建 17 卡截图 17/17、队列回归 6/6、真实点击穿透和拖拽通过、90 秒快速 W 147 次 fade 无退出、10 分钟 W 浸泡 298 次 fade 无退出（CPU 单核 avg 32.58%）；action/expression 仍无独立 clip。
+**第二轮队列（2026-11-28）**：`3d/card_queue.h` 35 条夹具 + `EmotionBus::pollAll` 接入；同批 2 帧、动作期间 queued、动作结束补显、多张 FIFO（curious→pat）均通过；17 卡 17/17；队列压力浸泡 60/60 补显、0 丢弃、CPU 26.35%、无 crash；真实点击穿透 + 拖拽通过。idle 10 分钟 FPS 27.95 / p50 34.62ms / p99 48.36ms；同机 A/B stage1-stats 31.52% vs queue 33.27%，CPU +1.75pp，swap 7.05 vs 0.11ms，帧时间不直接比优劣。idle↔walk 真采样 crossfade 已落地（180ms，双采样 Lerp/NLerp）；同构建 17 卡、队列 6/6、点击、拖拽、90 秒 147 次 fade、10 分钟 298 次 fade 均无退出；action/expression 仍无独立 clip。
+
+**收口记录（2026-11-28）**：阶段 2 按 3D 引擎范围条件退出，详见 `docs/stage2-closeout.md`。已过：状态机 20/20、队列 35/35、17 卡、真实点击/拖拽、crossfade、10 分钟浸泡、A/B CPU +1.75pp。未过：3D 壳无聊天入口，#70 聊天项保留为独立待办；卡面 overlay 仍硬切；p99 不能宣称正式等同阶段 1。阶段 3 只做资产校验/清单/打包，不动渲染层。
 
 ### 阶段 3：资产管线与烘焙
 
@@ -111,6 +113,8 @@
 - cook 对同一输入输出稳定 hash；坏资产夹具全部失败。
 - 发布包与安装器使用 content 清单；现有 17 卡和模型加载无回归。
 - 产出 `docs/asset-cook.md`、`docs/asset-cook-report.json`。
+
+**基线记录（2026-11-28）**：`3d/tools/cook_assets.py` 已通过正向 cook：19 humanoid bones、28 skin joints、4 spring chains、17 卡、1024×512/slot 160；content hash 稳定；8 类坏输入均拒绝；`3d/tools/verify_content.py` 通过，篡改 hash 副本被拒绝。运行时校验、ZIP/安装器接入、CI 夹具尚未完成，阶段 3 未收口。详见 `docs/asset-cook.md`。
 
 ### 阶段 4：渲染 pass 边界与 inspector
 

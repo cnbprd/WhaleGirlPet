@@ -1,0 +1,170 @@
+{
+  "cards": {
+    "count": 17,
+    "ids": [
+      "action/balloon",
+      "action/change",
+      "action/dance",
+      "action/fireworks",
+      "action/lion",
+      "action/type",
+      "action/wave",
+      "expression/angry",
+      "expression/curious",
+      "expression/eat",
+      "expression/happy",
+      "expression/idle",
+      "expression/pat",
+      "expression/shy",
+      "expression/sleep",
+      "expression/sleepy",
+      "expression/walk"
+    ],
+    "sheet_size": [
+      1024,
+      512
+    ],
+    "slot_size": 160
+  },
+  "cooked": [
+    {
+      "bytes": 351708,
+      "path": "build/content/3d/assets/models/whale_girl.vrm",
+      "sha256": "BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87"
+    },
+    {
+      "bytes": 5354,
+      "path": "build/content/assets/2d_bridge/manifest.json",
+      "sha256": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D"
+    },
+    {
+      "bytes": 357857,
+      "path": "build/content/assets/2d_bridge/atlas.png",
+      "sha256": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958"
+    }
+  ],
+  "errors": [],
+  "model": {
+    "animations": [
+      {
+        "channels": 14,
+        "name": "Idle"
+      }
+    ],
+    "bytes": 351708,
+    "glb_version": 2,
+    "humanoid_bones": 19,
+    "images": 1,
+    "materials": 1,
+    "meshes": 1,
+    "nodes": 29,
+    "skin_joints": 28,
+    "springs": 4,
+    "textures": 1
+  },
+  "ok": true,
+  "schema": "whale3d-cook-report-v1",
+  "sources": [
+    {
+      "bytes": 351708,
+      "path": "3d/assets/models/whale_girl.vrm",
+      "sha256": "BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87"
+    },
+    {
+      "bytes": 5354,
+      "path": "assets/2d_bridge/manifest.json",
+      "sha256": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D"
+    },
+    {
+      "bytes": 357857,
+      "path": "assets/2d_bridge/atlas.png",
+      "sha256": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958"
+    },
+    {
+      "bytes": 139713,
+      "path": "assets/expressions/angry.png",
+      "sha256": "11BAAF47141ACD280E5E38B9EF2D96A5D39F018C29B7C9D06A16F00E4CE7AF14"
+    },
+    {
+      "bytes": 140978,
+      "path": "assets/expressions/curious.png",
+      "sha256": "A1E709D957C12463B6ECCBD7CE5EFABFE4F47237BA258C449058D65C021DD2A1"
+    },
+    {
+      "bytes": 134408,
+      "path": "assets/expressions/eat.png",
+      "sha256": "66A426D79247CC9C45ACC305347D874328F9AD0CF8009B2665491C2B31A51DBD"
+    },
+    {
+      "bytes": 146380,
+      "path": "assets/expressions/happy.png",
+      "sha256": "63A54E226B1C2AA3B97C1BEA3E777010AE9F444C4A49984D7AD0E1DB275FE113"
+    },
+    {
+      "bytes": 136442,
+      "path": "assets/expressions/idle.png",
+      "sha256": "607006E380175959C9361F02738097834ABC09700735D5BC225635B0C165044F"
+    },
+    {
+      "bytes": 139591,
+      "path": "assets/expressions/pat.png",
+      "sha256": "A6A19FE02629833E262DBDDD058C8D4F2472C4C091B08FF66D8D618F6F5F740B"
+    },
+    {
+      "bytes": 136042,
+      "path": "assets/expressions/shy.png",
+      "sha256": "C3144027A78CE6C9D192F6C05C3D994A8A11744E52F125E159E01CC896FD2860"
+    },
+    {
+      "bytes": 138544,
+      "path": "assets/expressions/sleep.png",
+      "sha256": "FD390AB75BA1CAE163E993FD115EACAF7B777ABF3C4FF138DBF144AF154D733D"
+    },
+    {
+      "bytes": 141391,
+      "path": "assets/expressions/sleepy.png",
+      "sha256": "7D9322DFB21B9A8A44EBB12C594910AD5D779B6964A59ED70337ED2EC1303078"
+    },
+    {
+      "bytes": 137073,
+      "path": "assets/expressions/walk.png",
+      "sha256": "F9A686DD6567C2B5E3D265846F425468A7D6DF4C9C80FB0F1674D7EA5E701873"
+    },
+    {
+      "bytes": 131446,
+      "path": "assets/actions/balloon.png",
+      "sha256": "827AAB2425B19A59E87C8ABF9932D569457216608373E69B7A529FA7DAD3BB77"
+    },
+    {
+      "bytes": 144715,
+      "path": "assets/actions/change.png",
+      "sha256": "C74509DDCDED0011BFED5EFB087707F122E5B1967C90122B112F58F0BE19B58A"
+    },
+    {
+      "bytes": 155050,
+      "path": "assets/actions/dance.png",
+      "sha256": "42A6E9EB17A0517EF6512E9B14EAC781C5FA72384AA92DF09F03AB8D02C66DD0"
+    },
+    {
+      "bytes": 162737,
+      "path": "assets/actions/fireworks.png",
+      "sha256": "CEC20722970EA017FA98D2907B303DC337A039A908FC0E5D700861420006EE75"
+    },
+    {
+      "bytes": 182528,
+      "path": "assets/actions/lion.png",
+      "sha256": "E739F92D93204FC9D9879E033FD8A5CAC591B1E3A3DE1B044CAF3244DB4AA46A"
+    },
+    {
+      "bytes": 193558,
+      "path": "assets/actions/type.png",
+      "sha256": "AC3FE082AD20BA1B808662F12E9DAC1019BD6C71F1245D12AE660DA41341E162"
+    },
+    {
+      "bytes": 143092,
+      "path": "assets/actions/wave.png",
+      "sha256": "7BA308B6811B2AA3FE43DC04A64FAEF7779C12E293FF9B62F01E2BC039D6E467"
+    }
+  ],
+  "warnings": []
+}

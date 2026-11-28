@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "bytes": 351708,
+      "ok": true,
+      "path": "build/content/3d/assets/models/whale_girl.vrm",
+      "sha256": "BFD19124F1435E1CD2936F451AB4DEEFF0CABD5CA9A99B72E57E037D2BDECB87"
+    },
+    {
+      "bytes": 5354,
+      "ok": true,
+      "path": "build/content/assets/2d_bridge/manifest.json",
+      "sha256": "EAD6F972E41409A72C3ECB3B7658F69F4DFD07738CA597E028D7D7809078335D"
+    },
+    {
+      "bytes": 357857,
+      "ok": true,
+      "path": "build/content/assets/2d_bridge/atlas.png",
+      "sha256": "918194E5E7AB077A4CCFBFBB049D1514BC6D8E464A782153DCBAF4AB6C085958"
+    }
+  ],
+  "content": "F:\\WhaleGirlPet\\build\\content\\content.json",
+  "errors": [],
+  "ok": true
+}
