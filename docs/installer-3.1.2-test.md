@@ -83,6 +83,6 @@ Type Mismatch.
 ## 边界
 
 - 真实 18.7 GB `F:\WhaleGirlPetApp` 已在本机升级通过；其他机器的真实数据（尤其是自定义目录、不同盘符）未逐一实跑。
-- 安装包未签名，SignPath 仍在审核。
+- 安装包未签名。发布时 SignPath Foundation 申请在审核；该申请后于 2026-11-27 未通过。
 - 2D 安装器未改；它是历史归档，不再作为新发布目标。
 - 升级前备份仍在 `build/userdata-before-3d-upgrade`，确认稳定后可删除。

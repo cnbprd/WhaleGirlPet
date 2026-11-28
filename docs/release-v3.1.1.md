@@ -26,6 +26,6 @@
 
 ## 边界
 
-- 安装包**仍未签名**。SignPath Foundation 申请已提交、仍在审核；SmartScreen 可能显示“未知发布者”，请先对照 `.sha256`。
+- 安装包**仍未签名**。发布时 SignPath Foundation 申请在审核；该申请后于 2026-11-27 未通过。SmartScreen 可能显示“未知发布者”，请先对照 `.sha256`。
 - 没有在真实 `F:\WhaleGirlPetApp` 的 19 GB 数据上跑完整升级；迁移脚本只在等价副本上验证。正式升级前建议先备份旧目录。
 - 如果迁移中途被强制结束，旧目录里会留下 `WhaleGirlPetApp_userdata_<timestamp>` 备份；数据不会主动删除，可人工移回。
