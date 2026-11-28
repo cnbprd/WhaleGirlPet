@@ -24,7 +24,7 @@
 | 17 条夹具 | `3d/tests/fixtures/sprite_manifest/cases.json` | 17 条 |
 | 编译产物 | `build/test_sprite_manifest_integration.exe` | 已生成 |
 | 运行结果 | `17/17 passed`，exit 0 | PASS |
-| 分支 | `integrate/sprite-parser-static-20261127` | 未合入 main |
+| 分支 | `integrate/sprite-parser-static-20261127` | 已合入本地 `main`（merge `1aea255`） |
 
 ## 2. 17 卡可见验收
 
@@ -89,8 +89,8 @@
 | 发布草稿 | `docs/release-3.2.0-sprite.md` | 已更新 |
 | 执行手册 | `docs/post-soak-runbook.md` | 保留流程记录 |
 | CI / Release 审计 | `docs/ci-release-static-audit.md` | `release-notes.yml` push 风险仍记录 |
-| CI artifact 命名修复 | 分支 `fix/ci-artifact-name`，提交 `94d4fdd` | 未合入、未触发 CI |
-| CI release-notes 修复 | 分支 `fix/release-notes-tag`，提交 `56ba124` | 未合入 |
+| CI artifact 命名修复 | 提交 `94d4fdd`，已随集成分支合入本地 `main` | 未 push、CI 未触发 |
+| CI release-notes 修复 | 提交 `56ba124`，已随集成分支合入本地 `main` | 未 push、workflow 未触发 |
 | GitHub Release | `v3.2.0-sprite` | **未创建、未上传** |
 
 ## 发布前硬门槛
